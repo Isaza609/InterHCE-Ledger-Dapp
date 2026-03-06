@@ -1,0 +1,151 @@
+{
+  "resourceType": "Encounter",
+  "id": "47b7e0b5-25cc-43d3-a3a8-ee34ff1687fe",
+  "meta": {
+    "profile": [
+      "http://co.fhir.guide/core/StructureDefinition/EncounterConsultationCO"
+    ]
+  },
+  "identifier": [
+    {
+      "id": "InvoiceIdentifier",
+      "use": "official",
+      "system": "http://co.fhir.guide/NamingSystem/Invoices",
+      "value": "21a87645-0653-4ea1-8e11"
+    },
+    {
+      "id": "EncounterIdentifier",
+      "use": "usual",
+      "system": "http://co.fhir.guide/NamingSystem/Encounters",
+      "value": "ADT-4234889-98"
+    },
+    {
+      "id": "AutorizationIdentifier",
+      "use": "official",
+      "system": "http://co.fhir.guide/NamingSystem/EncounterAutorization",
+      "value": "AUT-42348768-BF-48"
+    }
+  ],
+  "class": {
+    "system": "http://terminology.hl7.org/CodeSystem/v3-ActCode",
+    "code": "AMB",
+    "display": "ambulatory"
+  },
+  "type": [
+    {
+      "coding": [
+        {
+          "system": "http://co.fhir.guide/terminology/CodeSystem/ColombianEncounterPurpose",
+          "code": "10",
+          "display": "No aplica"
+        }
+      ]
+    }
+  ],
+  "serviceType": {
+    "coding": [
+      {
+        "system": "http://co.fhir.guide/terminology/CodeSystem/CUPS",
+        "code": "890201",
+        "display": "CONSULTA DE PRIMERA VEZ POR MEDICINA GENERAL"
+      }
+    ]
+  },
+  "period": {
+    "start": "2022-03-20T07:30:00-05:00",
+    "end": "2022-03-20T08:15:00-05:00"
+  },
+  "priority": {
+    "coding": [
+      {
+        "system": "http://terminology.hl7.org/CodeSystem/v3-ActPriority",
+        "code": "UR",
+        "display": "urgent"
+      }
+    ]
+  },
+  "reasonCode": [
+    {
+      "coding": [
+        {
+          "system": "http://co.fhir.guide/terminology/CodeSystem/ColombianEncounterReasonCode",
+          "code": "13",
+          "display": "Enfermedad general"
+        }
+      ]
+    }
+  ],
+  "diagnosis": [
+    {
+      "use": {
+        "coding": [
+          {
+            "system": "http://co.fhir.guide/terminology/CodeSystem/ColombianDiagnosisRole",
+            "code": "8319008",
+            "display": "diagnóstico primario"
+          }
+        ]
+      },
+      "id": "MainDiagnosis",
+      "rank": 1,
+      "condition": {
+        "reference": "Condition/072d9e24-f388-4a3f-ab82-e8b7a81e4459"
+      }
+    }
+  ],
+  "location": [
+    {
+      "location": {
+        "reference": "Location/29c2e207-7c1e-4581-8394-c126875aa896"
+      }
+    }
+  ],
+  "status": "finished",
+  "statusHistory": [
+    {
+      "status": "arrived",
+      "period": {
+        "start": "2022-03-20T07:15:00-05:00",
+        "end": "2022-03-20T07:29:59-05:00"
+      }
+    },
+    {
+      "status": "in-progress",
+      "period": {
+        "start": "2022-03-20T07:30:00-05:00",
+        "end": "2022-03-20T08:14:59-05:00"
+      }
+    },
+    {
+      "status": "finished",
+      "period": {
+        "start": "2022-03-20T08:15:00-05:00",
+        "end": "2022-03-20T08:15:00-05:00"
+      }
+    }
+  ],
+  "subject": {
+    "reference": "Patient/92a8e277-af20-4854-a3fb-02cbe9fb8d49"
+  },
+  "serviceProvider": {
+    "reference": "Organization/3565ccc1-95b4-47ef-8cc9-5652dba007e6"
+  },
+  "participant": [
+    {
+      "type": [
+        {
+          "coding": [
+            {
+              "system": "http://terminology.hl7.org/CodeSystem/v3-ParticipationType",
+              "code": "ATND",
+              "display": "attender"
+            }
+          ]
+        }
+      ],
+      "individual": {
+        "reference": "Practitioner/afe390fb-22e4-4c63-af5d-2cf7ec81e2e0"
+      }
+    }
+  ]
+}

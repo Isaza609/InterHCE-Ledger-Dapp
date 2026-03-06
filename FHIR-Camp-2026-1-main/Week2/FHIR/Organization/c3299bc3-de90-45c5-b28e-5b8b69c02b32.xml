@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Organization xmlns="http://hl7.org/fhir">
+    <id value="c3299bc3-de90-45c5-b28e-5b8b69c02b32"/>
+    <identifier>
+        <use value="official"/>
+        <system value="urn:oid:2.16.170.1.2.2.900474727.2.2"/>
+        <value value="EPS0001"/>
+    </identifier>
+    <identifier>
+        <use value="official"/>
+        <type>
+            <coding>
+                <system value="http://terminology.hl7.org/CodeSystem/v2-0203"/>
+                <code value="TAX"/>
+                <display value="Tax ID number"/>
+            </coding>
+        </type>
+        <system value="urn:oid:2.16.170.1.2.2.899999090.800197268.1.1"/>
+        <value value="900000001-0"/>
+    </identifier>
+    <active value="true"/>
+    <type>
+        <coding>
+            <system value="http://terminology.hl7.org/CodeSystem/organization-type"/>
+            <code value="ins"/>
+            <display value="Insurance Company"/>
+        </coding>
+    </type>
+    <name value="ASEGURADORA DE SALUD COMPLETA S.A."/>
+    <alias value="SALUD COMPLETA"/>
+    <telecom>
+        <system value="phone"/>
+        <value value="+57(600) 122-1122"/>
+        <use value="work"/>
+    </telecom>
+    <address>
+        <use value="work"/>
+        <text value="CRA 9 # 69-02"/>
+        <city value="Bogotá D.C."/>
+        <district value="Chapinero"/>
+        <state value="Bogotá D.C."/>
+        <postalCode value="110000"/>
+        <country value="CO"/>
+    </address>
+    <contact>
+        <name>
+            <use value="usual"/>
+            <text value="Carlos Gustavo Romero"/>
+        </name>
+        <telecom>
+            <system value="phone"/>
+            <value value="+57(600) 333-4444"/>
+            <use value="work"/>
+        </telecom>
+        <telecom>
+            <system value="email"/>
+            <value value="carlos.romero@example.com"/>
+            <use value="work"/>
+        </telecom>
+    </contact>
+</Organization>

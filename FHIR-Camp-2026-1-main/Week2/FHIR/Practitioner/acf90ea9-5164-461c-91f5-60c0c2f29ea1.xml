@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Practitioner xmlns="http://hl7.org/fhir">
+    <id value="acf90ea9-5164-461c-91f5-60c0c2f29ea1"/>
+    <identifier>
+        <use value="official"/>
+        <type>
+            <coding>
+                <system value="http://terminology.hl7.org/CodeSystem/v2-0203"/>
+                <code value="NNCOL"/>
+                <display value="National Person Identifier where the xxx is the ISO table 3166 3-character (alphabetic) country code"/>
+            </coding>
+        </type>
+        <system value="urn:oid:2.16.170.3.899999040.1.4"/>
+        <value value="98712365478"/>  
+    </identifier>
+    <active value="true"/>
+    <name>
+        <use value="official"/>
+        <family>
+            <extension id="humanname-fathers-family" url="http://hl7.org/fhir/StructureDefinition/humanname-fathers-family">
+                <valueString value="Moreno"/>
+            </extension>
+            <extension id="humanname-mothers-family" url="http://hl7.org/fhir/StructureDefinition/humanname-mothers-family">
+                <valueString value="Reyes"/>
+            </extension>
+        </family>
+        <given value="Luís"/>
+        <given value="Alfonso"/>
+     </name>
+    <telecom>
+        <system value="phone"/>
+        <value value="+57(600)848-7744"/>
+        <use value="home"/>
+    </telecom>
+    <telecom>
+        <system value="phone"/>
+        <value value="+57(300)484-4477"/>
+        <use value="mobile"/>
+    </telecom>
+    <telecom>
+        <system value="email"/>
+        <value value="luis.moreno@example.com"/>
+    </telecom>
+    <gender value="male"/>
+    <birthDate value="1992-03-11"/>
+    <qualification>
+        <identifier>
+            <use value="official"/>
+            <type>
+                <coding>
+                    <system value="http://terminology.hl7.org/CodeSystem/v2-0203"/>
+                    <code value="LN"/>
+                    <display value="License number"/>
+                </coding>
+            </type>
+            <value value="TP-98712365478"/>  
+        </identifier>
+        <code>
+            <coding>
+                <system value="http://snomed.info/sct"/>
+                <code value="5275007"/>
+                <display value="auxiliar de enfermería"/>
+            </coding>
+        </code>
+        <period>
+            <start value="2015-03-24"/>
+        </period>
+    </qualification>
+</Practitioner>

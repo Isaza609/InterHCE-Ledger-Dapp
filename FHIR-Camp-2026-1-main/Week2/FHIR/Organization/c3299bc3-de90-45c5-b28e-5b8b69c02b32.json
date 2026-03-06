@@ -1,0 +1,79 @@
+{
+	"resourceType": "Organization",
+	"id": "c3299bc3-de90-45c5-b28e-5b8b69c02b32",
+	"identifier": [
+		{
+			"use": "official",
+			"system": "urn:oid:2.16.170.1.2.2.900474727.2.2",
+			"value": "EPS0001"
+		},
+		{
+			"use": "official",
+			"type": {
+				"coding": [
+					{
+						"system": "http://terminology.hl7.org/CodeSystem/v2-0203",
+						"code": "TAX",
+						"display": "Tax ID number"
+					}
+				]
+			},
+			"system": "urn:oid:2.16.170.1.2.2.899999090.800197268.1.1",
+			"value": "900000001-0"
+		}
+	],
+	"active": true,
+	"type": [
+		{
+			"coding": [
+				{
+					"system": "http://terminology.hl7.org/CodeSystem/organization-type",
+					"code": "ins",
+					"display": "Insurance Company"
+				}
+			]
+		}
+	],
+	"name": "ASEGURADORA DE SALUD COMPLETA S.A.",
+	"alias": [
+		"SALUD COMPLETA"
+	],
+	"telecom": [
+		{
+			"system": "phone",
+			"value": "+57(600) 122-1122",
+			"use": "work"
+		}
+	],
+	"address": [
+		{
+			"use": "work",
+			"text": "CRA 9 # 69-02",
+			"city": "Bogotá D.C.",
+			"district": "Chapinero",
+			"state": "Bogotá D.C.",
+			"postalCode": "110000",
+			"country": "CO"
+		}
+	],
+	"contact": [
+		{
+			"name": {
+				"use": "usual",
+				"text": "Carlos Gustavo Romero"
+			},
+			"telecom": [
+				{
+					"system": "phone",
+					"value": "+57(600) 333-4444",
+					"use": "work"
+				},
+				{
+					"system": "email",
+					"value": "carlos.romero@example.com",
+					"use": "work"
+				}
+			]
+		}
+	]
+}

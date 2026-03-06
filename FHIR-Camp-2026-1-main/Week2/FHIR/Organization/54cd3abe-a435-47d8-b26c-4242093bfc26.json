@@ -1,0 +1,76 @@
+{
+	"resourceType": "Organization",
+	"id": "54cd3abe-a435-47d8-b26c-4242093bfc26",
+	"identifier": [
+		{
+			"use": "official",
+			"system": "urn:oid:2.16.170.1.2.2.900474727.2.1",
+			"value": "1100000000-1"
+		},
+		{
+			"use": "official",
+			"type": {
+				"coding": [
+					{
+						"system": "http://terminology.hl7.org/CodeSystem/v2-0203",
+						"code": "TAX",
+						"display": "Tax ID number"
+					}
+				]
+			},
+			"system": "urn:oid:2.16.170.1.2.2.899999090.800197268.1.1",
+			"value": "860000000-0"
+		}
+	],
+	"active": true,
+	"type": [
+		{
+			"coding": [
+				{
+					"system": "http://terminology.hl7.org/CodeSystem/organization-type",
+					"code": "prov",
+					"display": "Healthcare Provider"
+				}
+			]
+		}
+	],
+	"name": "HOSPITAL GENERAL CENTRAL",
+	"telecom": [
+		{
+			"system": "phone",
+			"value": "+57(600) 555-6677",
+			"use": "work"
+		}
+	],
+	"address": [
+		{
+			"use": "work",
+			"text": "Kra 7 No. 39-60",
+			"city": "Bogotá D.C.",
+			"district": "Chapinero",
+			"state": "Bogotá D.C.",
+			"postalCode": "110000",
+			"country": "CO"
+		}
+	],
+	"contact": [
+		{
+			"name": {
+				"use": "usual",
+				"text": "Félix Mejía Restrepo"
+			},
+			"telecom": [
+				{
+					"system": "phone",
+					"value": "+57(600) 555-6677",
+					"use": "work"
+				},
+				{
+					"system": "email",
+					"value": "felix.mejia@example.com",
+					"use": "work"
+				}
+			]
+		}
+	]
+}

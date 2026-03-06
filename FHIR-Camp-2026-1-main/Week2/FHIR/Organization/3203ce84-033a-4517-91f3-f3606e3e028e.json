@@ -1,0 +1,71 @@
+{
+	"resourceType": "Organization",
+	"id": "3203ce84-033a-4517-91f3-f3606e3e028e",
+	"identifier": [
+		{
+			"use": "official",
+			"type": {
+				"coding": [
+					{
+						"system": "http://terminology.hl7.org/CodeSystem/v2-0203",
+						"code": "TAX",
+						"display": "Tax ID number"
+					}
+				]
+			},
+			"system": "urn:oid:2.16.170.1.2.2.899999090.800197268.1.1",
+			"value": "800111111-1"
+		}
+	],
+	"active": true,
+	"type": [
+		{
+			"coding": [
+				{
+					"system": "http://terminology.hl7.org/CodeSystem/organization-type",
+					"code": "bus",
+					"display": "Non-Healthcare Business or Corporation"
+				}
+			]
+		}
+	],
+	"name": "Corporación ACME",
+	"telecom": [
+		{
+			"system": "phone",
+			"value": "+57(600) 226-3267",
+			"use": "work"
+		}
+	],
+	"address": [
+		{
+			"use": "work",
+			"text": "Calle 93 # 11A-53",
+			"city": "Bogotá D.C.",
+			"district": "Chapinero",
+			"state": "Bogotá D.C.",
+			"postalCode": "110000",
+			"country": "CO"
+		}
+	],
+	"contact": [
+		{
+			"name": {
+				"use": "usual",
+				"text": "Guillermo Edilberto Blanco"
+			},
+			"telecom": [
+				{
+					"system": "phone",
+					"value": "+57(600) 226-3267",
+					"use": "work"
+				},
+				{
+					"system": "email",
+					"value": "guillermo.blanco@example.com",
+					"use": "work"
+				}
+			]
+		}
+	]
+}

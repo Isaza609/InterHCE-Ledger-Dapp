@@ -1,0 +1,126 @@
+{
+  "resourceType": "Encounter",
+  "id": "ceb49970-cff4-4639-94e6-3887d7e66d53",
+  "meta": {
+    "profile": [
+      "http://co.fhir.guide/core/StructureDefinition/EncounterEmergencyCO"
+    ]
+  },
+  "identifier": [
+    {
+      "id": "InvoiceIdentifier",
+      "use": "official",
+      "system": "http://co.fhir.guide/NamingSystem/Invoices",
+      "value": "b92b-580ac97e6132"
+    },
+    {
+      "id": "EncounterIdentifier",
+      "use": "usual",
+      "system": "http://co.fhir.guide/NamingSystem/Encounters",
+      "value": "ADT-EM-2342398-24"
+    },
+    {
+      "id": "AutorizationIdentifier",
+      "use": "official",
+      "system": "http://co.fhir.guide/NamingSystem/EncounterAutorization",
+      "value": "AUT-327498-BF-67"
+    }
+  ],
+  "class": {
+    "code": "EMER",
+    "display": "emergency"
+  },
+  "serviceType": {
+    "coding": [
+      {
+        "system": "http://co.fhir.guide/terminology/CodeSystem/CUPS",
+        "code": "890701",
+        "display": "CONSULTA DE URGENCIAS POR MEDICINA GENERAL"
+      }
+    ]
+  },
+  "period": {
+    "start": "2024-02-17T22:30:00-05:00",
+    "end": "2024-02-18T02:00:00-05:00"
+  },
+  "reasonCode": [
+    {
+      "coding": [
+        {
+          "system": "http://co.fhir.guide/terminology/CodeSystem/ColombianEncounterReasonCode",
+          "code": "13",
+          "display": "Enfermedad general"
+        }
+      ]
+    }
+  ],
+  "diagnosis": [
+    {
+      "use": {
+        "coding": [
+          {
+            "system": "http://co.fhir.guide/terminology/CodeSystem/ColombianDiagnosisRole",
+            "code": "8319008",
+            "display": "diagnóstico primario"
+          }
+        ]
+      },
+      "id": "MainDiagnosis",
+      "rank": 1,
+      "condition": {
+        "reference": "Condition/072d9e24-f388-4a3f-ab82-e8b7a81e4459"
+      }
+    },
+    {
+      "use": {
+        "coding": [
+          {
+            "system": "http://co.fhir.guide/terminology/CodeSystem/ColombianDiagnosisRole",
+            "code": "89100005",
+            "display": "diagnóstico final (alta)"
+          }
+        ]
+      },
+      "id": "DischargeDiagnosis",
+      "rank": 2,
+      "condition": {
+        "reference": "Condition/072d9e24-f388-4a3f-ab82-e8b7a81e4459"
+      }
+    }
+  ],
+  "hospitalization": {
+    "dischargeDisposition": {
+      "coding": [
+        {
+          "system": "http://co.fhir.guide/terminology/CodeSystem/ColombianEmergencyDischargeDisposition",
+          "code": "1",
+          "display": "Alta de urgencias"
+        }
+      ]
+    },
+    "extension": [
+      {
+        "valueCoding": {
+          "system": "http://co.fhir.guide/terminology/CodeSystem/ColombianDischargeDeceasedStatus",
+          "code": "1",
+          "display": "Vivo (a)"
+        },
+        "url": "http://co.fhir.guide/core/StructureDefinition/ExtensionDischargeDeceasedStatus"
+      }
+    ]
+  },
+  "location": [
+    {
+      "location": {
+        "reference": "Location/29c2e207-7c1e-4581-8394-c126875aa896"
+      }
+    }
+  ],
+  "status": "finished",
+  "subject": {
+    "reference": "Patient/92a8e277-af20-4854-a3fb-02cbe9fb8d49"
+  },
+  "serviceProvider": {
+    "reference": "Organization/3565ccc1-95b4-47ef-8cc9-5652dba007e6"
+  }
+}

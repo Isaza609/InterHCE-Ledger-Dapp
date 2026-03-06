@@ -1,0 +1,62 @@
+{
+  "resourceType": "HealthcareService",
+  "id": "2d2592ef-7a5e-43ca-8512-06fd9acfd01a",
+  "meta": {
+    "profile": [
+      "http://co.fhir.guide/core/StructureDefinition/HealthcareServiceCO"
+    ]
+  },
+  "identifier": [
+    {
+      "use": "official",
+      "system": "https://prestadores.minsalud.gov.co/habilitacion/",
+      "value": "DHSS1111111"
+    }
+  ],
+  "category": [
+    {
+      "coding": [
+        {
+          "code": "73588009",
+          "system": "http://co.fhir.guide/terminology/CodeSystem/REPShealthcareServiceCategory",
+          "display": "Apoyo Diagnóstico y Complementación Terapéutica"
+        }
+      ]
+    }
+  ],
+  "type": [
+    {
+      "coding": [
+        {
+          "code": "323",
+          "system": "http://co.fhir.guide/terminology/CodeSystem/REPShealthcareServices",
+          "display": "INFECTOLOGÍA"
+        }
+      ]
+    }
+  ],
+  "location": [
+    {
+      "reference": "Location/29c2e207-7c1e-4581-8394-c126875aa896"
+    }
+  ],
+  "availableTime": [
+    {
+      "daysOfWeek": [
+        "mon",
+        "tue",
+        "wed",
+        "thu",
+        "fri",
+        "sat"
+      ],
+      "availableStartTime": "07:00:00",
+      "availableEndTime": "19:00:00"
+    }
+  ],
+  "active": true,
+  "providedBy": {
+    "reference": "Organization/3565ccc1-95b4-47ef-8cc9-5652dba007e6"
+  },
+  "name": "Servicio de Infectología"
+}

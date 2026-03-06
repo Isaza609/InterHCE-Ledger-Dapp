@@ -1,0 +1,12 @@
+# InterHCE Ledger - Servicios para desarrollo local
+# Ver: docs_dev/Sprint 1/Montaje-servidor-HAPI-FHIR-Linux.md
+
+services:
+  # Servidor HAPI FHIR: único almacenamiento off-chain (recursos FHIR)
+  # API base: http://localhost:8080/fhir/
+  hapi-fhir:
+    image: hapiproject/hapi:latest
+    container_name: interhce-hapi-fhir
+    ports:
+      - "8080:8080"
+    restart: unless-stopped

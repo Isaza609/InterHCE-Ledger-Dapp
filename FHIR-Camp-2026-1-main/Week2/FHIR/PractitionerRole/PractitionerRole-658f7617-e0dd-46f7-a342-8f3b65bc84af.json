@@ -1,0 +1,130 @@
+{
+  "resourceType": "PractitionerRole",
+  "id": "658f7617-e0dd-46f7-a342-8f3b65bc84af",
+  "meta": {
+    "profile": [
+      "http://co.fhir.guide/core/StructureDefinition/PractitionerRoleCO"
+    ]
+  },
+  "identifier": [
+    {
+      "type": {
+        "coding": [
+          {
+            "system": "http://terminology.hl7.org/CodeSystem/v2-0203",
+            "code": "PN",
+            "display": "Person number"
+          },
+          {
+            "system": "http://co.fhir.guide/terminology/CodeSystem/ColombianPersonIdentifiers",
+            "code": "CC",
+            "display": "Cédula ciudadanía"
+          }
+        ]
+      },
+      "period": {
+        "start": "1999-11-19"
+      },
+      "id": "NationalPersonIdentifier-0",
+      "use": "official",
+      "value": "25709065"
+    },
+    {
+      "type": {
+        "coding": [
+          {
+            "system": "http://terminology.hl7.org/CodeSystem/v2-0203",
+            "code": "TAX",
+            "display": "Tax ID number"
+          },
+          {
+            "system": "http://co.fhir.guide/terminology/CodeSystem/ColombianPersonIdentifiers",
+            "code": "RUT",
+            "display": "Registro Único Tributario"
+          }
+        ]
+      },
+      "period": {
+        "start": "2007-09-25"
+      },
+      "id": "TaxIdentifier-0",
+      "use": "official",
+      "value": "25709065-0"
+    },
+    {
+      "assigner": {
+        "type": "Organization",
+        "reference": "Organization/3565ccc1-95b4-47ef-8cc9-5652dba007e6",
+        "display": "Hospital General Cental"
+      },
+      "id": "EmployeeIdentifier-0",
+      "use": "usual",
+      "type": {
+        "coding": [
+          {
+            "code": "EI",
+            "system": "http://terminology.hl7.org/CodeSystem/v2-0203",
+            "display": "Employee number"
+          }
+        ]
+      },
+      "system": "http://example.com/id-empleado",
+      "value": "25709065"
+    }
+  ],
+  "period": {
+    "start": "2007-09-25"
+  },
+  "code": [
+    {
+      "coding": [
+        {
+          "code": "041",
+          "system": "http://co.fhir.guide/terminology/CodeSystem/REPShealthcarePositions",
+          "display": "Médico Especialista - Infectología"
+        }
+      ]
+    }
+  ],
+  "specialty": [
+    {
+      "coding": [
+        {
+          "code": "M1304",
+          "system": "http://co.fhir.guide/terminology/CodeSystem/RETHUSqualification",
+          "display": "Enfermedades infecciosas"
+        }
+      ]
+    }
+  ],
+  "location": [
+    {
+      "reference": "Location/29c2e207-7c1e-4581-8394-c126875aa896"
+    }
+  ],
+  "healthcareService": [
+    {
+      "reference": "HealthcareService/2d2592ef-7a5e-43ca-8512-06fd9acfd01a"
+    }
+  ],
+  "telecom": [
+    {
+      "id": "TelecomMobile-0",
+      "system": "phone",
+      "use": "mobile",
+      "value": "+57(333)444-5555"
+    },
+    {
+      "id": "TelecomEmail-0",
+      "system": "email",
+      "value": "gregorio.casas@hospital.example.com"
+    }
+  ],
+  "active": true,
+  "practitioner": {
+    "reference": "Practitioner/feb1e63b-d4ed-4b53-9d1f-8d9efa339b0a"
+  },
+  "organization": {
+    "reference": "Organization/3565ccc1-95b4-47ef-8cc9-5652dba007e6"
+  }
+}

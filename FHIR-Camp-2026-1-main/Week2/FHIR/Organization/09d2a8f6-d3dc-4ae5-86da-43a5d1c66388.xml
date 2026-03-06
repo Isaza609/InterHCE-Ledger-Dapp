@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Organization xmlns="http://hl7.org/fhir">
+    <id value="09d2a8f6-d3dc-4ae5-86da-43a5d1c66388"/>
+    <identifier>
+        <use value="official"/>
+        <system value="urn:oid:2.16.170.1.2.2.900474727.2.2"/>
+        <value value="EPS0003"/>
+    </identifier>
+    <identifier>
+        <use value="official"/>
+        <type>
+            <coding>
+                <system value="http://terminology.hl7.org/CodeSystem/v2-0203"/>
+                <code value="TAX"/>
+                <display value="Tax ID number"/>
+            </coding>
+        </type>
+        <system value="urn:oid:2.16.170.1.2.2.899999090.800197268.1.1"/>
+        <value value="903000003-3"/>
+    </identifier>
+    <active value="true"/>
+    <type>
+        <coding>
+            <system value="http://terminology.hl7.org/CodeSystem/organization-type"/>
+            <code value="ins"/>
+            <display value="Insurance Company"/>
+        </coding>
+    </type>
+    <name value="COMPAÑÍA ASEGURADORA SOLIDARIA DE SALUD PANAMERICANA S.A."/>
+    <alias value="SALUD PANAMERICANA"/>
+    <telecom>
+        <system value="phone"/>
+        <value value="+57(600) 222-3344"/>
+        <use value="work"/>
+    </telecom>
+    <address>
+        <use value="work"/>
+        <text value="CRA 5B # 40 -63"/>
+        <city value="Bogotá D.C."/>
+        <district value="Chapinero"/>
+        <state value="Bogotá D.C."/>
+        <postalCode value="110000"/>
+        <country value="CO"/>
+    </address>
+    <contact>
+        <name>
+            <use value="usual"/>
+            <text value="Pedro Echeverri Soto"/>
+        </name>
+        <telecom>
+            <system value="phone"/>
+            <value value="+57(600) 333-4455"/>
+            <use value="work"/>
+        </telecom>
+        <telecom>
+            <system value="email"/>
+            <value value="pedro.echeverri@example.com"/>
+            <use value="work"/>
+        </telecom>
+    </contact>
+</Organization>

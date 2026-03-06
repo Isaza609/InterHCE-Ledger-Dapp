@@ -1,0 +1,1008 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Bundle xmlns="http://hl7.org/fhir">
+    <id value="2709074b-145b-4dc6-bc5e-85ad34625e73"/>
+    <meta>
+        <lastUpdated value="2023-06-21T14:08:24.501+00:00"/>
+    </meta>
+    <type value="searchset"/>
+    <total value="12"/>
+    <link>
+        <relation value="self"/>
+        <url value="https://hapi.fhir.org/baseR4/Patient?_sort=given&amp;name=Ramone"/>
+    </link>
+    <entry>
+        <fullUrl value="https://hapi.fhir.org/baseR4/Patient/d74b2a61-5559-4c5f-b3c7-2c055f25de40"/>
+        <resource>
+            <Patient>
+                <id value="d74b2a61-5559-4c5f-b3c7-2c055f25de40"/>
+                <meta>
+                    <versionId value="1"/>
+                    <lastUpdated value="2021-04-29T22:21:04.457+00:00"/>
+                    <source value="#JThPiAI3MlEk5PCS"/>
+                </meta>
+                <text>
+                    <status value="generated"/>
+                    <div xmlns="http://www.w3.org/1999/xhtml">
+                        <div class="hapiHeaderText">
+                            Elvis
+                            <b>
+                                RAMONE
+                            </b>
+                        </div>
+                        <table class="hapiPropertyTable">
+                            <tbody>
+                                <tr>
+                                    <td>
+                                        Identifier
+                                    </td>
+                                    <td>
+                                        52b8939254d2
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td>
+                                        Date of birth
+                                    </td>
+                                    <td>
+                                        <span>
+                                            24 November 1954
+                                        </span>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </text>
+                <identifier>
+                    <type>
+                        <coding>
+                            <code value="MR"/>
+                            <display value="Medical Record Number"/>
+                        </coding>
+                    </type>
+                    <value value="52b8939254d2"/>
+                </identifier>
+                <active value="true"/>
+                <name>
+                    <use value="usual"/>
+                    <family value="Ramone"/>
+                    <given value="Elvis"/>
+                </name>
+                <name>
+                    <use value="official"/>
+                    <family value="Bozewski"/>
+                    <given value="Clement"/>
+                    <given value="Anthony"/>
+                </name>
+                <telecom>
+                    <system value="email"/>
+                    <value value="elvis@ramones.com"/>
+                    <use value="work"/>
+                </telecom>
+                <telecom>
+                    <system value="url"/>
+                    <value value="https://ramones.com"/>
+                    <use value="work"/>
+                </telecom>
+                <gender value="male"/>
+                <birthDate value="1954-11-24"/>
+                <deceasedBoolean value="false"/>
+            </Patient>
+        </resource>
+        <search>
+            <mode value="match"/>
+        </search>
+    </entry>
+    <entry>
+        <fullUrl value="https://hapi.fhir.org/baseR4/Patient/92cc14cb-75b1-46ae-9a0e-29074b03c136"/>
+        <resource>
+            <Patient>
+                <id value="92cc14cb-75b1-46ae-9a0e-29074b03c136"/>
+                <meta>
+                    <versionId value="1"/>
+                    <lastUpdated value="2021-04-29T22:19:14.322+00:00"/>
+                    <source value="#L64vmJ2KGmFQW2qy"/>
+                </meta>
+                <text>
+                    <status value="generated"/>
+                    <div xmlns="http://www.w3.org/1999/xhtml">
+                        <div class="hapiHeaderText">
+                            Don
+                            <b>
+                                RAMONE
+                            </b>
+                        </div>
+                        <table class="hapiPropertyTable">
+                            <tbody>
+                                <tr>
+                                    <td>
+                                        Identifier
+                                    </td>
+                                    <td>
+                                        f475ca862ae4
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td>
+                                        Date of birth
+                                    </td>
+                                    <td>
+                                        <span>
+                                            02 September 1923
+                                        </span>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </text>
+                <identifier>
+                    <type>
+                        <coding>
+                            <code value="MR"/>
+                            <display value="Medical Record Number"/>
+                        </coding>
+                    </type>
+                    <value value="f475ca862ae4"/>
+                </identifier>
+                <active value="true"/>
+                <name>
+                    <use value="usual"/>
+                    <family value="Ramone"/>
+                    <given value="Don"/>
+                </name>
+                <name>
+                    <use value="official"/>
+                    <family value="Gómez de Valdés y Castillo"/>
+                    <given value="Ramón"/>
+                    <given value="Antonio"/>
+                    <given value="Esteban"/>
+                </name>
+                <telecom>
+                    <system value="email"/>
+                    <value value="don@ramones.com"/>
+                    <use value="work"/>
+                </telecom>
+                <telecom>
+                    <system value="url"/>
+                    <value value="https://ramones.com"/>
+                    <use value="work"/>
+                </telecom>
+                <gender value="male"/>
+                <birthDate value="1923-09-02"/>
+                <deceasedDateTime value="1988-08-09"/>
+            </Patient>
+        </resource>
+        <search>
+            <mode value="match"/>
+        </search>
+    </entry>
+    <entry>
+        <fullUrl value="https://hapi.fhir.org/baseR4/Patient/075eecd0-f192-4b83-ac0a-c197b64b9733"/>
+        <resource>
+            <Patient>
+                <id value="075eecd0-f192-4b83-ac0a-c197b64b9733"/>
+                <meta>
+                    <versionId value="1"/>
+                    <lastUpdated value="2021-04-29T22:16:53.607+00:00"/>
+                    <source value="#X34XYzMm4TdMwUfb"/>
+                </meta>
+                <text>
+                    <status value="generated"/>
+                    <div xmlns="http://www.w3.org/1999/xhtml">
+                        <div class="hapiHeaderText">
+                            C.J.
+                            <b>
+                                RAMONE
+                            </b>
+                        </div>
+                        <table class="hapiPropertyTable">
+                            <tbody>
+                                <tr>
+                                    <td>
+                                        Identifier
+                                    </td>
+                                    <td>
+                                        2a77a6b31fbf
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td>
+                                        Date of birth
+                                    </td>
+                                    <td>
+                                        <span>
+                                            08 October 1965
+                                        </span>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </text>
+                <identifier>
+                    <type>
+                        <coding>
+                            <code value="MR"/>
+                            <display value="Medical Record Number"/>
+                        </coding>
+                    </type>
+                    <value value="2a77a6b31fbf"/>
+                </identifier>
+                <active value="true"/>
+                <name>
+                    <use value="usual"/>
+                    <family value="Ramone"/>
+                    <given value="C.J."/>
+                </name>
+                <name>
+                    <use value="official"/>
+                    <family value="Ward"/>
+                    <given value="Christopher"/>
+                    <given value="Joseph"/>
+                </name>
+                <telecom>
+                    <system value="email"/>
+                    <value value="c.j@ramones.com"/>
+                    <use value="work"/>
+                </telecom>
+                <telecom>
+                    <system value="url"/>
+                    <value value="https://ramones.com"/>
+                    <use value="work"/>
+                </telecom>
+                <gender value="male"/>
+                <birthDate value="1965-10-08"/>
+                <deceasedBoolean value="false"/>
+            </Patient>
+        </resource>
+        <search>
+            <mode value="match"/>
+        </search>
+    </entry>
+    <entry>
+        <fullUrl value="https://hapi.fhir.org/baseR4/Patient/2548792"/>
+        <resource>
+            <Patient>
+                <id value="2548792"/>
+                <meta>
+                    <versionId value="1"/>
+                    <lastUpdated value="2021-09-09T15:50:06.418+00:00"/>
+                    <source value="#tv4xjEOScFpOECb5"/>
+                </meta>
+                <text>
+                    <status value="generated"/>
+                    <div xmlns="http://www.w3.org/1999/xhtml">
+                        <div class="hapiHeaderText">
+                            Dee Dee
+                            <b>
+                                RAMONE
+                            </b>
+                        </div>
+                        <table class="hapiPropertyTable">
+                            <tbody>
+                                <tr>
+                                    <td>
+                                        Identifier
+                                    </td>
+                                    <td>
+                                        e44baac1d131
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td>
+                                        Date of birth
+                                    </td>
+                                    <td>
+                                        <span>
+                                            18 September 1951
+                                        </span>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </text>
+                <identifier>
+                    <type>
+                        <coding>
+                            <code value="MR"/>
+                            <display value="Medical Record Number"/>
+                        </coding>
+                    </type>
+                    <value value="e44baac1d131"/>
+                </identifier>
+                <active value="true"/>
+                <name>
+                    <use value="usual"/>
+                    <family value="Ramone"/>
+                    <given value="Dee Dee"/>
+                </name>
+                <name>
+                    <use value="official"/>
+                    <family value="Colvin"/>
+                    <given value="Douglas"/>
+                    <given value="Glenn"/>
+                </name>
+                <telecom>
+                    <system value="email"/>
+                    <value value="deedee@ramones.com"/>
+                    <use value="work"/>
+                </telecom>
+                <telecom>
+                    <system value="url"/>
+                    <value value="https://ramones.com"/>
+                    <use value="work"/>
+                </telecom>
+                <gender value="male"/>
+                <birthDate value="1951-09-18"/>
+                <deceasedDateTime value="2002-06-05"/>
+            </Patient>
+        </resource>
+        <search>
+            <mode value="match"/>
+        </search>
+    </entry>
+    <entry>
+        <fullUrl value="https://hapi.fhir.org/baseR4/Patient/2564112"/>
+        <resource>
+            <Patient>
+                <id value="2564112"/>
+                <meta>
+                    <versionId value="1"/>
+                    <lastUpdated value="2021-09-27T14:47:56.824+00:00"/>
+                    <source value="#RaOKbIlE0haP5soS"/>
+                </meta>
+                <text>
+                    <status value="generated"/>
+                    <div xmlns="http://www.w3.org/1999/xhtml">
+                        <div class="hapiHeaderText">
+                            Dee Dee
+                            <b>
+                                RAMONE
+                            </b>
+                        </div>
+                        <table class="hapiPropertyTable">
+                            <tbody>
+                                <tr>
+                                    <td>
+                                        Identifier
+                                    </td>
+                                    <td>
+                                        e44baac1d131
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td>
+                                        Date of birth
+                                    </td>
+                                    <td>
+                                        <span>
+                                            18 September 1951
+                                        </span>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </text>
+                <identifier>
+                    <type>
+                        <coding>
+                            <code value="MR"/>
+                            <display value="Medical Record Number"/>
+                        </coding>
+                    </type>
+                    <value value="e44baac1d131"/>
+                </identifier>
+                <active value="true"/>
+                <name>
+                    <use value="usual"/>
+                    <family value="Ramone"/>
+                    <given value="Dee Dee"/>
+                </name>
+                <name>
+                    <use value="official"/>
+                    <family value="Colvin"/>
+                    <given value="Douglas"/>
+                    <given value="Glenn"/>
+                </name>
+                <telecom>
+                    <system value="email"/>
+                    <value value="deedee@ramones.com"/>
+                    <use value="work"/>
+                </telecom>
+                <telecom>
+                    <system value="url"/>
+                    <value value="https://ramones.com"/>
+                    <use value="work"/>
+                </telecom>
+                <gender value="male"/>
+                <birthDate value="1951-09-18"/>
+                <deceasedDateTime value="2002-06-05"/>
+            </Patient>
+        </resource>
+        <search>
+            <mode value="match"/>
+        </search>
+    </entry>
+    <entry>
+        <fullUrl value="https://hapi.fhir.org/baseR4/Patient/ecec0b9d-ed9e-4834-97e7-f9d9c6db3d1d"/>
+        <resource>
+            <Patient>
+                <id value="ecec0b9d-ed9e-4834-97e7-f9d9c6db3d1d"/>
+                <meta>
+                    <versionId value="1"/>
+                    <lastUpdated value="2021-04-29T22:21:49.703+00:00"/>
+                    <source value="#1vCAR6tuxJzVg4U5"/>
+                </meta>
+                <text>
+                    <status value="generated"/>
+                    <div xmlns="http://www.w3.org/1999/xhtml">
+                        <div class="hapiHeaderText">
+                            Dee Dee
+                            <b>
+                                RAMONE
+                            </b>
+                        </div>
+                        <table class="hapiPropertyTable">
+                            <tbody>
+                                <tr>
+                                    <td>
+                                        Identifier
+                                    </td>
+                                    <td>
+                                        e44baac1d131
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td>
+                                        Date of birth
+                                    </td>
+                                    <td>
+                                        <span>
+                                            18 September 1951
+                                        </span>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </text>
+                <identifier>
+                    <type>
+                        <coding>
+                            <code value="MR"/>
+                            <display value="Medical Record Number"/>
+                        </coding>
+                    </type>
+                    <value value="e44baac1d131"/>
+                </identifier>
+                <active value="true"/>
+                <name>
+                    <use value="usual"/>
+                    <family value="Ramone"/>
+                    <given value="Dee Dee"/>
+                </name>
+                <name>
+                    <use value="official"/>
+                    <family value="Colvin"/>
+                    <given value="Douglas"/>
+                    <given value="Glenn"/>
+                </name>
+                <telecom>
+                    <system value="email"/>
+                    <value value="deedee@ramones.com"/>
+                    <use value="work"/>
+                </telecom>
+                <telecom>
+                    <system value="url"/>
+                    <value value="https://ramones.com"/>
+                    <use value="work"/>
+                </telecom>
+                <gender value="male"/>
+                <birthDate value="1951-09-18"/>
+                <deceasedDateTime value="2002-06-05"/>
+            </Patient>
+        </resource>
+        <search>
+            <mode value="match"/>
+        </search>
+    </entry>
+    <entry>
+        <fullUrl value="https://hapi.fhir.org/baseR4/Patient/2565676"/>
+        <resource>
+            <Patient>
+                <id value="2565676"/>
+                <meta>
+                    <versionId value="1"/>
+                    <lastUpdated value="2021-09-29T00:06:15.090+00:00"/>
+                    <source value="#ugk8TOUf00s46993"/>
+                </meta>
+                <text>
+                    <status value="generated"/>
+                    <div xmlns="http://www.w3.org/1999/xhtml">
+                        <div class="hapiHeaderText">
+                            hola
+                            <b>
+                                RAMONE
+                            </b>
+                        </div>
+                        <table class="hapiPropertyTable">
+                            <tbody>
+                                <tr>
+                                    <td>
+                                        Identifier
+                                    </td>
+                                    <td>
+                                        e44baac1d131
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td>
+                                        Date of birth
+                                    </td>
+                                    <td>
+                                        <span>
+                                            18 September 1951
+                                        </span>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </text>
+                <identifier>
+                    <type>
+                        <coding>
+                            <code value="MR"/>
+                            <display value="Medical Record Number"/>
+                        </coding>
+                    </type>
+                    <value value="e44baac1d131"/>
+                </identifier>
+                <active value="true"/>
+                <name>
+                    <use value="usual"/>
+                    <family value="Ramone"/>
+                    <given value="hola"/>
+                </name>
+                <name>
+                    <use value="official"/>
+                    <family value="Colvin"/>
+                    <given value="Douglas"/>
+                    <given value="Glenn"/>
+                </name>
+                <telecom>
+                    <system value="email"/>
+                    <value value="deedee@ramones.com"/>
+                    <use value="work"/>
+                </telecom>
+                <telecom>
+                    <system value="url"/>
+                    <value value="https://ramones.com"/>
+                    <use value="work"/>
+                </telecom>
+                <gender value="male"/>
+                <birthDate value="1951-09-18"/>
+                <deceasedDateTime value="2002-06-05"/>
+            </Patient>
+        </resource>
+        <search>
+            <mode value="match"/>
+        </search>
+    </entry>
+    <entry>
+        <fullUrl value="https://hapi.fhir.org/baseR4/Patient/fa0512df-5194-4389-ae6e-244a0f4ccfb8"/>
+        <resource>
+            <Patient>
+                <id value="fa0512df-5194-4389-ae6e-244a0f4ccfb8"/>
+                <meta>
+                    <versionId value="1"/>
+                    <lastUpdated value="2021-04-29T22:22:52.216+00:00"/>
+                    <source value="#YuV2NNaHMdvMyuNp"/>
+                </meta>
+                <text>
+                    <status value="generated"/>
+                    <div xmlns="http://www.w3.org/1999/xhtml">
+                        <div class="hapiHeaderText">
+                            Joey
+                            <b>
+                                RAMONE
+                            </b>
+                        </div>
+                        <table class="hapiPropertyTable">
+                            <tbody>
+                                <tr>
+                                    <td>
+                                        Identifier
+                                    </td>
+                                    <td>
+                                        5dc1087dd662
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td>
+                                        Date of birth
+                                    </td>
+                                    <td>
+                                        <span>
+                                            19 May 1951
+                                        </span>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </text>
+                <identifier>
+                    <type>
+                        <coding>
+                            <code value="MR"/>
+                            <display value="Medical Record Number"/>
+                        </coding>
+                    </type>
+                    <value value="5dc1087dd662"/>
+                </identifier>
+                <active value="true"/>
+                <name>
+                    <use value="usual"/>
+                    <family value="Ramone"/>
+                    <given value="Joey"/>
+                </name>
+                <name>
+                    <use value="official"/>
+                    <family value="Hyman"/>
+                    <given value="Jeffrey"/>
+                    <given value="Ross"/>
+                </name>
+                <telecom>
+                    <system value="email"/>
+                    <value value="joey@ramones.com"/>
+                    <use value="work"/>
+                </telecom>
+                <telecom>
+                    <system value="url"/>
+                    <value value="https://ramones.com"/>
+                    <use value="work"/>
+                </telecom>
+                <gender value="male"/>
+                <birthDate value="1951-05-19"/>
+                <deceasedDateTime value="2001-04-15"/>
+            </Patient>
+        </resource>
+        <search>
+            <mode value="match"/>
+        </search>
+    </entry>
+    <entry>
+        <fullUrl value="https://hapi.fhir.org/baseR4/Patient/2b79317c-9e4b-4d0e-9230-ef67e16ec67b"/>
+        <resource>
+            <Patient>
+                <id value="2b79317c-9e4b-4d0e-9230-ef67e16ec67b"/>
+                <meta>
+                    <versionId value="1"/>
+                    <lastUpdated value="2021-04-29T22:14:26.389+00:00"/>
+                    <source value="#UeIZ6XKXoxF36y35"/>
+                </meta>
+                <text>
+                    <status value="generated"/>
+                    <div xmlns="http://www.w3.org/1999/xhtml">
+                        <div class="hapiHeaderText">
+                            Johnny
+                            <b>
+                                RAMONE
+                            </b>
+                        </div>
+                        <table class="hapiPropertyTable">
+                            <tbody>
+                                <tr>
+                                    <td>
+                                        Identifier
+                                    </td>
+                                    <td>
+                                        e31afdbf5cf3
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td>
+                                        Date of birth
+                                    </td>
+                                    <td>
+                                        <span>
+                                            08 October 1948
+                                        </span>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </text>
+                <identifier>
+                    <type>
+                        <coding>
+                            <code value="MR"/>
+                            <display value="Medical Record Number"/>
+                        </coding>
+                    </type>
+                    <value value="e31afdbf5cf3"/>
+                </identifier>
+                <active value="true"/>
+                <name>
+                    <use value="usual"/>
+                    <family value="Ramone"/>
+                    <given value="Johnny"/>
+                </name>
+                <name>
+                    <use value="official"/>
+                    <family value="Cummings"/>
+                    <given value="John"/>
+                    <given value="William"/>
+                </name>
+                <telecom>
+                    <system value="email"/>
+                    <value value="johnny@ramones.com"/>
+                    <use value="work"/>
+                </telecom>
+                <telecom>
+                    <system value="url"/>
+                    <value value="https://ramones.com"/>
+                    <use value="work"/>
+                </telecom>
+                <gender value="male"/>
+                <birthDate value="1948-10-08"/>
+                <deceasedDateTime value="2004-09-15"/>
+            </Patient>
+        </resource>
+        <search>
+            <mode value="match"/>
+        </search>
+    </entry>
+    <entry>
+        <fullUrl value="https://hapi.fhir.org/baseR4/Patient/79ae31d9-6ee4-438f-809b-b5e37248c15d"/>
+        <resource>
+            <Patient>
+                <id value="79ae31d9-6ee4-438f-809b-b5e37248c15d"/>
+                <meta>
+                    <versionId value="1"/>
+                    <lastUpdated value="2021-04-29T22:17:49.795+00:00"/>
+                    <source value="#NLMnxQa2QGjA3rz7"/>
+                </meta>
+                <text>
+                    <status value="generated"/>
+                    <div xmlns="http://www.w3.org/1999/xhtml">
+                        <div class="hapiHeaderText">
+                            Marky
+                            <b>
+                                RAMONE
+                            </b>
+                        </div>
+                        <table class="hapiPropertyTable">
+                            <tbody>
+                                <tr>
+                                    <td>
+                                        Identifier
+                                    </td>
+                                    <td>
+                                        7b521c214e8e
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td>
+                                        Date of birth
+                                    </td>
+                                    <td>
+                                        <span>
+                                            15 July 1952
+                                        </span>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </text>
+                <identifier>
+                    <type>
+                        <coding>
+                            <code value="MR"/>
+                            <display value="Medical Record Number"/>
+                        </coding>
+                    </type>
+                    <value value="7b521c214e8e"/>
+                </identifier>
+                <active value="true"/>
+                <name>
+                    <use value="usual"/>
+                    <family value="Ramone"/>
+                    <given value="Marky"/>
+                </name>
+                <name>
+                    <use value="official"/>
+                    <family value="Bell"/>
+                    <given value="Marc"/>
+                    <given value="Steven"/>
+                </name>
+                <telecom>
+                    <system value="email"/>
+                    <value value="marky@ramones.com"/>
+                    <use value="work"/>
+                </telecom>
+                <telecom>
+                    <system value="url"/>
+                    <value value="https://ramones.com"/>
+                    <use value="work"/>
+                </telecom>
+                <gender value="male"/>
+                <birthDate value="1952-07-15"/>
+                <deceasedBoolean value="false"/>
+            </Patient>
+        </resource>
+        <search>
+            <mode value="match"/>
+        </search>
+    </entry>
+    <entry>
+        <fullUrl value="https://hapi.fhir.org/baseR4/Patient/69eec26e-5956-4103-9171-00337c46767f"/>
+        <resource>
+            <Patient>
+                <id value="69eec26e-5956-4103-9171-00337c46767f"/>
+                <meta>
+                    <versionId value="1"/>
+                    <lastUpdated value="2021-04-29T22:15:44.692+00:00"/>
+                    <source value="#wkmzWpPKqQ5US1yf"/>
+                </meta>
+                <text>
+                    <status value="generated"/>
+                    <div xmlns="http://www.w3.org/1999/xhtml">
+                        <div class="hapiHeaderText">
+                            Richie
+                            <b>
+                                RAMONE
+                            </b>
+                        </div>
+                        <table class="hapiPropertyTable">
+                            <tbody>
+                                <tr>
+                                    <td>
+                                        Identifier
+                                    </td>
+                                    <td>
+                                        bec6449fe037
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td>
+                                        Date of birth
+                                    </td>
+                                    <td>
+                                        <span>
+                                            11 August 1957
+                                        </span>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </text>
+                <identifier>
+                    <type>
+                        <coding>
+                            <code value="MR"/>
+                            <display value="Medical Record Number"/>
+                        </coding>
+                    </type>
+                    <value value="bec6449fe037"/>
+                </identifier>
+                <active value="true"/>
+                <name>
+                    <use value="usual"/>
+                    <family value="Ramone"/>
+                    <given value="Richie"/>
+                </name>
+                <name>
+                    <use value="official"/>
+                    <family value="Reinhardt"/>
+                    <given value="Richard"/>
+                </name>
+                <telecom>
+                    <system value="email"/>
+                    <value value="richie@ramones.com"/>
+                    <use value="work"/>
+                </telecom>
+                <telecom>
+                    <system value="url"/>
+                    <value value="https://ramones.com"/>
+                    <use value="work"/>
+                </telecom>
+                <gender value="male"/>
+                <birthDate value="1957-08-11"/>
+                <deceasedBoolean value="false"/>
+            </Patient>
+        </resource>
+        <search>
+            <mode value="match"/>
+        </search>
+    </entry>
+    <entry>
+        <fullUrl value="https://hapi.fhir.org/baseR4/Patient/a7cfd46e-5fe5-4874-a0cf-bf8478d38f80"/>
+        <resource>
+            <Patient>
+                <id value="a7cfd46e-5fe5-4874-a0cf-bf8478d38f80"/>
+                <meta>
+                    <versionId value="1"/>
+                    <lastUpdated value="2021-04-29T22:20:12.959+00:00"/>
+                    <source value="#kEYwzyrzRZk0640v"/>
+                </meta>
+                <text>
+                    <status value="generated"/>
+                    <div xmlns="http://www.w3.org/1999/xhtml">
+                        <div class="hapiHeaderText">
+                            Tommy
+                            <b>
+                                RAMONE
+                            </b>
+                        </div>
+                        <table class="hapiPropertyTable">
+                            <tbody>
+                                <tr>
+                                    <td>
+                                        Identifier
+                                    </td>
+                                    <td>
+                                        9679da8b58f6
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td>
+                                        Date of birth
+                                    </td>
+                                    <td>
+                                        <span>
+                                            29 January 1949
+                                        </span>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </text>
+                <identifier>
+                    <type>
+                        <coding>
+                            <code value="MR"/>
+                            <display value="Medical Record Number"/>
+                        </coding>
+                    </type>
+                    <value value="9679da8b58f6"/>
+                </identifier>
+                <active value="true"/>
+                <name>
+                    <use value="usual"/>
+                    <family value="Ramone"/>
+                    <given value="Tommy"/>
+                </name>
+                <name>
+                    <use value="official"/>
+                    <family value="Erdelyi"/>
+                    <given value="Thomas"/>
+                </name>
+                <telecom>
+                    <system value="email"/>
+                    <value value="tommy@ramones.com"/>
+                    <use value="work"/>
+                </telecom>
+                <telecom>
+                    <system value="url"/>
+                    <value value="https://ramones.com"/>
+                    <use value="work"/>
+                </telecom>
+                <gender value="male"/>
+                <birthDate value="1949-01-29"/>
+                <deceasedDateTime value="2014-07-11"/>
+            </Patient>
+        </resource>
+        <search>
+            <mode value="match"/>
+        </search>
+    </entry>
+</Bundle>

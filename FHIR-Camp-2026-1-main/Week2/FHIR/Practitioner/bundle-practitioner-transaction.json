@@ -1,0 +1,301 @@
+{
+	"resourceType": "Bundle",
+	"type": "transaction",
+	"entry": [
+		{
+			"resource": {
+				"resourceType": "Practitioner",
+				"id": "d3b34d67-519e-4c1a-9b36-1b431e852fc0",
+				"identifier": [
+					{
+						"use": "official",
+						"type": {
+							"coding": [
+								{
+									"system": "http://terminology.hl7.org/CodeSystem/v2-0203",
+									"code": "NNCOL",
+									"display": "National Person Identifier where the xxx is the ISO table 3166 3-character (alphabetic) country code"
+								}
+							]
+						},
+						"system": "urn:oid:2.16.170.3.899999040.1.4",
+						"value": "896745231"
+					}
+				],
+				"active": true,
+				"name": [
+					{
+						"use": "official",
+						"_family": {
+							"extension": [
+								{
+									"id": "humanname-fathers-family",
+									"url": "http://hl7.org/fhir/StructureDefinition/humanname-fathers-family",
+									"valueString": "Sanabria"
+								},
+								{
+									"id": "humanname-mothers-family",
+									"url": "http://hl7.org/fhir/StructureDefinition/humanname-mothers-family",
+									"valueString": "Mendez"
+								}
+							]
+						},
+						"given": [
+							"Milena"
+						]
+					}
+				],
+				"telecom": [
+					{
+						"system": "phone",
+						"value": "+57(600)191-2233",
+						"use": "home"
+					},
+					{
+						"system": "phone",
+						"value": "+57(300)919-3322",
+						"use": "mobile"
+					},
+					{
+						"system": "email",
+						"value": "milena.sanabria@example.com"
+					}
+				],
+				"gender": "female",
+				"birthDate": "1984-08-23",
+				"qualification": [
+					{
+						"identifier": [
+							{
+								"use": "official",
+								"type": {
+									"coding": [
+										{
+											"system": "http://terminology.hl7.org/CodeSystem/v2-0203",
+											"code": "LN",
+											"display": "License number"
+										}
+									]
+								},
+								"value": "TP-896745231"
+							}
+						],
+						"code": {
+							"coding": [
+								{
+									"system": "http://snomed.info/sct",
+									"code": "18537005",
+									"display": "bacteriólogo"
+								}
+							]
+						},
+						"period": {
+							"start": "2007-09-03"
+						}
+					}
+				]
+			},
+			"request": {
+				"method": "POST",
+				"url": "http://hapi.fhir.org/baseR4/Practitioner/"
+			}
+		},
+		{
+			"resource": {
+				"resourceType": "Practitioner",
+				"id": "dcc64bfd-8918-4bab-acd4-7b281e69ff0b",
+				"identifier": [
+					{
+						"use": "official",
+						"type": {
+							"coding": [
+								{
+									"system": "http://terminology.hl7.org/CodeSystem/v2-0203",
+									"code": "NNCOL",
+									"display": "National Person Identifier where the xxx is the ISO table 3166 3-character (alphabetic) country code"
+								}
+							]
+						},
+						"system": "urn:oid:2.16.170.3.899999040.1.4",
+						"value": "102938475667"
+					}
+				],
+				"active": true,
+				"name": [
+					{
+						"use": "official",
+						"_family": {
+							"extension": [
+								{
+									"id": "humanname-fathers-family",
+									"url": "http://hl7.org/fhir/StructureDefinition/humanname-fathers-family",
+									"valueString": "Bejarano"
+								},
+								{
+									"id": "humanname-mothers-family",
+									"url": "http://hl7.org/fhir/StructureDefinition/humanname-mothers-family",
+									"valueString": "Parra"
+								}
+							]
+						},
+						"given": [
+							"Claudia",
+							"Marcela"
+						]
+					}
+				],
+				"telecom": [
+					{
+						"system": "phone",
+						"value": "+57(600)323-4455",
+						"use": "home"
+					},
+					{
+						"system": "phone",
+						"value": "+57(300)232-5544",
+						"use": "mobile"
+					},
+					{
+						"system": "email",
+						"value": "claudia.bejarano@example.com"
+					}
+				],
+				"gender": "female",
+				"birthDate": "1984-05-06",
+				"qualification": [
+					{
+						"identifier": [
+							{
+								"use": "official",
+								"type": {
+									"coding": [
+										{
+											"system": "http://terminology.hl7.org/CodeSystem/v2-0203",
+											"code": "RN",
+											"display": "Registered Nurse"
+										}
+									]
+								},
+								"value": "TP-102938475667"
+							}
+						],
+						"code": {
+							"coding": [
+								{
+									"system": "http://snomed.info/sct",
+									"code": "106292003",
+									"display": "enfermera profesional"
+								}
+							]
+						},
+						"period": {
+							"start": "2006-01-17"
+						}
+					}
+				]
+			},
+			"request": {
+				"method": "POST",
+				"url": "http://hapi.fhir.org/baseR4/Practitioner/"
+			}
+		},
+		{
+			"resource": {
+				"resourceType": "Practitioner",
+				"id": "f7b95528-9f52-46c2-84a1-96bf3cd83615",
+				"identifier": [
+					{
+						"use": "official",
+						"type": {
+							"coding": [
+								{
+									"system": "http://terminology.hl7.org/CodeSystem/v2-0203",
+									"code": "NNCOL",
+									"display": "National Person Identifier where the xxx is the ISO table 3166 3-character (alphabetic) country code"
+								}
+							]
+						},
+						"system": "urn:oid:2.16.170.3.899999040.1.4",
+						"value": "6758493012"
+					}
+				],
+				"active": true,
+				"name": [
+					{
+						"use": "official",
+						"_family": {
+							"extension": [
+								{
+									"id": "humanname-fathers-family",
+									"url": "http://hl7.org/fhir/StructureDefinition/humanname-fathers-family",
+									"valueString": "Casas"
+								},
+								{
+									"id": "humanname-mothers-family",
+									"url": "http://hl7.org/fhir/StructureDefinition/humanname-mothers-family",
+									"valueString": "Hernandez"
+								}
+							]
+						},
+						"given": [
+							"Gregorio"
+						]
+					}
+				],
+				"telecom": [
+					{
+						"system": "phone",
+						"value": "+57(600)761-9876",
+						"use": "home"
+					},
+					{
+						"system": "phone",
+						"value": "+57(300)123-4567",
+						"use": "mobile"
+					},
+					{
+						"system": "email",
+						"value": "gregorio.casas@example.com"
+					}
+				],
+				"gender": "male",
+				"birthDate": "1991-06-05",
+				"qualification": [
+					{
+						"identifier": [
+							{
+								"use": "official",
+								"type": {
+									"coding": [
+										{
+											"system": "http://terminology.hl7.org/CodeSystem/v2-0203",
+											"code": "MD",
+											"display": "Medical License number"
+										}
+									]
+								},
+								"value": "TP-6758493012"
+							}
+						],
+						"code": {
+							"coding": [
+								{
+									"system": "http://snomed.info/sct",
+									"code": "59058001",
+									"display": "médico general"
+								}
+							]
+						},
+						"period": {
+							"start": "2006-09-01"
+						}
+					}
+				]
+			},
+			"request": {
+				"method": "POST",
+				"url": "http://hapi.fhir.org/baseR4/Practitioner/"
+			}
+		}
+	]
+}

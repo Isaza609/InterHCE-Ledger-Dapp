@@ -1,0 +1,28 @@
+{
+  "name": "interhce-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Frontend (DApp) de InterHCE Ledger para gestión de episodios clínicos de urgencias, permisos entre IPS y trazabilidad on-chain.",
+  "scripts": {
+    "dev": "npx vite",
+    "build": "tsc -b && npx vite build",
+    "preview": "npx vite preview --port=4173",
+    "lint": "echo \"TODO: agregar linter (eslint)\""
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.28.0",
+    "react-hook-form": "^7.53.0",
+    "zod": "^3.24.1",
+    "@hookform/resolvers": "^3.9.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.1"
+  }
+}
+

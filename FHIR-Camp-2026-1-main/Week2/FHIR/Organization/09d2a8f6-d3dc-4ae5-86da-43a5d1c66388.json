@@ -1,0 +1,79 @@
+{
+	"resourceType": "Organization",
+	"id": "09d2a8f6-d3dc-4ae5-86da-43a5d1c66388",
+	"identifier": [
+		{
+			"use": "official",
+			"system": "urn:oid:2.16.170.1.2.2.900474727.2.2",
+			"value": "EPS0003"
+		},
+		{
+			"use": "official",
+			"type": {
+				"coding": [
+					{
+						"system": "http://terminology.hl7.org/CodeSystem/v2-0203",
+						"code": "TAX",
+						"display": "Tax ID number"
+					}
+				]
+			},
+			"system": "urn:oid:2.16.170.1.2.2.899999090.800197268.1.1",
+			"value": "903000003-3"
+		}
+	],
+	"active": true,
+	"type": [
+		{
+			"coding": [
+				{
+					"system": "http://terminology.hl7.org/CodeSystem/organization-type",
+					"code": "ins",
+					"display": "Insurance Company"
+				}
+			]
+		}
+	],
+	"name": "COMPAÑÍA ASEGURADORA SOLIDARIA DE SALUD PANAMERICANA S.A.",
+	"alias": [
+		"SALUD PANAMERICANA"
+	],
+	"telecom": [
+		{
+			"system": "phone",
+			"value": "+57(600) 222-3344",
+			"use": "work"
+		}
+	],
+	"address": [
+		{
+			"use": "work",
+			"text": "CRA 5B # 40 -63",
+			"city": "Bogotá D.C.",
+			"district": "Chapinero",
+			"state": "Bogotá D.C.",
+			"postalCode": "110000",
+			"country": "CO"
+		}
+	],
+	"contact": [
+		{
+			"name": {
+				"use": "usual",
+				"text": "Pedro Echeverri Soto"
+			},
+			"telecom": [
+				{
+					"system": "phone",
+					"value": "+57(600) 333-4455",
+					"use": "work"
+				},
+				{
+					"system": "email",
+					"value": "pedro.echeverri@example.com",
+					"use": "work"
+				}
+			]
+		}
+	]
+}

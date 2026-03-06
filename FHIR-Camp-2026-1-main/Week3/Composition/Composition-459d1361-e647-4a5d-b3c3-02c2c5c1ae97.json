@@ -1,0 +1,179 @@
+{
+    "resourceType": "Composition",
+    "id": "459d1361-e647-4a5d-b3c3-02c2c5c1ae97",
+    "meta": {
+        "versionId": "1",
+        "lastUpdated": "2024-10-23T18:00:47.180+00:00",
+        "source": "#SZbhuCKNhuHyltAS"
+    },
+    "identifier": {
+        "system": "http://co.fhir.guide/NamingSystem/Encounters",
+        "value": "ADT-4234889-98"
+    },
+    "status": "final",
+    "type": {
+        "coding": [
+            {
+                "system": "http://loinc.org",
+                "code": "18842-5",
+                "display": "Discharge summary"
+            }
+        ],
+        "text": "Healthcare Encounter Digital Report"
+    },
+    "category": [
+        {
+            "coding": [
+                {
+                    "system": "http://loinc.org",
+                    "code": "11503-0",
+                    "display": "Medical records"
+                }
+            ],
+            "text": "Medical Records"
+        }
+    ],
+    "subject": {
+        "reference": "Patient/92a8e277-af20-4854-a3fb-02cbe9fb8d49"
+    },
+    "encounter": {
+        "reference": "Encounter/47b7e0b5-25cc-43d3-a3a8-ee34ff1687fe"
+    },
+    "date": "2024-02-19T09:59:00-05:00",
+    "author": [
+        {
+            "reference": "Practitioner/feb1e63b-d4ed-4b53-9d1f-8d9efa339b0a"
+        }
+    ],
+    "title": "Reporte Digial de Encuentro de Atención",
+    "confidentiality": "N",
+    "attester": [
+        {
+            "mode": "professional",
+            "time": "2024-02-19T09:59:00-05:00",
+            "party": {
+                "reference": "Practitioner/feb1e63b-d4ed-4b53-9d1f-8d9efa339b0a"
+            }
+        },
+        {
+            "mode": "legal",
+            "time": "2024-02-19T09:59:00-05:00",
+            "party": {
+                "reference": "Organization/3565ccc1-95b4-47ef-8cc9-5652dba007e6"
+            }
+        }
+    ],
+    "custodian": {
+        "reference": "Organization/3565ccc1-95b4-47ef-8cc9-5652dba007e6"
+    },
+    "section": [
+        {
+            "title": "Diagnóstico de problemas de salud activos",
+            "code": {
+                "coding": [
+                    {
+                        "system": "http://loinc.org",
+                        "code": "11450-4",
+                        "display": "Problem list Reported"
+                    }
+                ]
+            },
+            "entry": [
+                {
+                    "reference": "Condition/072d9e24-f388-4a3f-ab82-e8b7a81e4459"
+                }
+            ]
+        },
+        {
+            "title": "Alergias",
+            "code": {
+                "coding": [
+                    {
+                        "system": "http://loinc.org",
+                        "code": "48765-2",
+                        "display": "Allergies"
+                    }
+                ]
+            },
+            "entry": [
+                {
+                    "reference": "AllergyIntolerance/e32678f9-b295-4d79-b9b3-8bab463eca3b"
+                }
+            ]
+        },
+        {
+            "title": "Medicamentos",
+            "code": {
+                "coding": [
+                    {
+                        "system": "http://loinc.org",
+                        "code": "10160-0",
+                        "display": "History of Medication use Narrative"
+                    }
+                ]
+            },
+            "entry": [
+                {
+                    "reference": "MedicationRequest/988056f3-efb2-4ced-be65-6e1131e435c8"
+                }
+            ]
+        },
+        {
+            "title": "Resultados diagnósticos",
+            "code": {
+                "coding": [
+                    {
+                        "system": "http://loinc.org",
+                        "code": "30954-2",
+                        "display": "Relevant diagnostic tests/laboratory data Narrative"
+                    }
+                ]
+            },
+            "entry": [
+                {
+                    "reference": "Observation/29bd72af-4d24-4524-b03a-113a7a81cbb3"
+                },
+                {
+                    "reference": "DiagnosticReport/bb82bff9-ad8f-4295-9465-b8d4ab0097fe"
+                }
+            ]
+        },
+        {
+            "title": "Antecedentes familiares",
+            "code": {
+                "coding": [
+                    {
+                        "system": "http://loinc.org",
+                        "code": "10157-6",
+                        "display": "History of family member diseases Narrative"
+                    }
+                ]
+            },
+            "entry": [
+                {
+                    "reference": "FamilyMemberHistory/764efee4-9fbb-4937-a711-94182c542996"
+                },
+                {
+                    "reference": "FamilyMemberHistory/bb936d58-aded-4bb0-b9dc-aedeeeb0c756"
+                }
+            ]
+        },
+        {
+            "title": "Documentos adjuntos",
+            "code": {
+                "coding": [
+                    {
+                        "system": "http://loinc.org",
+                        "code": "55107-7",
+                        "display": "Addendum Document"
+                    }
+                ]
+            },
+            "entry": [
+                {
+                    "reference": "DocumentReference/d2458dda-1c4b-49cb-b808-f294eb381895"
+                }
+            ]
+        }
+    ]
+}

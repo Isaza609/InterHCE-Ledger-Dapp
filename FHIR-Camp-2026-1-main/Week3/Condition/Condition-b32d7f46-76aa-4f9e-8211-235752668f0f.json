@@ -1,0 +1,121 @@
+{
+    "resourceType": "Condition",
+    "id": "b32d7f46-76aa-4f9e-8211-235752668f0f",
+    "clinicalStatus": {
+        "coding": [
+            {
+                "system": "http://terminology.hl7.org/CodeSystem/condition-clinical",
+                "code": "resolved",
+                "display": "Resolved"
+            }
+        ]
+    },
+    "verificationStatus": {
+        "coding": [
+            {
+                "system": "http://terminology.hl7.org/CodeSystem/condition-ver-status",
+                "code": "confirmed",
+                "display": "Confirmed"
+            }
+        ]
+    },
+    "category": [
+        {
+            "coding": [
+                {
+                    "system": "http://terminology.hl7.org/CodeSystem/condition-category",
+                    "code": "encounter-diagnosis",
+                    "display": "Encounter Diagnosis"
+                }
+            ]
+        }
+    ],
+    "severity": {
+        "coding": [
+            {
+                "system": "http://snomed.info/sct",
+                "code": "6736007",
+                "display": "Moderate" 		
+            }
+        ]
+    },
+    "code": {
+        "coding": [
+            {
+                "system": "http://hl7.org/fhir/sid/icd-10",
+                "code": "A059",
+                "display": "INTOXICACION ALIMENTARIA BACTERIANA, NO ESPECIFICADA"
+            }
+        ]
+    },
+    "bodySite": [
+        {
+            "coding": [
+                {
+                    "system": "http://snomed.info/sct",
+                    "code": "302185003",
+                    "display": "estructuras esofágicas y gástricas"
+                }
+            ]
+        }
+    ],
+    "subject": {
+        "reference": "Patient/51a6fc62-cb39-4eb1-8c43-9ce69ff91ccc"
+    },
+    "recorder": {
+        "reference": "Practitioner/afe390fb-22e4-4c63-af5d-2cf7ec81e2e0"
+    },
+    "onsetDateTime": "2022-03-17",
+    "abatementDateTime": "2022-03-25",
+    "recordedDate": "2022-03-20",
+    "evidence": [
+        {
+            "code": [
+                {
+                    "coding": [
+                        {
+                            "system": "http://snomed.info/sct",
+                            "code": "422400008",
+                            "display": "vómitos"
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "code": [
+                {
+                    "coding": [
+                        {
+                            "system": "http://snomed.info/sct",
+                            "code": "422587007",
+                            "display": "náuseas"
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "code": [
+                {
+                    "coding": [
+                        {
+                            "system": "http://snomed.info/sct",
+                            "code": "271681002",
+                            "display": "dolor de estómago"
+                        }
+                    ]
+                }
+            ]
+        }
+    ],
+    "note": [
+        {
+            "authorReference": {
+                "reference": "Practitioner/afe390fb-22e4-4c63-af5d-2cf7ec81e2e0"
+            },
+            "time": "2022-03-20",
+            "text": "Paciente presenta dolor de estómago, náuseas y vómitos, Non tempor cillum dolor et aliqua est ipsum fugiat culpa anim."
+        }
+    ]
+}

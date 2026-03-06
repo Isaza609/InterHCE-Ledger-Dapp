@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Practitioner xmlns="http://hl7.org/fhir">
+    <id value="265aef88-c622-48d3-bdad-78685efeffa1"/>
+    <identifier>
+        <use value="official"/>
+        <type>
+            <coding>
+                <system value="http://terminology.hl7.org/CodeSystem/v2-0203"/>
+                <code value="NNCOL"/>
+                <display value="National Person Identifier where the xxx is the ISO table 3166 3-character (alphabetic) country code"/>
+            </coding>
+        </type>
+        <system value="urn:oid:2.16.170.3.899999040.1.4"/>
+        <value value="4578392001"/>  
+    </identifier>
+    <active value="true"/>
+    <name>
+        <use value="official"/>
+        <family>
+            <extension id="humanname-fathers-family" url="http://hl7.org/fhir/StructureDefinition/humanname-fathers-family">
+                <valueString value="Dorado"/>
+            </extension>
+            <extension id="humanname-mothers-family" url="http://hl7.org/fhir/StructureDefinition/humanname-mothers-family">
+                <valueString value="Mora"/>
+            </extension>
+        </family>
+        <given value="Maria"/>
+        <given value="Cristina"/>
+     </name>
+    <telecom>
+        <system value="phone"/>
+        <value value="+57(600)252-6644"/>
+        <use value="home"/>
+    </telecom>
+    <telecom>
+        <system value="phone"/>
+        <value value="+57(300)525-4466"/>
+        <use value="mobile"/>
+    </telecom>
+    <telecom>
+        <system value="email"/>
+        <value value="cristina.dorado@example.com"/>
+    </telecom>
+    <gender value="female"/>
+    <birthDate value="1978-08-04"/>
+    <qualification>
+        <identifier>
+            <use value="official"/>
+            <type>
+                <coding>
+                    <system value="http://terminology.hl7.org/CodeSystem/v2-0203"/>
+                    <code value="MD"/>
+                    <display value="Medical License number"/>
+                </coding>
+            </type>
+            <value value="TP-4578392001"/>  
+        </identifier>
+        <code>
+            <coding>
+                <system value="http://snomed.info/sct"/>
+                <code value="59058001"/>
+                <display value="médico general"/>
+            </coding>
+        </code>
+        <period>
+            <start value="2003-01-16"/>
+        </period>
+    </qualification>
+    <qualification>
+        <identifier>
+            <use value="official"/>
+            <type>
+                <coding>
+                    <system value="http://terminology.hl7.org/CodeSystem/v2-0203"/>
+                    <code value="MD"/>
+                    <display value="Medical License number"/>
+                </coding>
+            </type>
+            <value value="TP-4578392001"/>  
+        </identifier>
+        <code>
+            <coding>
+                <system value="http://snomed.info/sct"/>
+                <code value="56545009"/>
+                <display value="cirujano cardiovascular"/>
+            </coding>
+        </code>
+        <period>
+            <start value="2009-10-12"/>
+        </period>
+    </qualification>
+</Practitioner>

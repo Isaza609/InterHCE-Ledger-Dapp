@@ -1,0 +1,88 @@
+{
+    "resourceType": "Patient",
+    "id": "fc317ad7-0f8b-470f-b014-55d5b74af3a5",
+    "extension": [
+        {
+            "url": "http://hl7.org/fhir/StructureDefinition/patient-birthPlace",
+            "valueAddress": {
+                "city": "Madrid",
+                "country": "ES"
+            }
+        }
+    ],
+    "identifier": [
+        {
+            "use": "official",
+            "type": {
+                "coding": [
+                    {
+                        "system": "http://terminology.hl7.org/CodeSystem/v2-0203",
+                        "code": "PN",
+                        "display": "Person number"
+                    }
+                ]
+            },
+            "system": "http://example.org/identificaciones-personas",
+            "value": "3328745098374",
+            "period": {
+                "start": "2001-05-06"
+            }
+        },
+        {
+            "use": "usual",
+            "type": {
+                "coding": [
+                    {
+                        "system": "http://terminology.hl7.org/CodeSystem/v2-0203",
+                        "code": "MR",
+                        "display": "Medical record number"
+                    }
+                ]
+            },
+            "system": "http://hospital.smarthealthit.org",
+            "value": "123456"
+        }
+    ],
+    "active": true,
+    "name": [
+        {
+            "use": "official",
+            "text": "Juan Andrés Pérez Gómez",
+            "family": "Pérez Gómez",
+            "_family": {
+                "extension": [
+                    {
+                        "url": "http://hl7.org/fhir/StructureDefinition/humanname-fathers-family",
+                        "valueString": "Pérez"
+                    },
+                    {
+                        "url": "http://hl7.org/fhir/StructureDefinition/humanname-mothers-family",
+                        "valueString": "Gómez"
+                    }
+                ]
+            },
+            "given": [
+                "Juan",
+                "Andrés"
+            ]
+        },
+        {
+            "use": "usual",
+            "text": "Juanes Pérez"
+        },
+        {
+            "use": "temp",
+            "text": "Hijo de Maria Gómez"
+        }
+    ],
+    "gender": "male",
+    "birthDate": "1982-08-02",
+    "link": [
+        {
+            "other": {
+                "reference": "Patient/e3ba5dfc-7091-4c95-9317-1606a53c656a",
+                "type": "replaces"
+            }
+        }
+    ]
+}

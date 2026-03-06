@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Practitioner xmlns="http://hl7.org/fhir">
+    <id value="59bb086b-9ce2-43d6-93ed-808ca48d91df"/>
+    <identifier>
+        <use value="official"/>
+        <type>
+            <coding>
+                <system value="http://terminology.hl7.org/CodeSystem/v2-0203"/>
+                <code value="NNCOL"/>
+                <display value="National Person Identifier where the xxx is the ISO table 3166 3-character (alphabetic) country code"/>
+            </coding>
+        </type>
+        <system value="urn:oid:2.16.170.3.899999040.1.4"/>
+        <value value="5647382910"/>  
+    </identifier>
+    <active value="true"/>
+    <name>
+        <use value="official"/>
+        <family>
+            <extension id="humanname-fathers-family" url="http://hl7.org/fhir/StructureDefinition/humanname-fathers-family">
+                <valueString value="Palacios"/>
+            </extension>
+            <extension id="humanname-mothers-family" url="http://hl7.org/fhir/StructureDefinition/humanname-mothers-family">
+                <valueString value="Pantoja"/>
+            </extension>
+        </family>
+        <given value="Sandra"/>
+        <given value="Patricia"/>
+     </name>
+    <telecom>
+        <system value="phone"/>
+        <value value="+57(600)787-9900"/>
+        <use value="home"/>
+    </telecom>
+    <telecom>
+        <system value="phone"/>
+        <value value="+57(300)878-0099"/>
+        <use value="mobile"/>
+    </telecom>
+    <telecom>
+        <system value="email"/>
+        <value value="sandra.palacios@example.com"/>
+    </telecom>
+    <gender value="female"/>
+    <birthDate value="1972-10-14"/>
+    <qualification>
+        <identifier>
+            <use value="official"/>
+            <type>
+                <coding>
+                    <system value="http://terminology.hl7.org/CodeSystem/v2-0203"/>
+                    <code value="LN"/>
+                    <display value="License number"/>
+                </coding>
+            </type>
+            <value value="TP-5647382910"/>  
+        </identifier>
+        <code>
+            <coding>
+                <system value="http://snomed.info/sct"/>
+                <code value="768827000"/>
+                <display value="nutricionista"/>
+            </coding>
+        </code>
+        <period>
+            <start value="1995-09-01"/>
+        </period>
+    </qualification>
+    <qualification>
+        <identifier>
+            <use value="official"/>
+            <type>
+                <coding>
+                    <system value="http://terminology.hl7.org/CodeSystem/v2-0203"/>
+                    <code value="LN"/>
+                    <display value="License number"/>
+                </coding>
+            </type>
+            <value value="TP-5647382910"/>  
+        </identifier>
+        <code>
+            <coding>
+                <system value="http://snomed.info/sct"/>
+                <code value="309413008"/>
+                <display value="nutricionista renal"/>
+            </coding>
+        </code>
+        <period>
+            <start value="1999-07-04"/>
+        </period>
+    </qualification>
+</Practitioner>

@@ -1,0 +1,79 @@
+{
+	"resourceType": "Organization",
+	"id": "1733f196-2c8a-484f-b874-13396990b69d",
+	"identifier": [
+		{
+			"use": "official",
+			"system": "urn:oid:2.16.170.1.2.2.900474727.2.2",
+			"value": "EPS0002"
+		},
+		{
+			"use": "official",
+			"type": {
+				"coding": [
+					{
+						"system": "http://terminology.hl7.org/CodeSystem/v2-0203",
+						"code": "TAX",
+						"display": "Tax ID number"
+					}
+				]
+			},
+			"system": "urn:oid:2.16.170.1.2.2.899999090.800197268.1.1",
+			"value": "902000002-2"
+		}
+	],
+	"active": true,
+	"type": [
+		{
+			"coding": [
+				{
+					"system": "http://terminology.hl7.org/CodeSystem/organization-type",
+					"code": "ins",
+					"display": "Insurance Company"
+				}
+			]
+		}
+	],
+	"name": "COMPAÑÍA SE SEGUROS HIPER SALUD S.A.",
+	"alias": [
+		"HIPER SALUD"
+	],
+	"telecom": [
+		{
+			"system": "phone",
+			"value": "+57(600) 111-2233",
+			"use": "work"
+		}
+	],
+	"address": [
+		{
+			"use": "work",
+			"text": "CRA 7 # 70-03",
+			"city": "Bogotá D.C.",
+			"district": "Chapinero",
+			"state": "Bogotá D.C.",
+			"postalCode": "110000",
+			"country": "CO"
+		}
+	],
+	"contact": [
+		{
+			"name": {
+				"use": "usual",
+				"text": "Victor Estrada Parra"
+			},
+			"telecom": [
+				{
+					"system": "phone",
+					"value": "+57(600) ###-####",
+					"use": "work"
+				},
+				{
+					"system": "email",
+					"value": "victor.estrada@example.com",
+					"use": "work"
+				}
+			]
+		}
+	]
+}

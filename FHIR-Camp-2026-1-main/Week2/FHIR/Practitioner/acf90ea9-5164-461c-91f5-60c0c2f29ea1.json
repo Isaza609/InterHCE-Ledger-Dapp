@@ -1,0 +1,93 @@
+{
+	"resourceType": "Practitioner",
+	"id": "acf90ea9-5164-461c-91f5-60c0c2f29ea1",
+	"identifier": [
+		{
+			"use": "official",
+			"type": {
+				"coding": [
+					{
+						"system": "http://terminology.hl7.org/CodeSystem/v2-0203",
+						"code": "NNCOL",
+						"display": "National Person Identifier where the xxx is the ISO table 3166 3-character (alphabetic) country code"
+					}
+				]
+			},
+			"system": "urn:oid:2.16.170.3.899999040.1.4",
+			"value": "98712365478"
+		}
+	],
+	"active": true,
+	"name": [
+		{
+			"use": "official",
+			"_family": {
+				"extension": [
+					{
+						"id": "humanname-fathers-family",
+						"url": "http://hl7.org/fhir/StructureDefinition/humanname-fathers-family",
+						"valueString": "Moreno"
+					},
+					{
+						"id": "humanname-mothers-family",
+						"url": "http://hl7.org/fhir/StructureDefinition/humanname-mothers-family",
+						"valueString": "Reyes"
+					}
+				]
+			},
+			"given": [
+				"Luís",
+				"Alfonso"
+			]
+		}
+	],
+	"telecom": [
+		{
+			"system": "phone",
+			"value": "+57(600)848-7744",
+			"use": "home"
+		},
+		{
+			"system": "phone",
+			"value": "+57(300)484-4477",
+			"use": "mobile"
+		},
+		{
+			"system": "email",
+			"value": "luis.moreno@example.com"
+		}
+	],
+	"gender": "male",
+	"birthDate": "1992-03-11",
+	"qualification": [
+		{
+			"identifier": [
+				{
+					"use": "official",
+					"type": {
+						"coding": [
+							{
+								"system": "http://terminology.hl7.org/CodeSystem/v2-0203",
+								"code": "LN",
+								"display": "License number"
+							}
+						]
+					},
+					"value": "TP-98712365478"
+				}
+			],
+			"code": {
+				"coding": [
+					{
+						"system": "http://snomed.info/sct",
+						"code": "5275007",
+						"display": "auxiliar de enfermería"
+					}
+				]
+			},
+			"period": {
+				"start": "2015-03-24"
+			}
+		}
+	]
+}

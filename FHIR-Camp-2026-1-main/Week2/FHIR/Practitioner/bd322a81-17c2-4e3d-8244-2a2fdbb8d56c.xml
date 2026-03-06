@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Practitioner xmlns="http://hl7.org/fhir">
+    <id value="bd322a81-17c2-4e3d-8244-2a2fdbb8d56c"/>
+    <identifier>
+        <use value="official"/>
+        <type>
+            <coding>
+                <system value="http://terminology.hl7.org/CodeSystem/v2-0203"/>
+                <code value="NNCOL"/>
+                <display value="National Person Identifier where the xxx is the ISO table 3166 3-character (alphabetic) country code"/>
+            </coding>
+        </type>
+        <system value="urn:oid:2.16.170.3.899999040.1.4"/>
+        <value value="1092384765"/>  
+    </identifier>
+    <active value="true"/>
+    <name>
+        <use value="official"/>
+        <family>
+            <extension id="humanname-fathers-family" url="http://hl7.org/fhir/StructureDefinition/humanname-fathers-family">
+                <valueString value="Chavez"/>
+            </extension>
+            <extension id="humanname-mothers-family" url="http://hl7.org/fhir/StructureDefinition/humanname-mothers-family">
+                <valueString value="Ascárate"/>
+            </extension>
+        </family>
+        <given value="Maria"/>
+        <given value="Alejandra"/>
+     </name>
+    <telecom>
+        <system value="phone"/>
+        <value value="+57(600)989-7766"/>
+        <use value="home"/>
+    </telecom>
+    <telecom>
+        <system value="phone"/>
+        <value value="+57(300)#898-6677"/>
+        <use value="mobile"/>
+    </telecom>
+    <telecom>
+        <system value="email"/>
+        <value value="maria.chavez@example.com"/>
+    </telecom>
+    <gender value="female"/>
+    <birthDate value="1975-06-05"/>
+    <qualification>
+        <identifier>
+            <use value="official"/>
+            <type>
+                <coding>
+                    <system value="http://terminology.hl7.org/CodeSystem/v2-0203"/>
+                    <code value="MD"/>
+                    <display value="Medical License number"/>
+                </coding>
+            </type>
+            <value value="TP-1092384765"/>  
+        </identifier>
+        <code>
+            <coding>
+                <system value="http://snomed.info/sct"/>
+                <code value="59058001"/>
+                <display value="médico general"/>
+            </coding>
+        </code>
+        <period>
+            <start value="2000-04-21"/>
+        </period>
+    </qualification>
+    <qualification>
+        <identifier>
+            <use value="official"/>
+            <type>
+                <coding>
+                    <system value="http://terminology.hl7.org/CodeSystem/v2-0203"/>
+                    <code value="MD"/>
+                    <display value="Medical License number"/>
+                </coding>
+            </type>
+            <value value="TP-1092384765"/>  
+        </identifier>
+        <code>
+            <coding>
+                <system value="http://snomed.info/sct"/>
+                <code value="76899008"/>
+                <display value="infectólogo"/>
+            </coding>
+        </code>
+        <period>
+            <start value="2006-08-12"/>
+        </period>
+    </qualification>
+</Practitioner>

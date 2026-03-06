@@ -1,0 +1,118 @@
+{
+  "resourceType": "Encounter",
+  "id": "531c1a17-9124-4d81-ab0b-f021c29eb3d4",
+  "meta": {
+    "profile": [
+      "http://co.fhir.guide/core/StructureDefinition/EncounterHospitalizationCO"
+    ]
+  },
+  "identifier": [
+    {
+      "id": "InvoiceIdentifier",
+      "use": "official",
+      "system": "http://co.fhir.guide/NamingSystem/Invoices",
+      "value": "f568-4efe-8ce0"
+    },
+    {
+      "id": "EncounterIdentifier",
+      "use": "usual",
+      "system": "http://co.fhir.guide/NamingSystem/Encounters",
+      "value": "ADT-HS-9864463-12"
+    },
+    {
+      "id": "AutorizationIdentifier",
+      "use": "official",
+      "system": "http://co.fhir.guide/NamingSystem/EncounterAutorization",
+      "value": "AUT-324987-ZP-90"
+    }
+  ],
+  "class": {
+    "system": "http://terminology.hl7.org/CodeSystem/v3-ActCode",
+    "code": "IMP",
+    "display": "inpatient encounter"
+  },
+  "period": {
+    "start": "2024-02-17T22:30:00-05:00",
+    "end": "2024-02-19T09:00:00-05:00"
+  },
+  "reasonCode": [
+    {
+      "coding": [
+        {
+          "system": "http://co.fhir.guide/terminology/CodeSystem/ColombianEncounterReasonCode",
+          "code": "13",
+          "display": "Enfermedad general"
+        }
+      ]
+    }
+  ],
+  "diagnosis": [
+    {
+      "use": {
+        "coding": [
+          {
+            "system": "http://co.fhir.guide/terminology/CodeSystem/ColombianDiagnosisRole",
+            "code": "52870002",
+            "display": "diagnóstico de ingreso"
+          }
+        ]
+      },
+      "id": "AdmissionDiagnosis",
+      "rank": 1,
+      "condition": {
+        "reference": "Condition/072d9e24-f388-4a3f-ab82-e8b7a81e4459"
+      }
+    },
+    {
+      "use": {
+        "coding": [
+          {
+            "system": "http://co.fhir.guide/terminology/CodeSystem/ColombianDiagnosisRole",
+            "code": "89100005",
+            "display": "diagnóstico final (alta)"
+          }
+        ]
+      },
+      "id": "DischargeDiagnosis",
+      "rank": 2,
+      "condition": {
+        "reference": "Condition/072d9e24-f388-4a3f-ab82-e8b7a81e4459"
+      }
+    }
+  ],
+  "hospitalization": {
+    "admitSource": {
+      "coding": [
+        {
+          "system": "http://co.fhir.guide/terminology/CodeSystem/ColombianAdmitSource",
+          "code": "2",
+          "display": "Consulta externa ó programada"
+        }
+      ]
+    },
+    "extension": [
+      {
+        "valueCoding": {
+          "system": "http://co.fhir.guide/terminology/CodeSystem/ColombianDischargeDeceasedStatus",
+          "code": "1",
+          "display": "Vivo (a)"
+        },
+        "url": "http://co.fhir.guide/core/StructureDefinition/ExtensionDischargeDeceasedStatus"
+      }
+    ]
+  },
+  "location": [
+    {
+      "location": {
+        "reference": "Location/29c2e207-7c1e-4581-8394-c126875aa896"
+      }
+    }
+  ],
+  "status": "finished",
+  "subject": {
+    "reference": "Patient/92a8e277-af20-4854-a3fb-02cbe9fb8d49"
+  },
+  "serviceProvider": {
+    "reference": "Organization/3565ccc1-95b4-47ef-8cc9-5652dba007e6"
+  }
+}

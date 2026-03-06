@@ -1,0 +1,798 @@
+{
+	"resourceType": "Bundle",
+	"id": "2709074b-145b-4dc6-bc5e-85ad34625e73",
+	"type": "transaction",
+	"total": 12,
+	"entry": [
+		{
+			"resource": {
+				"resourceType": "Patient",
+				"id": "d74b2a61-5559-4c5f-b3c7-2c055f25de40",
+				"meta": {
+					"versionId": "1",
+					"lastUpdated": "2021-04-29T22:21:04.457+00:00",
+					"source": "#JThPiAI3MlEk5PCS"
+				},
+				"text": {
+					"status": "generated",
+					"div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><div class=\"hapiHeaderText\">\r\n                            Elvis\r\n                            <b>\r\n                                RAMONE\r\n                            </b></div><table class=\"hapiPropertyTable\"><tbody><tr><td>\r\n                                        Identifier\r\n                                    </td><td>\r\n                                        52b8939254d2\r\n                                    </td></tr><tr><td>\r\n                                        Date of birth\r\n                                    </td><td><span>\r\n                                            24 November 1954\r\n                                        </span></td></tr></tbody></table></div>"
+				},
+				"identifier": [
+					{
+						"type": {
+							"coding": [
+								{
+									"code": "MR",
+									"display": "Medical Record Number"
+								}
+							]
+						},
+						"value": "52b8939254d2"
+					}
+				],
+				"active": true,
+				"name": [
+					{
+						"use": "usual",
+						"family": "Ramone",
+						"given": [
+							"Elvis"
+						]
+					},
+					{
+						"use": "official",
+						"family": "Bozewski",
+						"given": [
+							"Clement",
+							"Anthony"
+						]
+					}
+				],
+				"telecom": [
+					{
+						"system": "email",
+						"value": "elvis@ramones.com",
+						"use": "work"
+					},
+					{
+						"system": "url",
+						"value": "https://ramones.com",
+						"use": "work"
+					}
+				],
+				"gender": "male",
+				"birthDate": "1954-11-24",
+				"deceasedBoolean": false
+			},
+			"request": {
+				"method": "POST",
+				"url": "Patient"
+			}
+		},
+		{
+			"fullUrl": "https://hapi.fhir.org/baseR4/Patient/92cc14cb-75b1-46ae-9a0e-29074b03c136",
+			"resource": {
+				"resourceType": "Patient",
+				"id": "92cc14cb-75b1-46ae-9a0e-29074b03c136",
+				"meta": {
+					"versionId": "1",
+					"lastUpdated": "2021-04-29T22:19:14.322+00:00",
+					"source": "#L64vmJ2KGmFQW2qy"
+				},
+				"text": {
+					"status": "generated",
+					"div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><div class=\"hapiHeaderText\">\r\n                            Don\r\n                            <b>\r\n                                RAMONE\r\n                            </b></div><table class=\"hapiPropertyTable\"><tbody><tr><td>\r\n                                        Identifier\r\n                                    </td><td>\r\n                                        f475ca862ae4\r\n                                    </td></tr><tr><td>\r\n                                        Date of birth\r\n                                    </td><td><span>\r\n                                            02 September 1923\r\n                                        </span></td></tr></tbody></table></div>"
+				},
+				"identifier": [
+					{
+						"type": {
+							"coding": [
+								{
+									"code": "MR",
+									"display": "Medical Record Number"
+								}
+							]
+						},
+						"value": "f475ca862ae4"
+					}
+				],
+				"active": true,
+				"name": [
+					{
+						"use": "usual",
+						"family": "Ramone",
+						"given": [
+							"Don"
+						]
+					},
+					{
+						"use": "official",
+						"family": "Gómez de Valdés y Castillo",
+						"given": [
+							"Ramón",
+							"Antonio",
+							"Esteban"
+						]
+					}
+				],
+				"telecom": [
+					{
+						"system": "email",
+						"value": "don@ramones.com",
+						"use": "work"
+					},
+					{
+						"system": "url",
+						"value": "https://ramones.com",
+						"use": "work"
+					}
+				],
+				"gender": "male",
+				"birthDate": "1923-09-02",
+				"deceasedDateTime": "1988-08-09"
+			},
+			"request": {
+				"method": "PUT",
+				"url": "Patient/92cc14cb-75b1-46ae-9a0e-29074b03c136"
+			}
+		},
+		{
+			"fullUrl": "https://hapi.fhir.org/baseR4/Patient/075eecd0-f192-4b83-ac0a-c197b64b9733",
+			"resource": {
+				"resourceType": "Patient",
+				"id": "075eecd0-f192-4b83-ac0a-c197b64b9733",
+				"meta": {
+					"versionId": "1",
+					"lastUpdated": "2021-04-29T22:16:53.607+00:00",
+					"source": "#X34XYzMm4TdMwUfb"
+				},
+				"text": {
+					"status": "generated",
+					"div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><div class=\"hapiHeaderText\">\r\n                            C.J.\r\n                            <b>\r\n                                RAMONE\r\n                            </b></div><table class=\"hapiPropertyTable\"><tbody><tr><td>\r\n                                        Identifier\r\n                                    </td><td>\r\n                                        2a77a6b31fbf\r\n                                    </td></tr><tr><td>\r\n                                        Date of birth\r\n                                    </td><td><span>\r\n                                            08 October 1965\r\n                                        </span></td></tr></tbody></table></div>"
+				},
+				"identifier": [
+					{
+						"type": {
+							"coding": [
+								{
+									"code": "MR",
+									"display": "Medical Record Number"
+								}
+							]
+						},
+						"value": "2a77a6b31fbf"
+					}
+				],
+				"active": true,
+				"name": [
+					{
+						"use": "usual",
+						"family": "Ramone",
+						"given": [
+							"C.J."
+						]
+					},
+					{
+						"use": "official",
+						"family": "Ward",
+						"given": [
+							"Christopher",
+							"Joseph"
+						]
+					}
+				],
+				"telecom": [
+					{
+						"system": "email",
+						"value": "c.j@ramones.com",
+						"use": "work"
+					},
+					{
+						"system": "url",
+						"value": "https://ramones.com",
+						"use": "work"
+					}
+				],
+				"gender": "male",
+				"birthDate": "1965-10-08",
+				"deceasedBoolean": false
+			},
+			"request": {
+				"method": "POST",
+				"url": "Patient"
+			}
+		},
+		{
+			"fullUrl": "https://hapi.fhir.org/baseR4/Patient/2548792",
+			"resource": {
+				"resourceType": "Patient",
+				"id": "2548792",
+				"meta": {
+					"versionId": "1",
+					"lastUpdated": "2021-09-09T15:50:06.418+00:00",
+					"source": "#tv4xjEOScFpOECb5"
+				},
+				"text": {
+					"status": "generated",
+					"div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><div class=\"hapiHeaderText\">\r\n                            Dee Dee\r\n                            <b>\r\n                                RAMONE\r\n                            </b></div><table class=\"hapiPropertyTable\"><tbody><tr><td>\r\n                                        Identifier\r\n                                    </td><td>\r\n                                        e44baac1d131\r\n                                    </td></tr><tr><td>\r\n                                        Date of birth\r\n                                    </td><td><span>\r\n                                            18 September 1951\r\n                                        </span></td></tr></tbody></table></div>"
+				},
+				"identifier": [
+					{
+						"type": {
+							"coding": [
+								{
+									"code": "MR",
+									"display": "Medical Record Number"
+								}
+							]
+						},
+						"value": "e44baac1d131"
+					}
+				],
+				"active": true,
+				"name": [
+					{
+						"use": "usual",
+						"family": "Ramone",
+						"given": [
+							"Dee Dee"
+						]
+					},
+					{
+						"use": "official",
+						"family": "Colvin",
+						"given": [
+							"Douglas",
+							"Glenn"
+						]
+					}
+				],
+				"telecom": [
+					{
+						"system": "email",
+						"value": "deedee@ramones.com",
+						"use": "work"
+					},
+					{
+						"system": "url",
+						"value": "https://ramones.com",
+						"use": "work"
+					}
+				],
+				"gender": "male",
+				"birthDate": "1951-09-18",
+				"deceasedDateTime": "2002-06-05"
+			},
+			"request": {
+				"method": "POST",
+				"url": "Patient"
+			}
+		},
+		{
+			"fullUrl": "https://hapi.fhir.org/baseR4/Patient/2564112",
+			"resource": {
+				"resourceType": "Patient",
+				"id": "2564112",
+				"meta": {
+					"versionId": "1",
+					"lastUpdated": "2021-09-27T14:47:56.824+00:00",
+					"source": "#RaOKbIlE0haP5soS"
+				},
+				"text": {
+					"status": "generated",
+					"div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><div class=\"hapiHeaderText\">\r\n                            Dee Dee\r\n                            <b>\r\n                                RAMONE\r\n                            </b></div><table class=\"hapiPropertyTable\"><tbody><tr><td>\r\n                                        Identifier\r\n                                    </td><td>\r\n                                        e44baac1d131\r\n                                    </td></tr><tr><td>\r\n                                        Date of birth\r\n                                    </td><td><span>\r\n                                            18 September 1951\r\n                                        </span></td></tr></tbody></table></div>"
+				},
+				"identifier": [
+					{
+						"type": {
+							"coding": [
+								{
+									"code": "MR",
+									"display": "Medical Record Number"
+								}
+							]
+						},
+						"value": "e44baac1d131"
+					}
+				],
+				"active": true,
+				"name": [
+					{
+						"use": "usual",
+						"family": "Ramone",
+						"given": [
+							"Dee Dee"
+						]
+					},
+					{
+						"use": "official",
+						"family": "Colvin",
+						"given": [
+							"Douglas",
+							"Glenn"
+						]
+					}
+				],
+				"telecom": [
+					{
+						"system": "email",
+						"value": "deedee@ramones.com",
+						"use": "work"
+					},
+					{
+						"system": "url",
+						"value": "https://ramones.com",
+						"use": "work"
+					}
+				],
+				"gender": "male",
+				"birthDate": "1951-09-18",
+				"deceasedDateTime": "2002-06-05"
+			},
+			"request": {
+				"method": "POST",
+				"url": "Patient"
+			}
+		},
+		{
+			"fullUrl": "https://hapi.fhir.org/baseR4/Patient/ecec0b9d-ed9e-4834-97e7-f9d9c6db3d1d",
+			"resource": {
+				"resourceType": "Patient",
+				"id": "ecec0b9d-ed9e-4834-97e7-f9d9c6db3d1d",
+				"meta": {
+					"versionId": "1",
+					"lastUpdated": "2021-04-29T22:21:49.703+00:00",
+					"source": "#1vCAR6tuxJzVg4U5"
+				},
+				"text": {
+					"status": "generated",
+					"div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><div class=\"hapiHeaderText\">\r\n                            Dee Dee\r\n                            <b>\r\n                                RAMONE\r\n                            </b></div><table class=\"hapiPropertyTable\"><tbody><tr><td>\r\n                                        Identifier\r\n                                    </td><td>\r\n                                        e44baac1d131\r\n                                    </td></tr><tr><td>\r\n                                        Date of birth\r\n                                    </td><td><span>\r\n                                            18 September 1951\r\n                                        </span></td></tr></tbody></table></div>"
+				},
+				"identifier": [
+					{
+						"type": {
+							"coding": [
+								{
+									"code": "MR",
+									"display": "Medical Record Number"
+								}
+							]
+						},
+						"value": "e44baac1d131"
+					}
+				],
+				"active": true,
+				"name": [
+					{
+						"use": "usual",
+						"family": "Ramone",
+						"given": [
+							"Dee Dee"
+						]
+					},
+					{
+						"use": "official",
+						"family": "Colvin",
+						"given": [
+							"Douglas",
+							"Glenn"
+						]
+					}
+				],
+				"telecom": [
+					{
+						"system": "email",
+						"value": "deedee@ramones.com",
+						"use": "work"
+					},
+					{
+						"system": "url",
+						"value": "https://ramones.com",
+						"use": "work"
+					}
+				],
+				"gender": "male",
+				"birthDate": "1951-09-18",
+				"deceasedDateTime": "2002-06-05"
+			},
+			"request": {
+				"method": "POST",
+				"url": "Patient"
+			}
+		},
+		{
+			"fullUrl": "https://hapi.fhir.org/baseR4/Patient/2565676",
+			"resource": {
+				"resourceType": "Patient",
+				"id": "2565676",
+				"meta": {
+					"versionId": "1",
+					"lastUpdated": "2021-09-29T00:06:15.090+00:00",
+					"source": "#ugk8TOUf00s46993"
+				},
+				"text": {
+					"status": "generated",
+					"div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><div class=\"hapiHeaderText\">\r\n                            hola\r\n                            <b>\r\n                                RAMONE\r\n                            </b></div><table class=\"hapiPropertyTable\"><tbody><tr><td>\r\n                                        Identifier\r\n                                    </td><td>\r\n                                        e44baac1d131\r\n                                    </td></tr><tr><td>\r\n                                        Date of birth\r\n                                    </td><td><span>\r\n                                            18 September 1951\r\n                                        </span></td></tr></tbody></table></div>"
+				},
+				"identifier": [
+					{
+						"type": {
+							"coding": [
+								{
+									"code": "MR",
+									"display": "Medical Record Number"
+								}
+							]
+						},
+						"value": "e44baac1d131"
+					}
+				],
+				"active": true,
+				"name": [
+					{
+						"use": "usual",
+						"family": "Ramone",
+						"given": [
+							"hola"
+						]
+					},
+					{
+						"use": "official",
+						"family": "Colvin",
+						"given": [
+							"Douglas",
+							"Glenn"
+						]
+					}
+				],
+				"telecom": [
+					{
+						"system": "email",
+						"value": "deedee@ramones.com",
+						"use": "work"
+					},
+					{
+						"system": "url",
+						"value": "https://ramones.com",
+						"use": "work"
+					}
+				],
+				"gender": "male",
+				"birthDate": "1951-09-18",
+				"deceasedDateTime": "2002-06-05"
+			},
+			"request": {
+				"method": "POST",
+				"url": "Patient"
+			}
+		},
+		{
+			"fullUrl": "https://hapi.fhir.org/baseR4/Patient/fa0512df-5194-4389-ae6e-244a0f4ccfb8",
+			"resource": {
+				"resourceType": "Patient",
+				"id": "fa0512df-5194-4389-ae6e-244a0f4ccfb8",
+				"meta": {
+					"versionId": "1",
+					"lastUpdated": "2021-04-29T22:22:52.216+00:00",
+					"source": "#YuV2NNaHMdvMyuNp"
+				},
+				"text": {
+					"status": "generated",
+					"div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><div class=\"hapiHeaderText\">\r\n                            Joey\r\n                            <b>\r\n                                RAMONE\r\n                            </b></div><table class=\"hapiPropertyTable\"><tbody><tr><td>\r\n                                        Identifier\r\n                                    </td><td>\r\n                                        5dc1087dd662\r\n                                    </td></tr><tr><td>\r\n                                        Date of birth\r\n                                    </td><td><span>\r\n                                            19 May 1951\r\n                                        </span></td></tr></tbody></table></div>"
+				},
+				"identifier": [
+					{
+						"type": {
+							"coding": [
+								{
+									"code": "MR",
+									"display": "Medical Record Number"
+								}
+							]
+						},
+						"value": "5dc1087dd662"
+					}
+				],
+				"active": true,
+				"name": [
+					{
+						"use": "usual",
+						"family": "Ramone",
+						"given": [
+							"Joey"
+						]
+					},
+					{
+						"use": "official",
+						"family": "Hyman",
+						"given": [
+							"Jeffrey",
+							"Ross"
+						]
+					}
+				],
+				"telecom": [
+					{
+						"system": "email",
+						"value": "joey@ramones.com",
+						"use": "work"
+					},
+					{
+						"system": "url",
+						"value": "https://ramones.com",
+						"use": "work"
+					}
+				],
+				"gender": "male",
+				"birthDate": "1951-05-19",
+				"deceasedDateTime": "2001-04-15"
+			},
+			"request": {
+				"method": "POST",
+				"url": "Patient"
+			}
+		},
+		{
+			"fullUrl": "https://hapi.fhir.org/baseR4/Patient/2b79317c-9e4b-4d0e-9230-ef67e16ec67b",
+			"resource": {
+				"resourceType": "Patient",
+				"id": "2b79317c-9e4b-4d0e-9230-ef67e16ec67b",
+				"meta": {
+					"versionId": "1",
+					"lastUpdated": "2021-04-29T22:14:26.389+00:00",
+					"source": "#UeIZ6XKXoxF36y35"
+				},
+				"text": {
+					"status": "generated",
+					"div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><div class=\"hapiHeaderText\">\r\n                            Johnny\r\n                            <b>\r\n                                RAMONE\r\n                            </b></div><table class=\"hapiPropertyTable\"><tbody><tr><td>\r\n                                        Identifier\r\n                                    </td><td>\r\n                                        e31afdbf5cf3\r\n                                    </td></tr><tr><td>\r\n                                        Date of birth\r\n                                    </td><td><span>\r\n                                            08 October 1948\r\n                                        </span></td></tr></tbody></table></div>"
+				},
+				"identifier": [
+					{
+						"type": {
+							"coding": [
+								{
+									"code": "MR",
+									"display": "Medical Record Number"
+								}
+							]
+						},
+						"value": "e31afdbf5cf3"
+					}
+				],
+				"active": true,
+				"name": [
+					{
+						"use": "usual",
+						"family": "Ramone",
+						"given": [
+							"Johnny"
+						]
+					},
+					{
+						"use": "official",
+						"family": "Cummings",
+						"given": [
+							"John",
+							"William"
+						]
+					}
+				],
+				"telecom": [
+					{
+						"system": "email",
+						"value": "johnny@ramones.com",
+						"use": "work"
+					},
+					{
+						"system": "url",
+						"value": "https://ramones.com",
+						"use": "work"
+					}
+				],
+				"gender": "male",
+				"birthDate": "1948-10-08",
+				"deceasedDateTime": "2004-09-15"
+			},
+			"request": {
+				"method": "POST",
+				"url": "Patient"
+			}
+		},
+		{
+			"fullUrl": "https://hapi.fhir.org/baseR4/Patient/79ae31d9-6ee4-438f-809b-b5e37248c15d",
+			"resource": {
+				"resourceType": "Patient",
+				"id": "79ae31d9-6ee4-438f-809b-b5e37248c15d",
+				"meta": {
+					"versionId": "1",
+					"lastUpdated": "2021-04-29T22:17:49.795+00:00",
+					"source": "#NLMnxQa2QGjA3rz7"
+				},
+				"text": {
+					"status": "generated",
+					"div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><div class=\"hapiHeaderText\">\r\n                            Marky\r\n                            <b>\r\n                                RAMONE\r\n                            </b></div><table class=\"hapiPropertyTable\"><tbody><tr><td>\r\n                                        Identifier\r\n                                    </td><td>\r\n                                        7b521c214e8e\r\n                                    </td></tr><tr><td>\r\n                                        Date of birth\r\n                                    </td><td><span>\r\n                                            15 July 1952\r\n                                        </span></td></tr></tbody></table></div>"
+				},
+				"identifier": [
+					{
+						"type": {
+							"coding": [
+								{
+									"code": "MR",
+									"display": "Medical Record Number"
+								}
+							]
+						},
+						"value": "7b521c214e8e"
+					}
+				],
+				"active": true,
+				"name": [
+					{
+						"use": "usual",
+						"family": "Ramone",
+						"given": [
+							"Marky"
+						]
+					},
+					{
+						"use": "official",
+						"family": "Bell",
+						"given": [
+							"Marc",
+							"Steven"
+						]
+					}
+				],
+				"telecom": [
+					{
+						"system": "email",
+						"value": "marky@ramones.com",
+						"use": "work"
+					},
+					{
+						"system": "url",
+						"value": "https://ramones.com",
+						"use": "work"
+					}
+				],
+				"gender": "male",
+				"birthDate": "1952-07-15",
+				"deceasedBoolean": false
+			},
+			"request": {
+				"method": "POST",
+				"url": "Patient"
+			}
+		},
+		{
+			"fullUrl": "https://hapi.fhir.org/baseR4/Patient/69eec26e-5956-4103-9171-00337c46767f",
+			"resource": {
+				"resourceType": "Patient",
+				"id": "69eec26e-5956-4103-9171-00337c46767f",
+				"meta": {
+					"versionId": "1",
+					"lastUpdated": "2021-04-29T22:15:44.692+00:00",
+					"source": "#wkmzWpPKqQ5US1yf"
+				},
+				"text": {
+					"status": "generated",
+					"div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><div class=\"hapiHeaderText\">\r\n                            Richie\r\n                            <b>\r\n                                RAMONE\r\n                            </b></div><table class=\"hapiPropertyTable\"><tbody><tr><td>\r\n                                        Identifier\r\n                                    </td><td>\r\n                                        bec6449fe037\r\n                                    </td></tr><tr><td>\r\n                                        Date of birth\r\n                                    </td><td><span>\r\n                                            11 August 1957\r\n                                        </span></td></tr></tbody></table></div>"
+				},
+				"identifier": [
+					{
+						"type": {
+							"coding": [
+								{
+									"code": "MR",
+									"display": "Medical Record Number"
+								}
+							]
+						},
+						"value": "bec6449fe037"
+					}
+				],
+				"active": true,
+				"name": [
+					{
+						"use": "usual",
+						"family": "Ramone",
+						"given": [
+							"Richie"
+						]
+					},
+					{
+						"use": "official",
+						"family": "Reinhardt",
+						"given": [
+							"Richard"
+						]
+					}
+				],
+				"telecom": [
+					{
+						"system": "email",
+						"value": "richie@ramones.com",
+						"use": "work"
+					},
+					{
+						"system": "url",
+						"value": "https://ramones.com",
+						"use": "work"
+					}
+				],
+				"gender": "male",
+				"birthDate": "1957-08-11",
+				"deceasedBoolean": false
+			},
+			"request": {
+				"method": "POST",
+				"url": "Patient"
+			}
+		},
+		{
+			"fullUrl": "https://hapi.fhir.org/baseR4/Patient/a7cfd46e-5fe5-4874-a0cf-bf8478d38f80",
+			"resource": {
+				"resourceType": "Patient",
+				"id": "a7cfd46e-5fe5-4874-a0cf-bf8478d38f80",
+				"meta": {
+					"versionId": "1",
+					"lastUpdated": "2021-04-29T22:20:12.959+00:00",
+					"source": "#kEYwzyrzRZk0640v"
+				},
+				"text": {
+					"status": "generated",
+					"div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><div class=\"hapiHeaderText\">\r\n                            Tommy\r\n                            <b>\r\n                                RAMONE\r\n                            </b></div><table class=\"hapiPropertyTable\"><tbody><tr><td>\r\n                                        Identifier\r\n                                    </td><td>\r\n                                        9679da8b58f6\r\n                                    </td></tr><tr><td>\r\n                                        Date of birth\r\n                                    </td><td><span>\r\n                                            29 January 1949\r\n                                        </span></td></tr></tbody></table></div>"
+				},
+				"identifier": [
+					{
+						"type": {
+							"coding": [
+								{
+									"code": "MR",
+									"display": "Medical Record Number"
+								}
+							]
+						},
+						"value": "9679da8b58f6"
+					}
+				],
+				"active": true,
+				"name": [
+					{
+						"use": "usual",
+						"family": "Ramone",
+						"given": [
+							"Tommy"
+						]
+					},
+					{
+						"use": "official",
+						"family": "Erdelyi",
+						"given": [
+							"Thomas"
+						]
+					}
+				],
+				"telecom": [
+					{
+						"system": "email",
+						"value": "tommy@ramones.com",
+						"use": "work"
+					},
+					{
+						"system": "url",
+						"value": "https://ramones.com",
+						"use": "work"
+					}
+				],
+				"gender": "male",
+				"birthDate": "1949-01-29",
+				"deceasedDateTime": "2014-07-11"
+			},
+			"request": {
+				"method": "POST",
+				"url": "Patient"
+			}
+		}
+	]
+}

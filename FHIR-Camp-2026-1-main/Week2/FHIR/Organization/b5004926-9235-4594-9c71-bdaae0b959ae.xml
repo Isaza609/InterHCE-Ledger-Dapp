@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Organization xmlns="http://hl7.org/fhir">
+    <id value="b5004926-9235-4594-9c71-bdaae0b959ae"/>
+    <identifier>
+        <use value="official"/>
+        <type>
+            <coding>
+                <system value="http://terminology.hl7.org/CodeSystem/v2-0203"/>
+                <code value="TAX"/>
+                <display value="Tax ID number"/>
+            </coding>
+        </type>
+        <system value="urn:oid:2.16.170.1.2.2.899999090.800197268.1.1"/>
+        <value value="801001001-0"/>
+    </identifier>
+    <active value="true"/>
+    <type>
+        <coding>
+            <system value="http://terminology.hl7.org/CodeSystem/organization-type"/>
+            <code value="bus"/>
+            <display value="Non-Healthcare Business or Corporation"/>
+        </coding>
+    </type>
+    <name value="Ajax Tecnología S.A."/>
+    <telecom>
+        <system value="phone"/>
+        <value value="+57(600) 100-0001"/>
+        <use value="work"/>
+    </telecom>
+    <address>
+        <use value="work"/>
+        <text value="Carrera 11A # 93-53"/>
+        <city value="Bogotá D.C."/>
+        <district value="Chapinero"/>
+        <state value="Bogotá D.C."/>
+        <postalCode value="110000"/>
+        <country value="CO"/>
+    </address>
+    <contact>
+        <name>
+            <use value="usual"/>
+            <text value="Javier Morales"/>
+        </name>
+        <telecom>
+            <system value="phone"/>
+            <value value="+57(600) 100-0001"/>
+            <use value="work"/>
+        </telecom>
+        <telecom>
+            <system value="email"/>
+            <value value="javier.morales@example.com"/>
+            <use value="work"/>
+        </telecom>
+    </contact>
+</Organization>

@@ -1,0 +1,95 @@
+{
+  "resourceType": "Location",
+  "id": "29c2e207-7c1e-4581-8394-c126875aa896",
+  "meta": {
+    "profile": [
+      "http://co.fhir.guide/core/StructureDefinition/CareDeliveryLocationCO"
+    ]
+  },
+  "identifier": [
+    {
+      "use": "official",
+      "system": "https://prestadores.minsalud.gov.co/habilitacion/",
+      "value": "1100100011"
+    }
+  ],
+  "alias": [
+    "HGC1"
+  ],
+  "type": [
+    {
+      "coding": [
+        {
+          "code": "HOSP",
+          "system": "http://terminology.hl7.org/CodeSystem/v3-RoleCode",
+          "display": "Hospital"
+        }
+      ]
+    }
+  ],
+  "telecom": [
+    {
+      "id": "TelecomPhone-0",
+      "system": "phone",
+      "value": "+57(000)000-0000"
+    },
+    {
+      "id": "TelecomURL-0",
+      "system": "url",
+      "value": "http://hospital.example.com"
+    }
+  ],
+  "address": {
+    "use": "work",
+    "type": "physical",
+    "country": "CO",
+    "text": "Cl. 7 #40 00, Chapinero",
+    "city": "Bogotá D.C.",
+    "_city": {
+      "extension": [
+        {
+          "url": "http://co.fhir.guide/core/StructureDefinition/ExtensionDivipolaMunicipality",
+          "valueCoding": {
+            "code": "11001",
+            "system": "http://co.fhir.guide/terminology/CodeSystem/DIVIPOLA"
+          }
+        }
+      ]
+    },
+    "district": "Chapinero",
+    "state": "Bogotá D.C.",
+    "_state": {
+      "extension": [
+        {
+          "url": "http://co.fhir.guide/core/StructureDefinition/ExtensionDivipolaDepartment",
+          "valueCoding": {
+            "code": "11",
+            "system": "http://co.fhir.guide/terminology/CodeSystem/DIVIPOLA"
+          }
+        }
+      ]
+    },
+    "postalCode": "11001"
+  },
+  "hoursOfOperation": [
+    {
+      "daysOfWeek": [
+        "mon",
+        "tue",
+        "wed",
+        "thu",
+        "fri",
+        "sat",
+        "sun"
+      ],
+      "allDay": true
+    }
+  ],
+  "status": "active",
+  "name": "SEDE PRINCIPAL",
+  "description": "Sede principal del Hospital General Central",
+  "mode": "instance",
+  "managingOrganization": {
+    "reference": "Organization/3565ccc1-95b4-47ef-8cc9-5652dba007e6"
+  }
+}

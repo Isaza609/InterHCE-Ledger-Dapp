@@ -1,0 +1,42 @@
+{
+    "resourceType": "DocumentReference",
+    "id": "ed2f86e5-55f6-4260-bb83-78c91a88fa11",
+    "masterIdentifier": {
+        "system": "http://generalhospital.org/documents/master",
+        "value": "DOC-86dda208-cd1e"
+    },
+    "identifier": [
+        {
+            "system": "http://generalhospital/documents/identifier",
+            "value": "DOC-86dda208-cd1e-1"
+        }
+    ],
+    "status": "current",
+    "docStatus": "final",
+    "type": {
+        "coding": [
+            {
+                "system": "http://loinc.org",
+                "code": "60591-5",
+                "display": "Patient summary Document"
+            }
+        ]
+    },
+    "subject": {
+        "reference": "Patient/2a9e6894-c6e5-43fc-8b5b-e6165b0703bb"
+    },
+    "date": "2022-04-17T09:25:58-05:00",
+    "author": [
+        {
+            "reference": "Practitioner/92d1c33d-169c-43dc-9fec-aad3f3ef3e26"
+        }
+    ],
+    "content": [
+        {
+            "attachment": {
+                "contentType": "application/pdf",
+                "url": "http://127.0.0.1:5500/Week3/FHIRresources/DocumentReference/PDF/DOC-86dda208-cd1e.pdf"
+            }
+        }
+    ]
+}

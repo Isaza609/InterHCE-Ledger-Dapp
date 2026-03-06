@@ -1,0 +1,106 @@
+,Nombre del dato RDA,Tipo de dato,Formato / Longitud,Obligatorio,Valores permitidos / Catálogo,Validación técnica,Uso en Smart Contract,Estructura en red Blockchain,Fuente normativa
+,Identificación del Prestador de Servicios de Salud,,,,,,,,
+,16. Código del prestador de servicios de salud,String,6–12 caracteres (alfanumérico sin espacios),Sí,Registro Especial de Prestadores de Servicios de Salud (REPS),Existencia obligatoria en REPS; coincidencia exacta,Identificador del prestador en el registro de atención,Metadato on-chain,"RDA Urgencias, Res. 866 de 2021, REPS"
+,Entidad Responsable del Plan de Beneficios,,,,,,,,
+,15.1 Código administrador del plan de beneficios,String,4–6 caracteres,Sí,Catálogo ADRES (Administradoras de Planes de Beneficio),Validación exacta contra catálogo ADRES; no se aceptan códigos inexistentes,Identificador de la entidad responsable del plan de beneficios,Metadato on-chain,RDA Urgencias; Res. 866 de 2021; Catálogo ADRES
+,Identificación del Paciente,,,,,,,,
+,2.1 Tipo de documento,Código,2–3 caracteres según catálogo,Sí,"Catálogo Maestro Persona (CC, TI, RC, CE, PA, etc.)",Debe coincidir exactamente con catálogo; no editable,Tipo de identificación del paciente,Metadato on-chain,RDA; Res. 866; Catálogo Maestro Persona
+,2.2 Número de documento,String numérico,6–15 dígitos,Sí,N/A,Solo números; sin espacios; sin guiones,No se almacena directamente → se usa un hash,Hash on-chain,RDA; Res. 866; Lineamientos de protección de datos
+,3.1 Primer apellido,String,Máx. 60 caracteres,Sí,Solo letras,No permite números ni símbolos; UTF-8 permitido,No aplica,Referencia off-chain,RDA; Res. 866
+,3.2 Segundo apellido,String,Máx. 60 caracteres,No,Solo letras,"Opcional; si existe, debe cumplir formato",No aplica,Referencia off-chain,RDA; Res. 866
+,3.3 Primer nombre,String,Máx. 60 caracteres,Sí,Solo letras,No permite caracteres especiales,No aplica,Referencia off-chain,RDA; Res. 866
+,3.4 Segundo nombre,String,Máx. 60 caracteres,No,Solo letras,Opcional; validación similar a primer nombre,No aplica,Referencia off-chain,RDA; Res. 866
+,Datos Sociodemográficos,,,,,,,,
+,4. Fecha y hora de nacimiento,datetime,YYYY-MM-DD HH:mm,Sí,N/A,Fecha válida; no futura,Identificador temporal del dato demográfico,Referencia off-chain,RDA Urgencias; Resolución 866 de 2021
+,1.1 Código país nacionalidad,Código,ISO 3166-1 (Alpha-2),Sí,ISO 3166-1,Coincidencia exacta con catálogo,Clasificación de nacionalidad,Metadato on-chain,RDA Urgencias; Resolución 866 de 2021
+,5. Sexo biológico,Código,1 carácter,Sí,M / F,Valor permitido por catálogo,Clasificación biológica del paciente,Metadato on-chain,RDA Urgencias; Resolución 866 de 2021
+,6. Identidad de género,Código,Según catálogo,No,Catálogo Minsalud,Coincidencia exacta con catálogo,No aplica,Referencia off-chain,RDA Urgencias; Resolución 866 de 2021
+,7.1 Código ocupación,Código,CUOC / DANE,Sí,DANE – CUOC,Coincidencia exacta con catálogo,Clasificación ocupacional,Metadato on-chain,RDA Urgencias; DANE
+,11.1 Código país residencia,Código,ISO 3166-1 (Alpha-2),Sí,ISO 3166-1,Coincidencia exacta con catálogo,Clasificación territorial,Metadato on-chain,RDA Urgencias; Resolución 866 de 2021
+,12.1 Código municipio residencia,Código,5 dígitos (DANE),Sí,DANE,Coincidencia exacta con catálogo,Identificador territorial,Metadato on-chain,RDA Urgencias; DANE
+,14. Zona territorial,Código,1 carácter,Sí,Urbano / Rural / Disperso,Valor permitido por catálogo,Clasificación territorial,Metadato on-chain,RDA Urgencias; Resolución 866 de 2021
+,Datos de la Urgencia / Atención Inmediata,,,,,,,,
+,17. Fecha/hora inicio atención,datetime,YYYY-MM-DD HH:mm,Sí,N/A,Fecha válida; no futura,Marca temporal de inicio,Metadato on-chain,RDA Urgencias; Resolución 866 de 2021
+,43. Fecha/hora fin atención,datetime,YYYY-MM-DD HH:mm,Sí,N/A,Posterior a inicio de atención,Marca temporal de cierre,Metadato on-chain,RDA Urgencias; Resolución 866 de 2021
+,18.1 Modalidad tecnología en salud,Código,Según catálogo,Sí,Catálogo Minsalud,Coincidencia exacta,Clasificación de modalidad,Metadato on-chain,RDA Urgencias; Resolución 866 de 2021
+,18.2 Grupo de servicios,Código,Según catálogo,Sí,Catálogo de grupos de servicios,Coincidencia exacta,Clasificación del servicio,Metadato on-chain,RDA Urgencias; Resolución 866 de 2021
+,19. Entorno atención,Código,1 carácter,Sí,Intramural / Extramural,Valor permitido,Clasificación del entorno,Metadato on-chain,RDA Urgencias; Resolución 866 de 2021
+,20. Vía ingreso usuario,Código,Según catálogo,Sí,Catálogo de vías de ingreso,Coincidencia exacta,Clasificación de ingreso,Metadato on-chain,RDA Urgencias; Resolución 866 de 2021
+,21. Causa que motiva la atención,Código,Según catálogo,Sí,Catálogo de causas,Valor permitido,Clasificación clínica inicial,Metadato on-chain,RDA Urgencias; Resolución 866 de 2021
+,22 Triage - Fecha y hora,datetime,YYYY-MM-DD HH:mm,Sí,N/A,Fecha válida; coherente con inicio,Marca temporal de triage,Metadato on-chain,RDA Urgencias; Resolución 866 de 2021
+,22 Triage - Clasificación,Código,1 carácter,Sí,I / II / III / IV / V,Valor permitido,Nivel de prioridad,Metadato on-chain,RDA Urgencias; Resolución 866 de 2021
+,Diagnóstico Principal de Ingreso,,,,,,,,
+,23.1 Código diagnóstico principal ingreso CIE-10,Código,Según estándar,Sí,CIE-10,Coincidencia exacta con CIE-10,Identificador diagnóstico principal,Metadato on-chain,RDA Urgencias; Resolución 866 de 2021
+,23.3 Tipo diagnóstico principal ingreso CIE-10,Código,1 carácter,Sí,Principal / Relacionado / Complicación,Valor permitido,Clasificación del diagnóstico,Metadato on-chain,RDA Urgencias; Resolución 866 de 2021
+,Diagnóstico principal ingreso CIE-11 (opcional),Código,Según estándar,No,CIE-11,Coincidencia exacta con CIE-11,Referencia diagnóstica,Metadato on-chain,RDA Urgencias; Resolución 866 de 2021
+,Antecedentes de Salud,,,,,,,,
+,47.1 Código alergia,Código,Según estándar,No,CIE-10 / CIE-11,Coincidencia exacta,Identificador de antecedente,Metadato on-chain,RDA Urgencias; Resolució
+,47.3 Condición salud familiar CIE-10/CIE-11,Código,Según estándar,No,CIE-10 / CIE-11,Coincidencia exacta,Referencia de antecedente familiar,Metadato on-chain,RDA Urgencias; Resolución 866 de 2021
+,47.4 Parentesco antecedente familiar,Código,Según catálogo,No,Catálogo de parentesco,Valor permitido,Clasificación del parentesco,Metadato on-chain,RDA Urgencias; Resolución 866 de 2021
+,Factores de Riesgo,,,,,,,,
+,48.1 Tipo de factor riesgo,Código,Según catálogo,No,Catálogo de factores de riesgo,Valor permitido,Clasificación del factor de riesgo,Metadato on-chain,RDA Urgencias; Resolución 866 de 2021
+,Procedimientos Realizados,,,,,,,,
+,24.1 Tipo tecnología salud,Código,Según catálogo,Sí,Catálogo Minsalud,Valor permitido,Clasificación de tecnología,Metadato on-chain,RDA Urgencias; Resolución 866 de 2021
+,24.2 Código procedimiento,Código,Según estándar,Sí,CUPS,Coincidencia exacta con CUPS,Identificador del procedimiento,Metadato on-chain,RDA Urgencias; Resolución 866 de 2021
+,25 Finalidad tecnología,Código,Según catálogo,Sí,Catálogo de finalidades,Valor permitido,Clasificación de finalidad,Metadato on-chain,RDA Urgencias; Resolución 866 de 2021
+,33 Fecha realización procedimiento,datetime,YYYY-MM-DD HH:mm,Sí,N/A,Fecha válida,Marca temporal de realización,Metadato on-chain,RDA Urgencias; Resolución 866 de 2021
+,36.1 Tipo ID profesional,Código,Según catálogo,Sí,Catálogo tipo identificación,Valor permitido,Identificador del profesional,Metadato on-chain,RDA Urgencias; Resolución 866 de 2021
+,36.2 Identificación profesional,String,Máx. 20 caracteres,Sí,N/A,Formato válido,Referencia del profesional,Referencia off-chain,RDA Urgencias; Resolución 866 de 2021
+,39.1 Fecha resultado valoración,datetime,YYYY-MM-DD HH:mm,No,N/A,Fecha válida,Marca temporal del resultado,Metadato on-chain,RDA Urgencias; Resolución 866 de 2021
+,39.2 Instrumento medición,String,Máx. 200 caracteres,No,N/A,Formato válido,No aplica,Referencia off-chain,RDA Urgencias; Resolución 866 de 2021
+,39.3 Código parámetro resultado,Código,Según catálogo,No,Catálogo de parámetros,Valor permitido,Clasificación del parámetro,Metadato on-chain,RDA Urgencias; Resolución 866 de 2021
+,39.4 Valor resultado,String,Máx. 100 caracteres,No,N/A,Formato válido,No aplica,Referencia off-chain,RDA Urgencias; Resolución 866 de 2021
+,Medicamentos Administrados,,,,,,,,
+,24.1 Tipo tecnología salud,Código,Según catálogo,Sí,Catálogo Minsalud,Valor permitido,Clasificación de tecnología,Metadato on-chain,RDA Urgencias; Resolución 866 de 2021
+,24.2 Código medicamento,Código,Según estándar,Sí,Código ATC / INVIMA,Coincidencia exacta con catálogo,Identificador del medicamento,Metadato on-chain,RDA Urgencias; Resolución 866 de 2021
+,26 Descripción común medicamento,String,Máx. 200 caracteres,No,N/A,Formato válido,No aplica,Referencia off-chain,RDA Urgencias; Resolución 866 de 2021
+,27 Fecha prescripción,datetime,YYYY-MM-DD HH:mm,Sí,N/A,Fecha válida,Marca temporal de prescripción,Metadato on-chain,RDA Urgencias; Resolución 866 de 2021
+,28.1 Dosis prescrita,String,Máx. 100 caracteres,No,N/A,Formato válido,No aplica,Referencia off-chain,RDA Urgencias; Resolución 866 de 2021
+,28.2 Unidad medida dosis,Código,Según catálogo,No,Catálogo de unidades,Valor permitido,Clasificación de unidad,Metadato on-chain,RDA Urgencias; Resolución 866 de 2021
+,29 Vía administración,Código,Según catálogo,Sí,Catálogo de vías,Valor permitido,Clasificación de vía,Metadato on-chain,RDA Urgencias; Resolución 866 de 2021
+,32.1 Dosis administrada,String,Máx. 100 caracteres,No,N/A,Formato válido,No aplica,Referencia off-chain,RDA Urgencias; Resolución 866 de 2021
+,32.2 Unidad dosis administrada,Código,Según catálogo,No,Catálogo de unidades,Valor permitido,Clasificación de unidad,Metadato on-chain,RDA Urgencias; Resolución 866 de 2021
+,33 Fecha administración medicamento,datetime,YYYY-MM-DD HH:mm,Sí,N/A,Fecha válida,Marca temporal de administración,Metadato on-chain,RDA Urgencias; Resolución 866 de 2021
+,36.1 Tipo ID administrador,Código,Según catálogo,Sí,Catálogo tipo identificación,Valor permitido,Identificador del profesional,Metadato on-chain,RDA Urgencias; Resolución 866 de 2021
+,36.2 ID administrador,String,Máx. 20 caracteres,Sí,N/A,Formato válido,Referencia del profesional,Referencia off-chain,RDA Urgencias; Resolución 866 de 2021
+,25 Finalidad tecnología,Código,Según catálogo,Sí,Catálogo de finalidades,Valor permitido,Clasificación de finalidad,Metadato on-chain,RDA Urgencias; Resolución 866 de 2021
+,Otras Tecnologías Administradas,,,,,,,,
+,24.1 Tipo tecnología salud,Código,Según catálogo,Sí,Catálogo Minsalud,Valor permitido,Clasificación de tecnología,Metadato on-chain,RDA Urgencias; Resolución 866 de 2021
+,24.2 Código tecnología salud (UDI-DI en caso de dispositivos),Código,Según estándar,Sí,UDI-DI / Catálogo correspondiente,Coincidencia exacta con estándar,Identificador de la tecnología,Metadato on-chain,RDA Urgencias; Resolución 866 de 2021
+,27 Fecha prescripción,datetime,YYYY-MM-DD HH:mm,Sí,N/A,Fecha válida,Marca temporal de prescripción,Metadato on-chain,RDA Urgencias; Resolución 866 de 2021
+,33 Fecha administración,datetime,YYYY-MM-DD HH:mm,Sí,N/A,Fecha válida,Marca temporal de administración,Metadato on-chain,RDA Urgencias; Resolución 866 de 2021
+,36.1 Tipo ID aplicador,Código,Según catálogo,Sí,Catálogo tipo identificación,Valor permitido,Identificador del aplicador,Metadato on-chain,RDA Urgencias; Resolución 866 de 2021
+,36.2 ID aplicador,String,Máx. 20 caracteres,Sí,N/A,Formato válido,Referencia del aplicador,Referencia off-chain,RDA Urgencias; Resolución 866 de 2021
+,25 Finalidad tecnología,Código,Según catálogo,Sí,Catálogo de finalidades,Valor permitido,Clasificación de finalidad,Metadato on-chain,RDA Urgencias; Resolución 866 de 2021
+,Diagnósticos de Egreso,,,,,,,,
+,37.1 Código diagnóstico principal egreso CIE-10,Código,Según estándar,Sí,CIE-10,Coincidencia exacta con CIE-10,Identificador diagnóstico principal egreso,Metadato on-chain,RDA Urgencias; Resolución 866 de 2021
+,37.3 Tipo diagnóstico principal egreso CIE-10,Código,Según catálogo,Sí,Catálogo tipo diagnóstico,Valor permitido,Clasificación del diagnóstico,Metadato on-chain,RDA Urgencias; Resolución 866 de 2021
+,Diagnóstico egreso CIE-11 (opcional),Código,Según estándar,No,CIE-11,Coincidencia exacta con CIE-11,Referencia diagnóstica,Metadato on-chain,RDA Urgencias; Resolución 866 de 2021
+,41 Condición y destino egreso,Código,Según catálogo,Sí,Catálogo condición/destino egreso,Valor permitido,Clasificación del egreso,Metadato on-chain,RDA Urgencias; Resolución 866 de 2021
+,Remisión,,,,,,,,
+,44 Código prestador destino,Código,Según catálogo,Sí,REPS,Coincidencia exacta con REPS,Identificador del prestador destino,Metadato on-chain,RDA Urgencias; Resolución 866 de 2021
+,Medicamentos Ordenados al Egreso,,,,,,,,
+,24.1 Tipo tecnología salud,Código,Según catálogo,Sí,Catálogo Minsalud,Valor permitido,Clasificación de tecnología,Metadato on-chain,RDA Urgencias; Resolución 866 de 2021
+,24.2 Código medicamento,Código,Según estándar,Sí,Código ATC / INVIMA,Coincidencia exacta con catálogo,Identificador del medicamento,Metadato on-chain,RDA Urgencias; Resolución 866 de 2021
+,26 Descripción medicamento,String,Máx. 200 caracteres,No,N/A,Formato válido,No aplica,Referencia off-chain,RDA Urgencias; Resolución 866 de 2021
+,27 Fecha prescripción,datetime,YYYY-MM-DD HH:mm,Sí,N/A,Fecha válida,Marca temporal de prescripción,Metadato on-chain,RDA Urgencias; Resolución 866 de 2021
+,28.1 Dosis ordenada,String,Máx. 100 caracteres,No,N/A,Formato válido,No aplica,Referencia off-chain,RDA Urgencias; Resolución 866 de 2021
+,28.2 Unidad dosis,Código,Según catálogo,No,Catálogo de unidades,Valor permitido,Clasificación de unidad,Metadato on-chain,RDA Urgencias; Resolución 866 de 2021
+,29 Vía administración,Código,Según catálogo,Sí,Catálogo de vías,Valor permitido,Clasificación de vía,Metadato on-chain,RDA Urgencias; Resolución 866 de 2021
+,25 Finalidad,Código,Según catálogo,Sí,Catálogo de finalidades,Valor permitido,Clasificación de finalidad,Metadato on-chain,RDA Urgencias; Resolución 866 de 2021
+,Procedimientos Ordenados al Egreso,,,,,,,,
+,24.1 Tipo tecnología salud,Código,Según catálogo,Sí,Catálogo Minsalud,Valor permitido,Clasificación de tecnología,Metadato on-chain,RDA Urgencias; Resolución 866 de 2021
+,24.2 Código procedimiento,Código,Según estándar,Sí,CUPS,Coincidencia exacta con CUPS,Identificador del procedimiento,Metadato on-chain,RDA Urgencias; Resolución 866 de 2021
+,25 Finalidad,Código,Según catálogo,Sí,Catálogo de finalidades,Valor permitido,Clasificación de finalidad,Metadato on-chain,RDA Urgencias; Resolución 866 de 2021
+,27 Fecha prescripción,datetime,YYYY-MM-DD HH:mm,Sí,N/A,Fecha válida,Marca temporal de prescripción,Metadato on-chain,RDA Urgencias; Resolución 866 de 2021
+,Otras Tecnologías Ordenadas al Egreso,,,,,,,,
+,24.1 Tipo tecnología salud,Código,Según catálogo,Sí,Catálogo Minsalud,Valor permitido,Clasificación de tecnología,Metadato on-chain,RDA Urgencias; Resolución 866 de 2021
+,24.2 Código tecnología salud,Código,Según estándar,Sí,UDI-DI / Catálogo correspondiente,Coincidencia exacta con estándar,Identificador de la tecnología,Metadato on-chain,RDA Urgencias; Resolución 866 de 2021
+,27 Fecha prescripción,datetime,YYYY-MM-DD HH:mm,Sí,N/A,Fecha válida,Marca temporal de prescripción,Metadato on-chain,RDA Urgencias; Resolución 866 de 2021
+,25 Finalidad,Código,Según catálogo,Sí,Catálogo de finalidades,Valor permitido,Clasificación de finalidad,Metadato on-chain,RDA Urgencias; Resolución 866 de 2021
+,Datos de Incapacidad,,,,,,,,
+,Profesional de Salud que Dio el Alta,,,,,,,,
+,49.1 Tipo documento THS,Código,Según catálogo,Sí,Catálogo tipo identificación,Valor permitido,Identificador del profesional,Metadato on-chain,RDA Urgencias; Resolución 866 de 2021
+,49.2 Número documento THS,String,Máx. 20 caracteres,Sí,N/A,Formato válido,Referencia del profesional,Referencia off-chain,RDA Urgencias; Resolución 866 de 2021
+,Documento Soporte,,,,,,,,
+,Nombre documento PDF,String,Máx. 255 caracteres,Sí,N/A,Formato válido (PDF),Referencia del documento,Referencia off-chain,RDA Urgencias; Resolución 866 de 2021

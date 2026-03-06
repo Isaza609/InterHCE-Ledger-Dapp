@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Organization xmlns="http://hl7.org/fhir">  
+    <id value="54cd3abe-a435-47d8-b26c-4242093bfc26"/>
+    <identifier>
+            <use value="official"/>
+            <system value="urn:oid:2.16.170.1.2.2.900474727.2.1"/>
+            <value value="1100000000-1"/>
+    </identifier>
+    <identifier>
+        <use value="official"/>
+        <type>
+            <coding>
+                <system value="http://terminology.hl7.org/CodeSystem/v2-0203"/>
+                <code value="TAX"/>
+                <display value="Tax ID number"/>
+            </coding>
+        </type>
+        <system value="urn:oid:2.16.170.1.2.2.899999090.800197268.1.1"/>
+        <value value="860000000-0"/>
+    </identifier>
+    <active value="true"/>
+    <type>
+        <coding>
+            <system value="http://terminology.hl7.org/CodeSystem/organization-type"/>
+            <code value="prov"/>
+            <display value="Healthcare Provider"/>
+        </coding>
+    </type>
+    <name value="HOSPITAL GENERAL CENTRAL"/>
+    <telecom>
+        <system value="phone"/>
+        <value value="+57(600) 555-6677"/>
+        <use value="work"/>
+    </telecom>
+    <address>
+        <use value="work"/>
+        <text value="Kra 7 No. 39-60"/>
+        <city value="Bogotá D.C."/>
+        <district value="Chapinero"/>
+        <state value="Bogotá D.C."/>
+        <postalCode value="110000"/>
+        <country value="CO"/>
+    </address>
+    <contact>
+        <name>
+            <use value="usual"/>
+            <text value="Félix Mejía Restrepo"/>
+        </name>
+        <telecom>
+            <system value="phone"/>
+            <value value="+57(600) 555-6677"/>
+            <use value="work"/>
+        </telecom>
+        <telecom>
+            <system value="email"/>
+            <value value="felix.mejia@example.com"/>
+            <use value="work"/>
+        </telecom>
+    </contact>
+</Organization>

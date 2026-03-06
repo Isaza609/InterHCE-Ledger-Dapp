@@ -1,0 +1,230 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Bundle xmlns="http://hl7.org/fhir">
+    <type value="transaction"/>
+    <entry>
+        <resource>
+            <Practitioner xmlns="http://hl7.org/fhir">
+                <id value="d3b34d67-519e-4c1a-9b36-1b431e852fc0"/>
+                <identifier>
+                    <use value="official"/>
+                    <type>
+                        <coding>
+                            <system value="http://terminology.hl7.org/CodeSystem/v2-0203"/>
+                            <code value="NNCOL"/>
+                            <display value="National Person Identifier where the xxx is the ISO table 3166 3-character (alphabetic) country code"/>
+                        </coding>
+                    </type>
+                    <system value="urn:oid:2.16.170.3.899999040.1.4"/>
+                    <value value="896745231"/>  
+                </identifier>
+                <active value="true"/>
+                <name>
+                    <use value="official"/>
+                    <family>
+                        <extension id="humanname-fathers-family" url="http://hl7.org/fhir/StructureDefinition/humanname-fathers-family">
+                            <valueString value="Sanabria"/>
+                        </extension>
+                        <extension id="humanname-mothers-family" url="http://hl7.org/fhir/StructureDefinition/humanname-mothers-family">
+                            <valueString value="Mendez"/>
+                        </extension>
+                    </family>
+                    <given value="Milena"/>
+                 </name>
+                <telecom>
+                    <system value="phone"/>
+                    <value value="+57(600)191-2233"/>
+                    <use value="home"/>
+                </telecom>
+                <telecom>
+                    <system value="phone"/>
+                    <value value="+57(300)919-3322"/>
+                    <use value="mobile"/>
+                </telecom>
+                <telecom>
+                    <system value="email"/>
+                    <value value="milena.sanabria@example.com"/>
+                </telecom>
+                <gender value="female"/>
+                <birthDate value="1984-08-23"/>
+                <qualification>
+                    <identifier>
+                        <use value="official"/>
+                        <type>
+                            <coding>
+                                <system value="http://terminology.hl7.org/CodeSystem/v2-0203"/>
+                                <code value="LN"/>
+                                <display value="License number"/>
+                            </coding>
+                        </type>
+                        <value value="TP-896745231"/>  
+                    </identifier>
+                    <code>
+                        <coding>
+                            <system value="http://snomed.info/sct"/>
+                            <code value="18537005"/>
+                            <display value="bacteriólogo"/>
+                        </coding>
+                    </code>
+                    <period>
+                        <start value="2007-09-03"/>
+                    </period>
+                </qualification>
+            </Practitioner>
+        </resource>
+        <request>
+            <method value="POST"/>
+            <url value="http://hapi.fhir.org/baseR4/Practitioner/"/>
+        </request>
+    </entry>
+    <entry>
+        <resource>
+            <Practitioner xmlns="http://hl7.org/fhir">
+                <id value="dcc64bfd-8918-4bab-acd4-7b281e69ff0b"/>
+                <identifier>
+                    <use value="official"/>
+                    <type>
+                        <coding>
+                            <system value="http://terminology.hl7.org/CodeSystem/v2-0203"/>
+                            <code value="NNCOL"/>
+                            <display value="National Person Identifier where the xxx is the ISO table 3166 3-character (alphabetic) country code"/>
+                        </coding>
+                    </type>
+                    <system value="urn:oid:2.16.170.3.899999040.1.4"/>
+                    <value value="102938475667"/>  
+                </identifier>
+                <active value="true"/>
+                <name>
+                    <use value="official"/>
+                    <family>
+                        <extension id="humanname-fathers-family" url="http://hl7.org/fhir/StructureDefinition/humanname-fathers-family">
+                            <valueString value="Bejarano"/>
+                        </extension>
+                        <extension id="humanname-mothers-family" url="http://hl7.org/fhir/StructureDefinition/humanname-mothers-family">
+                            <valueString value="Parra"/>
+                        </extension>
+                    </family>
+                    <given value="Claudia"/>
+                    <given value="Marcela"/>
+                 </name>
+                <telecom>
+                    <system value="phone"/>
+                    <value value="+57(600)323-4455"/>
+                    <use value="home"/>
+                </telecom>
+                <telecom>
+                    <system value="phone"/>
+                    <value value="+57(300)232-5544"/>
+                    <use value="mobile"/>
+                </telecom>
+                <telecom>
+                    <system value="email"/>
+                    <value value="claudia.bejarano@example.com"/>
+                </telecom>
+                <gender value="female"/>
+                <birthDate value="1984-05-06"/>
+                <qualification>
+                    <identifier>
+                        <use value="official"/>
+                        <type>
+                            <coding>
+                                <system value="http://terminology.hl7.org/CodeSystem/v2-0203"/>
+                                <code value="RN"/>
+                                <display value="Registered Nurse"/>
+                            </coding>
+                        </type>
+                        <value value="TP-102938475667"/>  
+                    </identifier>
+                    <code>
+                        <coding>
+                            <system value="http://snomed.info/sct"/>
+                            <code value="106292003"/>
+                            <display value="enfermera profesional"/>
+                        </coding>
+                    </code>
+                    <period>
+                        <start value="2006-01-17"/>
+                    </period>
+                </qualification>
+            </Practitioner>
+        </resource>
+        <request>
+            <method value="POST"/>
+            <url value="http://hapi.fhir.org/baseR4/Practitioner/"/>
+        </request>
+    </entry>
+    <entry>
+        <resource>
+            <Practitioner xmlns="http://hl7.org/fhir">
+                <id value="f7b95528-9f52-46c2-84a1-96bf3cd83615"/>
+                <identifier>
+                    <use value="official"/>
+                    <type>
+                        <coding>
+                            <system value="http://terminology.hl7.org/CodeSystem/v2-0203"/>
+                            <code value="NNCOL"/>
+                            <display value="National Person Identifier where the xxx is the ISO table 3166 3-character (alphabetic) country code"/>
+                        </coding>
+                    </type>
+                    <system value="urn:oid:2.16.170.3.899999040.1.4"/>
+                    <value value="6758493012"/>  
+                </identifier>
+                <active value="true"/>
+                <name>
+                    <use value="official"/>
+                    <family>
+                        <extension id="humanname-fathers-family" url="http://hl7.org/fhir/StructureDefinition/humanname-fathers-family">
+                            <valueString value="Casas"/>
+                        </extension>
+                        <extension id="humanname-mothers-family" url="http://hl7.org/fhir/StructureDefinition/humanname-mothers-family">
+                            <valueString value="Hernandez"/>
+                        </extension>
+                    </family>
+                    <given value="Gregorio"/>
+                 </name>
+                <telecom>
+                    <system value="phone"/>
+                    <value value="+57(600)761-9876"/>
+                    <use value="home"/>
+                </telecom>
+                <telecom>
+                    <system value="phone"/>
+                    <value value="+57(300)123-4567"/>
+                    <use value="mobile"/>
+                </telecom>
+                <telecom>
+                    <system value="email"/>
+                    <value value="gregorio.casas@example.com"/>
+                </telecom>
+                <gender value="male"/>
+                <birthDate value="1991-06-05"/>
+                <qualification>
+                    <identifier>
+                        <use value="official"/>
+                        <type>
+                            <coding>
+                                <system value="http://terminology.hl7.org/CodeSystem/v2-0203"/>
+                                <code value="MD"/>
+                                <display value="Medical License number"/>
+                            </coding>
+                        </type>
+                        <value value="TP-6758493012"/>
+                    </identifier>
+                    <code>
+                        <coding>
+                            <system value="http://snomed.info/sct"/>
+                            <code value="59058001"/>
+                            <display value="médico general"/>
+                        </coding>
+                    </code>
+                    <period>
+                        <start value="2006-09-01"/>
+                    </period>
+                </qualification>
+            </Practitioner>
+        </resource>
+        <request>
+            <method value="POST"/>
+            <url value="http://hapi.fhir.org/baseR4/Practitioner/"/>
+        </request>
+    </entry>
+</Bundle>
