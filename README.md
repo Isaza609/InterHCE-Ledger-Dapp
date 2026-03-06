@@ -1,38 +1,151 @@
 # InterHCE Ledger
 
-Plataforma descentralizada para la **interoperabilidad de Historias Clínicas Electrónicas (HCE)** en el escenario de **atención en urgencias**, permitiendo que la información acompañe al paciente entre Instituciones Prestadoras de Salud (IPS) de forma trazable y segura.
+Prototipo de sistema para la **interoperabilidad de Historias Clínicas Electrónicas (HCE)** en urgencias, con almacenamiento off-chain en HL7 FHIR y trazabilidad mediante blockchain.
 
-## Descripción
+- **DApp (frontend)**: interfaz para registrar, consultar y buscar episodios clínicos.
+- **Backend**: API REST con validación del modelo de HCE, persistencia en HAPI FHIR y cálculo de hashes para registro on-chain.
+- **HAPI FHIR**: único almacenamiento off-chain; los datos clínicos se guardan como recursos FHIR (Patient, Encounter, Condition, etc.).
 
-InterHCE Ledger es una DApp que utiliza **Blockchain (Ethereum testnet)** como capa de confianza y trazabilidad, sin almacenar datos clínicos sensibles on-chain. Los documentos clínicos se gestionan **off-chain**; en la cadena se registran únicamente metadatos no sensibles, identificadores y hashes criptográficos.
+---
 
-## Estructura del repositorio
+## Requisitos
 
-| Carpeta | Contenido |
-|---------|------------|
-| **docs_plan/** | Contexto del proyecto: documento conceptual, requerimientos, épicas e historias de usuario |
-| **docs/** | Documentación técnica: arquitectura, API, modelo HCE, guías |
-| **contracts/** | Smart contracts (Solidity) para registro de episodios, permisos y trazabilidad |
-| **dapp/** | Frontend de la DApp (interfaz para usuarios según rol) |
-| **backend/** | Servicios off-chain: almacenamiento de documentos clínicos, validación HCE, API |
-| **shared/** | Modelo HCE, esquemas y código compartido entre backend y DApp |
-| **scripts/** | Scripts de despliegue, evaluación y simulación (múltiples IPS) |
+- **Node.js** ≥ 18  
+- **npm** ≥ 9  
+- **Docker** y **Docker Compose** (para el servidor HAPI FHIR)
 
-## Cómo empezar
+---
 
-1. Revisar el contexto en **docs_plan/** (documento conceptual, requerimientos, épicas).
-2. Consultar **docs/** para arquitectura, modelo de HCE y guías de desarrollo.
-3. Configurar y desplegar contratos en **contracts/** (p. ej. con Hardhat).
-4. Levantar el **backend** y la **dapp** según las guías en `docs/guias/`.
+## Inicio rápido
 
-## Tecnologías
+### 1. Clonar el repositorio
 
-- **Blockchain**: Ethereum (testnet; diseño portable a red permisionada).
-- **Contratos**: Solidity.
-- **Off-chain**: Backend (API + almacenamiento), modelo de HCE alineado con RDA y normativa colombiana.
+```bash
+git clone https://github.com/<tu-usuario>/<repositorio>.git
+cd <repositorio>
+```
 
-## Documentación de referencia
+### 2. Levantar HAPI FHIR (almacenamiento off-chain)
 
-- [Documento conceptual](docs_plan/1.%20Documento%20Conceptual%20de%20Funcionamiento.md)
-- [Requerimientos funcionales y no funcionales](docs_plan/2.%20Requerimientos%20funcionales%20y%20no%20funcionales.md)
-- [Épicas e historias de usuario](docs_plan/3.%20Epicas%20e%20HU.md)
+```bash
+docker compose up -d hapi-fhir
+```
+
+- Interfaz web: http://localhost:8080/  
+- API FHIR: http://localhost:8080/fhir/
+
+### 3. Configurar el backend
+
+```bash
+cd backend
+cp .env.example .env
+```
+
+Edita `.env` y deja al menos:
+
+```env
+FHIR_BASE_URL=http://localhost:8080/fhir
+```
+
+Si no defines `FHIR_BASE_URL`, el backend usará almacenamiento en memoria (los datos se pierden al reiniciar).
+
+### 4. Instalar y ejecutar el backend
+
+```bash
+cd backend
+npm install
+npm run dev
+```
+
+El backend queda en **http://localhost:3001**. Documentación interactiva (Swagger): http://localhost:3001/docs
+
+### 5. Instalar y ejecutar el frontend
+
+En otra terminal:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+La DApp queda en **http://localhost:5173**.
+
+---
+
+## Estructura del proyecto
+
+```
+├── backend/           # API Node.js + Express
+│   ├── src/
+│   │   ├── hce/       # Modelo HCE, validación, FHIR, documento clínico
+│   │   ├── routes/    # Rutas /episodes
+│   │   └── server.ts
+│   └── .env.example
+├── frontend/          # DApp React + Vite
+│   └── src/
+│       ├── pages/     # Episodios, Crear episodio, Ver episodio
+│       ├── features/  # Formulario, validación
+│       └── shared/    # API, tipos, utilidades
+├── docs_plan/         # Arquitectura, épicas, mapeo RDA-FHIR
+├── docs_dev/          # Guías de desarrollo (Sprint 1, HAPI FHIR)
+├── docker-compose.yml # Servicio HAPI FHIR
+└── README.md
+```
+
+---
+
+## Funcionalidades principales
+
+| Funcionalidad | Descripción |
+|---------------|-------------|
+| **Registrar episodio** | Formulario de episodio clínico (urgencias). Validación contra el modelo de HCE. Persistencia en HAPI FHIR. Devuelve `episodeId` y hash para uso on-chain. |
+| **Listar todos los episodios** | Listado de todos los episodios registrados (desde HAPI FHIR o memoria). |
+| **Buscar por cédula** | Búsqueda por identificador del paciente (mismo valor que “Identificador” al registrar). |
+| **Ver documento** | Consulta del documento clínico de un episodio por su `episodeId`. |
+| **Validar sin registrar** | Comprobar que el payload cumple el modelo antes de registrar. |
+
+---
+
+## API del backend (resumen)
+
+| Método | Ruta | Descripción |
+|--------|------|-------------|
+| GET | `/episodes/list` | Lista todos los episodios. |
+| GET | `/episodes?patientIdentifier=XXX` | Busca episodios por documento del paciente. |
+| GET | `/episodes/:id/document` | Obtiene el documento clínico de un episodio. |
+| POST | `/episodes/validate` | Valida la estructura del episodio (no persiste). |
+| POST | `/episodes` | Registra un episodio (valida, persiste en FHIR, devuelve `episodeId` y hash). |
+| PUT | `/episodes/:id` | Actualiza un episodio existente. |
+
+Documentación completa: http://localhost:3001/docs
+
+---
+
+## Variables de entorno
+
+### Backend (`backend/.env`)
+
+| Variable | Descripción |
+|----------|-------------|
+| `FHIR_BASE_URL` | URL base del servidor HAPI FHIR (ej. `http://localhost:8080/fhir`). Si no se define, se usa memoria. |
+| `PORT` | Puerto del backend (por defecto 3001). |
+
+### Frontend
+
+La URL del backend se configura normalmente en build (por defecto apunta a `http://localhost:3001`). Ver `frontend/src/shared/utils/constants.ts` o `VITE_API_BASE_URL` si aplica.
+
+---
+
+## Documentación adicional
+
+- **Arquitectura on-chain / off-chain**: `docs_plan/Arquitectura-on-chain-off-chain.md`  
+- **Montaje de HAPI FHIR en Linux**: `docs_dev/Sprint 1/Montaje-servidor-HAPI-FHIR-Linux.md`  
+- **Mapeo RDA → FHIR (urgencias)**: `docs_plan/Mapeo_RDA_FHIR_urgencias.md`  
+- **Épicas e historias de usuario**: `docs_plan/3. Epicas e HU.md`  
+
+---
+
+## Licencia
+
+MIT.
