@@ -1,10 +1,54 @@
-import { Routes, Route, Navigate } from "react-router-dom";
+import { Routes, Route, Navigate, Link } from "react-router-dom";
 import { Layout } from "@/components/layout/Layout";
+import { useSesion } from "@/shared/auth/SessionContext";
+import { sesionTieneCapacidad } from "@/shared/auth/capabilities";
 import { HomePage } from "../pages/HomePage";
 import { LoginPage } from "../pages/LoginPage";
+import { PacientesPage } from "../pages/PacientesPage";
 import { EpisodiosPage } from "../pages/EpisodiosPage";
 import { CrearEpisodioPage } from "../pages/CrearEpisodioPage";
+import { ActualizarEpisodioPage } from "../pages/ActualizarEpisodioPage";
 import { VerEpisodioPage } from "../pages/VerEpisodioPage";
+import { TrazabilidadEpisodioPage } from "../pages/TrazabilidadEpisodioPage";
+import { InfraestructuraPage } from "../pages/InfraestructuraPage";
+import { PortalClinicoPage } from "../pages/PortalClinicoPage";
+
+function RequireSession({ children }: { children: JSX.Element }) {
+  const { sesion } = useSesion();
+  if (!sesion) {
+    return <Navigate to="/login" replace />;
+  }
+  return children;
+}
+
+function RequireCapability({
+  capability,
+  children
+}: {
+  capability: string;
+  children: JSX.Element;
+}) {
+  const { sesion } = useSesion();
+  if (!sesion) {
+    return <Navigate to="/login" replace />;
+  }
+  if (!sesionTieneCapacidad(sesion, capability)) {
+    return (
+      <div className="container">
+        <div className="card card--elevated">
+          <h1 className="page-title">Acceso restringido</h1>
+          <p className="page-subtitle">
+            Su rol autenticado no tiene permisos para acceder a esta funcionalidad.
+          </p>
+          <Link to="/portal" className="btn btn--secondary">
+            Volver al portal
+          </Link>
+        </div>
+      </div>
+    );
+  }
+  return children;
+}
 
 export function AppRouter() {
   return (
@@ -12,12 +56,51 @@ export function AppRouter() {
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/" element={<HomePage />} />
-        <Route path="/episodios" element={<EpisodiosPage />} />
-        <Route path="/episodios/crear" element={<CrearEpisodioPage />} />
-        <Route path="/episodios/ver/:id" element={<VerEpisodioPage />} />
+        <Route path="/portal" element={<RequireSession><PortalClinicoPage /></RequireSession>} />
+        <Route
+          path="/pacientes"
+          element={
+            <RequireCapability capability="episodios.consultar">
+              <PacientesPage />
+            </RequireCapability>
+          }
+        />
+        <Route path="/episodios" element={<RequireSession><EpisodiosPage /></RequireSession>} />
+        <Route
+          path="/episodios/crear"
+          element={
+            <RequireCapability capability="episodios.crear">
+              <CrearEpisodioPage />
+            </RequireCapability>
+          }
+        />
+        <Route
+          path="/episodios/actualizar"
+          element={
+            <RequireCapability capability="episodios.actualizar">
+              <ActualizarEpisodioPage />
+            </RequireCapability>
+          }
+        />
+        <Route
+          path="/episodios/ver/:id"
+          element={
+            <RequireCapability capability="episodios.documento.ver">
+              <VerEpisodioPage />
+            </RequireCapability>
+          }
+        />
+        <Route
+          path="/episodios/trazabilidad"
+          element={
+            <RequireSession>
+              <TrazabilidadEpisodioPage />
+            </RequireSession>
+          }
+        />
+        <Route path="/infraestructura" element={<RequireSession><InfraestructuraPage /></RequireSession>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Layout>
   );
 }
-

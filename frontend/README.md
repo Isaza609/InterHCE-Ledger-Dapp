@@ -28,6 +28,33 @@ frontend/
 2. **Modo desarrollo**: `npm run dev` (Vite en http://localhost:5173)
 3. **Backend**: para validar y registrar episodios, tener el backend en marcha (por ejemplo `npm run dev` en la raíz del repo o en `backend/`) en el puerto 3001. La URL se puede cambiar con la variable de entorno `VITE_API_BASE_URL`.
 
+## Sprint 3 - Portal integrado + testnet
+
+1. Crear archivo de entorno:
+
+```bash
+cp .env.example .env
+```
+
+2. Configurar:
+- `VITE_API_BASE_URL`
+- `VITE_CHAIN_ID` (Sepolia: `11155111`)
+- `VITE_TRACE_CONTRACT_ADDRESS` (direccion desplegada en testnet)
+- `VITE_BLOCKCHAIN_EXPLORER_TX_BASE`
+
+3. Ejecutar:
+
+```bash
+npm run dev
+```
+
+4. Flujo blockchain desde UI:
+- Ir a `Portal Clinico`.
+- Ingresar ID de episodio (opcional para traza).
+- Pulsar `Registrar acceso documento` o `Registrar cambio permiso`.
+- Confirmar transaccion en wallet.
+- Copiar hash y abrir link de explorer mostrado en pantalla.
+
 ## Validación de HUs (Épica 0)
 
 - **HU0-E0, HU1-E0, HU2-E0**: desde la DApp, en **Episodios → Crear episodio** se puede:

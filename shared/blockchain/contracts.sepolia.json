@@ -1,0 +1,8 @@
+{
+  "network": "sepolia",
+  "chainId": 11155111,
+  "deployedAt": "2026-03-18T20:34:49.010Z",
+  "contracts": {
+    "InterHCELedger": "0xEdf3b2648f89780c06F71a4eb0B49e09f378D166"
+  }
+}

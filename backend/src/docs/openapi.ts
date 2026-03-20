@@ -1,6 +1,4 @@
-import { OpenAPIV3 } from "openapi-types";
-
-export const openApiSpec: OpenAPIV3.Document = {
+export const openApiSpec = {
   openapi: "3.0.0",
   info: {
     title: "InterHCE Backend API",
@@ -24,6 +22,70 @@ export const openApiSpec: OpenAPIV3.Document = {
           "200": {
             description: "Servicio operativo"
           }
+        }
+      }
+    },
+    "/auth/login": {
+      post: {
+        summary: "Iniciar sesión en la plataforma (HU3-E5)",
+        description:
+          "Autentica al usuario contra el backend y devuelve la sesión con token, rol e IPS activa para consumir rutas protegidas.",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  correo: { type: "string" },
+                  usuarioId: { type: "string" },
+                  password: { type: "string" }
+                },
+                required: ["password"]
+              }
+            }
+          }
+        },
+        responses: {
+          "200": { description: "Sesión iniciada correctamente" },
+          "401": { description: "Credenciales inválidas" },
+          "403": { description: "Usuario inactivo" }
+        }
+      }
+    },
+    "/auth/me": {
+      get: {
+        summary: "Consultar la sesión autenticada actual (HU3-E5)",
+        parameters: [
+          {
+            name: "authorization",
+            in: "header",
+            required: true,
+            schema: { type: "string" },
+            description: "Bearer token devuelto por /auth/login"
+          }
+        ],
+        responses: {
+          "200": { description: "Sesión vigente" },
+          "401": { description: "Sesión inexistente o expirada" }
+        }
+      }
+    },
+    "/auth/logout": {
+      post: {
+        summary: "Cerrar sesión del usuario autenticado (HU3-E5)",
+        parameters: [
+          {
+            name: "authorization",
+            in: "header",
+            required: true,
+            schema: { type: "string" },
+            description: "Bearer token devuelto por /auth/login"
+          }
+        ],
+        responses: {
+          "200": { description: "Sesión invalidada" },
+          "400": { description: "Falta token" }
         }
       }
     },
@@ -63,7 +125,27 @@ export const openApiSpec: OpenAPIV3.Document = {
       post: {
         summary: "Registrar un nuevo episodio clínico (validación incluida)",
         description:
-          "Valida la estructura del episodio contra el modelo de HCE, genera el documento clínico off-chain (HU3-E0), lo almacena y devuelve episodeId y documentHash para registro on-chain.",
+          "HU0-E1. Requiere rol autorizado (profesional_salud o admin_ips) e IPS del actor. Valida el episodio contra el modelo HCE/FHIR, genera documento off-chain, hash y metadatos on-chain sin datos clínicos.",
+        parameters: [
+          {
+            name: "x-user-role",
+            in: "header",
+            required: true,
+            schema: { type: "string" }
+          },
+          {
+            name: "x-ips-id",
+            in: "header",
+            required: true,
+            schema: { type: "string" }
+          },
+          {
+            name: "x-user-id",
+            in: "header",
+            required: false,
+            schema: { type: "string" }
+          }
+        ],
         requestBody: {
           required: true,
           content: {
@@ -96,12 +178,30 @@ export const openApiSpec: OpenAPIV3.Document = {
       put: {
         summary: "Actualizar un episodio clínico existente (validación incluida)",
         description:
-          "Valida la estructura del episodio, actualiza el documento clínico off-chain asociado al episodeId y recalculando el hash (HU3-E0).",
+          "HU1-E1. Requiere rol autorizado (profesional_salud o admin_ips). Crea una nueva versión off-chain del episodio, recalcula hash y mantiene trazabilidad histórica sin sobrescribir versiones previas.",
         parameters: [
           {
             name: "id",
             in: "path",
             required: true,
+            schema: { type: "string" }
+          },
+          {
+            name: "x-user-role",
+            in: "header",
+            required: true,
+            schema: { type: "string" }
+          },
+          {
+            name: "x-ips-id",
+            in: "header",
+            required: true,
+            schema: { type: "string" }
+          },
+          {
+            name: "x-user-id",
+            in: "header",
+            required: false,
             schema: { type: "string" }
           }
         ],
@@ -136,7 +236,49 @@ export const openApiSpec: OpenAPIV3.Document = {
       get: {
         summary: "Recuperar documento clínico off-chain (HU3-E0)",
         description:
-          "Devuelve el documento clínico asociado al episodio, almacenado off-chain. La recuperación debe respetar los permisos establecidos (RF3, RF4); en el prototipo se expone por episodeId.",
+          "Devuelve el documento clínico asociado al episodio, almacenado off-chain. Requiere actor autorizado y permiso válido por IPS (HU4-E5).",
+        parameters: [
+          {
+            name: "id",
+            in: "path",
+            required: true,
+            schema: { type: "string" },
+            description: "Identificador único del episodio"
+          },
+          {
+            name: "x-user-role",
+            in: "header",
+            required: true,
+            schema: { type: "string" }
+          },
+          {
+            name: "x-ips-id",
+            in: "header",
+            required: false,
+            schema: { type: "string" }
+          },
+          {
+            name: "x-user-id",
+            in: "header",
+            required: false,
+            schema: { type: "string" }
+          }
+        ],
+        responses: {
+          "200": {
+            description: "Documento clínico off-chain y hash de integridad"
+          },
+          "404": {
+            description: "No existe documento asociado a este episodio"
+          }
+        }
+      }
+    },
+    "/episodes/{id}/onchain-metadata": {
+      get: {
+        summary: "Generar metadatos para registro on-chain sin datos clínicos (HU4-E0)",
+        description:
+          "Devuelve exclusivamente hashes y metadatos no sensibles derivados del documento off-chain del episodio. No expone ni persiste estructura clínica en la capa on-chain.",
         parameters: [
           {
             name: "id",
@@ -148,11 +290,274 @@ export const openApiSpec: OpenAPIV3.Document = {
         ],
         responses: {
           "200": {
-            description: "Documento clínico off-chain y hash de integridad"
+            description: "Metadatos on-chain listos para registrar trazabilidad"
           },
           "404": {
-            description: "No existe documento asociado a este episodio"
+            description: "No existe documento asociado al episodio"
           }
+        }
+      }
+    },
+    "/episodes/{id}/event": {
+      get: {
+        summary: "Consultar evento de urgencias asociado al episodio (HU4-E1)",
+        description:
+          "Devuelve la asociación única episodio-evento (fecha inicio, IPS origen y tipo de atención) mantenida durante todo el ciclo de vida.",
+        parameters: [
+          {
+            name: "id",
+            in: "path",
+            required: true,
+            schema: { type: "string" }
+          }
+        ],
+        responses: {
+          "200": { description: "Evento de urgencias asociado" },
+          "404": { description: "No existe evento asociado al episodio" }
+        }
+      }
+    },
+    "/episodes/{id}/versions": {
+      get: {
+        summary: "Consultar historial de versiones del episodio (HU1-E1)",
+        parameters: [
+          {
+            name: "id",
+            in: "path",
+            required: true,
+            schema: { type: "string" }
+          }
+        ],
+        responses: {
+          "200": { description: "Listado de versiones del episodio" },
+          "404": { description: "No existe historial para el episodio" }
+        }
+      }
+    },
+    "/episodes/{id}/traceability": {
+      get: {
+        summary: "Consultar trazabilidad completa del episodio (HU1-E1/HU4-E1)",
+        parameters: [
+          {
+            name: "id",
+            in: "path",
+            required: true,
+            schema: { type: "string" }
+          }
+        ],
+        responses: {
+          "200": { description: "Trazabilidad con evento y versiones" },
+          "404": { description: "No existe trazabilidad para el episodio" }
+        }
+      }
+    },
+    "/episodes/{id}/integrity": {
+      get: {
+        summary: "Verificar integridad del episodio (HU3-E1/HU4-E4)",
+        description:
+          "Compara el hash documental off-chain con la evidencia registrada en trazabilidad y devuelve el resultado de integridad sin exponer datos clínicos sensibles.",
+        parameters: [
+          {
+            name: "id",
+            in: "path",
+            required: true,
+            schema: { type: "string" }
+          }
+        ],
+        responses: {
+          "200": { description: "Resultado de verificación de integridad" },
+          "404": { description: "No existe evidencia suficiente para validar integridad" }
+        }
+      }
+    },
+    "/episodes/{id}/permissions": {
+      get: {
+        summary: "Consultar IPS con acceso al documento del episodio (HU4-E5)",
+        parameters: [
+          {
+            name: "id",
+            in: "path",
+            required: true,
+            schema: { type: "string" }
+          },
+          {
+            name: "x-user-role",
+            in: "header",
+            required: true,
+            schema: { type: "string" }
+          }
+        ],
+        responses: {
+          "200": { description: "Permisos vigentes por IPS" }
+        }
+      }
+    },
+    "/episodes/{id}/permissions/grant": {
+      post: {
+        summary: "Otorgar permiso de lectura de documento a otra IPS (HU4-E5)",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  targetIpsId: { type: "string" }
+                },
+                required: ["targetIpsId"]
+              }
+            }
+          }
+        },
+        responses: {
+          "200": { description: "Permiso otorgado" },
+          "403": { description: "No autorizado" }
+        }
+      }
+    },
+    "/episodes/{id}/permissions/revoke": {
+      post: {
+        summary: "Revocar permiso de lectura de documento a una IPS (HU4-E5)",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  targetIpsId: { type: "string" }
+                },
+                required: ["targetIpsId"]
+              }
+            }
+          }
+        },
+        responses: {
+          "200": { description: "Permiso revocado" },
+          "403": { description: "No autorizado" }
+        }
+      }
+    },
+    "/infra/status": {
+      get: {
+        summary: "Estado de infraestructura del prototipo (HU1-E5)",
+        description:
+          "Entrega estado de backend, modo blockchain real o simulado, salud de la RPC, conectividad off-chain y simulación multi-IPS.",
+        responses: {
+          "200": { description: "Estado de infraestructura" }
+        }
+      }
+    },
+    "/infra/ips": {
+      get: {
+        summary: "Listar IPS simuladas del entorno de prototipo (HU1-E5)",
+        responses: {
+          "200": { description: "Listado de IPS simuladas" }
+        }
+      },
+      post: {
+        summary: "Configurar IPS simuladas del entorno de prototipo (HU1-E5)",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  ips: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      properties: {
+                        ipsId: { type: "string" },
+                        nombre: { type: "string" },
+                        repsCodigo: { type: "string" }
+                      },
+                      required: ["ipsId", "nombre", "repsCodigo"]
+                    }
+                  }
+                },
+                required: ["ips"]
+              }
+            }
+          }
+        },
+        responses: {
+          "200": { description: "Configuración de IPS actualizada" },
+          "400": { description: "Configuración inválida" }
+        }
+      }
+    },
+    "/infra/contracts/mock-deploy": {
+      post: {
+        summary: "Marcar contratos como operativos en modo simulado (HU1-E5)",
+        responses: {
+          "200": { description: "Estado de contratos simulado actualizado" }
+        }
+      }
+    },
+    "/access/roles": {
+      get: {
+        summary: "Listar roles y capacidades del sistema (HU0-E3)",
+        responses: {
+          "200": { description: "Roles del sistema" }
+        }
+      }
+    },
+    "/access/capabilities": {
+      get: {
+        summary: "Consultar capacidades disponibles para el rol activo (HU1-E3)",
+        responses: {
+          "200": { description: "Capacidades del rol" }
+        }
+      }
+    },
+    "/access/users": {
+      get: {
+        summary: "Listar usuarios de la IPS del administrador (HU2-E3)",
+        responses: {
+          "200": { description: "Usuarios de IPS" },
+          "403": { description: "No autorizado" }
+        }
+      },
+      post: {
+        summary: "Crear usuario dentro de una IPS (HU2-E3)",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  usuarioId: { type: "string" },
+                  nombre: { type: "string" },
+                  rol: { type: "string" }
+                },
+                required: ["usuarioId", "nombre", "rol"]
+              }
+            }
+          }
+        },
+        responses: {
+          "201": { description: "Usuario creado" },
+          "403": { description: "No autorizado" }
+        }
+      }
+    },
+    "/access/users/{id}": {
+      patch: {
+        summary: "Actualizar rol/estado de usuario de IPS (HU2-E3)",
+        parameters: [
+          {
+            name: "id",
+            in: "path",
+            required: true,
+            schema: { type: "string" }
+          }
+        ],
+        responses: {
+          "200": { description: "Usuario actualizado" },
+          "403": { description: "No autorizado" }
         }
       }
     }
@@ -168,20 +573,16 @@ export const openApiSpec: OpenAPIV3.Document = {
           encounter: {
             $ref: "#/components/schemas/FhirEncounter"
           },
-          diagnoses: {
+          prestadorOrigen: { $ref: "#/components/schemas/FhirOrganization" },
+          prestadorDestino: { $ref: "#/components/schemas/FhirOrganization" },
+          diagnosticoIngreso: { $ref: "#/components/schemas/FhirCondition" },
+          diagnosticoEgreso: { $ref: "#/components/schemas/FhirCondition" },
+          otrosDiagnosticos: {
             type: "array",
             items: { $ref: "#/components/schemas/FhirCondition" }
-          },
-          organizations: {
-            type: "array",
-            items: { $ref: "#/components/schemas/FhirOrganization" }
           }
         },
-        required: [
-          "patient",
-          "encounter",
-          "diagnoses"
-        ]
+        required: ["patient", "encounter", "prestadorOrigen", "diagnosticoIngreso"]
       },
       FhirIdentifier: {
         type: "object",
@@ -330,4 +731,3 @@ export const openApiSpec: OpenAPIV3.Document = {
     }
   }
 };
-

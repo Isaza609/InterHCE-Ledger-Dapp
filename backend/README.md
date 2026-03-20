@@ -82,3 +82,25 @@ Los datos clínicos completos residen aquí; en Blockchain solo se almacenan has
 
 Estos endpoints implementan el diseño descrito en `docs_dev/Sprint 1/HU2-E0-Validacion.md` para la validación estructural de episodios clínicos.
 
+## Endpoints Sprint 3 (roles, usuarios y documentos off-chain)
+
+- `GET /access/roles`
+  - Lista roles del sistema y capacidades funcionales asociadas (HU0-E3).
+
+- `GET /access/capabilities`
+  - Devuelve capacidades del rol activo enviado por cabeceras (`x-user-role`) (HU1-E3).
+
+- `GET /access/users`
+- `POST /access/users`
+- `PATCH /access/users/:id`
+  - Gestion de usuarios de una IPS por `admin_ips` (HU2-E3).
+
+- `GET /episodes/:id/permissions`
+- `POST /episodes/:id/permissions/grant`
+- `POST /episodes/:id/permissions/revoke`
+  - Control de acceso a documentos off-chain por IPS (HU4-E5).
+
+Cabeceras actor usadas por endpoints protegidos:
+- `x-user-role`
+- `x-ips-id`
+- `x-user-id` (opcional recomendado para validar estado del usuario)

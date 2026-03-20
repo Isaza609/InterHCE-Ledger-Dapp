@@ -1,0 +1,16 @@
+{
+  "name": "interhce-contracts",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Contratos y despliegue testnet para InterHCE Ledger.",
+  "scripts": {
+    "compile": "hardhat compile",
+    "test": "hardhat test",
+    "deploy:sepolia": "hardhat run scripts/deploy-sepolia.js --network sepolia"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "dotenv": "^16.4.5",
+    "hardhat": "^2.22.17"
+  }
+}

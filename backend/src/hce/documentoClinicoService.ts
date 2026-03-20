@@ -31,6 +31,18 @@ export interface DocumentoAlmacenado {
 }
 
 /**
+ * Metadatos permitidos para registro on-chain (HU4-E0):
+ * no incluyen estructura clínica, solo hashes y referencias no sensibles.
+ */
+export interface RegistroOnChainMetadata {
+  episodeId: string;
+  documentHash: string;
+  patientIdentifierHash?: string;
+  prestadorOrigenHash?: string;
+  createdAt: string;
+}
+
+/**
  * Serialización canónica (claves ordenadas recursivamente) para que
  * el mismo documento lógico produzca siempre el mismo hash.
  */
@@ -70,6 +82,15 @@ export function generarDocumentoClinico(
 export function calcularHashDocumento(documento: DocumentoClinicoOffChain): string {
   const canonical = canonicalJson(documento);
   return createHash("sha256").update(canonical, "utf8").digest("hex");
+}
+
+/**
+ * Hash SHA-256 para seudonimizar identificadores usados como metadatos on-chain.
+ */
+function hashValor(value?: string): string | undefined {
+  const normalized = value?.trim();
+  if (!normalized) return undefined;
+  return createHash("sha256").update(normalized, "utf8").digest("hex");
 }
 
 /** Almacén off-chain en memoria (prototipo). Se usa solo cuando FHIR_BASE_URL no está definido. */
@@ -119,6 +140,51 @@ export async function recuperarDocumentoClinico(
 }
 
 /**
+ * Proyección explícita on-chain: solo hashes y metadatos no sensibles.
+ * Nunca devuelve estructuras clínicas completas del modelo HCE.
+ */
+export function generarRegistroOnChainMetadata(
+  episodeId: string,
+  almacenado: DocumentoAlmacenado
+): RegistroOnChainMetadata {
+  const patientIdentifier = almacenado.document.patient?.identifier?.find((id) => id.value)?.value;
+  const prestadorOrigenIdentifier = almacenado.document.prestadorOrigen?.identifier?.find((id) => id.value)?.value;
+
+  return {
+    episodeId,
+    documentHash: almacenado.hash,
+    patientIdentifierHash: hashValor(patientIdentifier),
+    prestadorOrigenHash: hashValor(prestadorOrigenIdentifier),
+    createdAt: almacenado.createdAt
+  };
+}
+
+export function generarRegistroOnChainMetadataDesdeDocumento(
+  episodeId: string,
+  documento: DocumentoClinicoOffChain,
+  createdAt = new Date().toISOString()
+): RegistroOnChainMetadata {
+  return generarRegistroOnChainMetadata(episodeId, {
+    episodeId,
+    document: documento,
+    hash: calcularHashDocumento(documento),
+    createdAt
+  });
+}
+
+/**
+ * Recupera el payload listo para registro on-chain.
+ * Si no existe episodio/documento asociado, retorna undefined.
+ */
+export async function obtenerRegistroOnChainMetadata(
+  episodeId: string
+): Promise<RegistroOnChainMetadata | undefined> {
+  const almacenado = await recuperarDocumentoClinico(episodeId);
+  if (!almacenado) return undefined;
+  return generarRegistroOnChainMetadata(episodeId, almacenado);
+}
+
+/**
  * Recupera solo el hash del episodio (para verificación de integridad).
  * Con HAPI FHIR se recalcula a partir del documento recuperado.
  */
@@ -133,6 +199,36 @@ export async function obtenerHashEpisodio(episodeId: string): Promise<string | u
 export interface EpisodioResumen {
   episodeId: string;
   documentHash?: string;
+  patientIdentifier?: string;
+  patientName?: string;
+  patientBirthDate?: string;
+  encounterStart?: string;
+  encounterStatus?: string;
+  prestadorOrigenId?: string;
+}
+
+function buildPatientName(documento: DocumentoClinicoOffChain): string | undefined {
+  const patientName = documento.patient?.name?.[0];
+  if (!patientName) return undefined;
+  const label = `${patientName.family ?? ""} ${(patientName.given ?? []).join(" ")}`.trim();
+  return label || undefined;
+}
+
+function buildResumenDesdeDocumento(
+  episodeId: string,
+  documento: DocumentoClinicoOffChain,
+  documentHash?: string
+): EpisodioResumen {
+  return {
+    episodeId,
+    documentHash,
+    patientIdentifier: documento.patient?.identifier?.[0]?.value,
+    patientName: buildPatientName(documento),
+    patientBirthDate: documento.patient?.birthDate,
+    encounterStart: documento.encounter?.period?.start,
+    encounterStatus: documento.encounter?.status,
+    prestadorOrigenId: documento.prestadorOrigen?.identifier?.[0]?.value
+  };
 }
 
 /**
@@ -148,8 +244,9 @@ export async function buscarEpisodiosPorIdentificadorPaciente(
     const ids = await searchEpisodeIdsByPatientIdentifier(value);
     const result: EpisodioResumen[] = [];
     for (const id of ids) {
-      const hash = await obtenerHashEpisodio(id);
-      result.push({ episodeId: id, documentHash: hash });
+      const almacenado = await recuperarDocumentoClinico(id);
+      if (!almacenado) continue;
+      result.push(buildResumenDesdeDocumento(id, almacenado.document, almacenado.hash));
     }
     return result;
   }
@@ -158,7 +255,9 @@ export async function buscarEpisodiosPorIdentificadorPaciente(
     const match = stored.document.patient?.identifier?.some(
       (id) => id.value && String(id.value).trim() === value
     );
-    if (match) result.push({ episodeId: stored.episodeId, documentHash: stored.hash });
+    if (match) {
+      result.push(buildResumenDesdeDocumento(stored.episodeId, stored.document, stored.hash));
+    }
   }
   return result;
 }
@@ -171,14 +270,15 @@ export async function listarTodosLosEpisodios(): Promise<EpisodioResumen[]> {
     const ids = await listAllEpisodeIdsFromFhir();
     const result: EpisodioResumen[] = [];
     for (const id of ids) {
-      const hash = await obtenerHashEpisodio(id);
-      result.push({ episodeId: id, documentHash: hash });
+      const almacenado = await recuperarDocumentoClinico(id);
+      if (!almacenado) continue;
+      result.push(buildResumenDesdeDocumento(id, almacenado.document, almacenado.hash));
     }
     return result;
   }
   const result: EpisodioResumen[] = [];
   for (const [, stored] of almacenOffChain) {
-    result.push({ episodeId: stored.episodeId, documentHash: stored.hash });
+    result.push(buildResumenDesdeDocumento(stored.episodeId, stored.document, stored.hash));
   }
   return result;
 }

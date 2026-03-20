@@ -3,7 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.validateEpisodioClinico = validateEpisodioClinico;
 const hceValidationSchema_1 = require("./hceValidationSchema");
 function validateEpisodioClinico(payload) {
-    const result = hceValidationSchema_1.episodioClinicoUrgenciasSchema.safeParse(payload);
+    const result = hceValidationSchema_1.episodioFhirLikeSchema.safeParse(payload);
     if (!result.success) {
         const issues = result.error.issues.map((issue) => ({
             field: issue.path.join("."),

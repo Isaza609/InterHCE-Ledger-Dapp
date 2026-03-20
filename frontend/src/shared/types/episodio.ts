@@ -74,6 +74,85 @@ export interface EpisodioPayload {
   otrosDiagnosticos?: EpisodioCondition[];
 }
 
+export interface EventoUrgencias {
+  eventoUrgenciasId: string;
+  fechaHoraInicio: string;
+  ipsOrigenId: string;
+  tipoAtencion: string;
+}
+
+export interface OnChainMetadata {
+  episodeId: string;
+  documentHash: string;
+  patientIdentifierHash?: string;
+  prestadorOrigenHash?: string;
+  createdAt: string;
+}
+
+export interface VersionEpisodio {
+  version: number;
+  actualizadoEn: string;
+  actor: {
+    rol: string;
+    ipsId?: string;
+    usuarioId?: string;
+  };
+  documentHash: string;
+  onChain: OnChainMetadata;
+}
+
+export interface TraceabilityEvent {
+  traceId: string;
+  episodeId: string;
+  eventType:
+    | "EPISODE_CREATED"
+    | "EPISODE_UPDATED"
+    | "PERMISSION_GRANTED"
+    | "PERMISSION_REVOKED"
+    | "AUDITABLE_ACCESS"
+    | "INTEGRITY_CHECK";
+  recordedAt: string;
+  actor: {
+    rol: string;
+    ipsId?: string;
+    usuarioId?: string;
+  };
+  metadata: Record<string, string | number | boolean | null | undefined>;
+  evidence: {
+    ledgerMode: "simulado" | "real";
+    network: string;
+    chainId: number;
+    contractAddress?: string;
+    transactionHash: string;
+    explorerUrl?: string;
+  };
+}
+
+export interface EstadoPermisoEpisodio {
+  episodeId: string;
+  sourceIpsId: string;
+  targetIpsId: string;
+  activo: boolean;
+  grantedAt?: string;
+  revokedAt?: string;
+  ultimoCambioEn: string;
+}
+
+export interface IntegridadEpisodio {
+  episodeId: string;
+  onChainHash: string;
+  offChainHash: string;
+  isIntegrityValid: boolean;
+  checkedAt: string;
+  evidence: {
+    sourceTraceId: string;
+    sourceTransactionHash: string;
+    contractAddress?: string;
+    network: string;
+    auditTrace: TraceabilityEvent;
+  };
+}
+
 export interface ValidationIssue {
   field: string;
   issue: string;
@@ -88,4 +167,8 @@ export interface ValidationResult {
   episodeId?: string;
   /** Hash del documento off-chain, para registro on-chain. */
   documentHash?: string;
+  event?: EventoUrgencias;
+  version?: number;
+  onChainMetadata?: OnChainMetadata;
+  traceEvent?: TraceabilityEvent;
 }

@@ -3,8 +3,10 @@ import { FormularioEpisodio } from "@/features/episodios/components/FormularioEp
 import { useValidarEpisodio } from "@/features/episodios/hooks/useValidarEpisodio";
 import { buildEpisodioPayload } from "@/shared/utils/episodioPayload";
 import type { EpisodioPayload } from "@/shared/types/episodio";
+import { useSesion } from "@/shared/auth/SessionContext";
 
 export function CrearEpisodioPage() {
+  const { sesion } = useSesion();
   const { result, loading, validar, registrar } = useValidarEpisodio();
 
   const safeValidar = (p: EpisodioPayload) => validar(buildEpisodioPayload(p));
@@ -18,12 +20,21 @@ export function CrearEpisodioPage() {
         <Link to="/episodios">Episodios</Link>
         {" / Crear"}
       </nav>
-      <h1 className="page-title">Crear episodio clínico (urgencias)</h1>
-      <p className="page-subtitle">
-        Complete los datos según el modelo mínimo de HCE para urgencias. Use
-        &quot;Validar&quot; para comprobar contra el backend o &quot;Registrar&quot; para
-        enviar el episodio.
-      </p>
+      <section className="page-banner page-banner--compact">
+        <div>
+          <p className="eyebrow">Nuevo episodio</p>
+          <h1 className="page-title">Registrar atención de urgencias</h1>
+          <p className="page-subtitle">
+            Complete la información clínica esencial. El sistema validará la estructura, generará
+            el documento off-chain y dejará trazabilidad verificable del registro.
+          </p>
+        </div>
+        <div className="context-note">
+          <strong>Sesión activa</strong>
+          <span>{sesion?.nombre ?? "Sin sesión"}</span>
+          <small>{sesion?.ipsId ?? "Debe autenticarse para registrar"}</small>
+        </div>
+      </section>
 
       <div className="card card--elevated">
         <FormularioEpisodio

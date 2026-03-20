@@ -4,6 +4,9 @@ import cors from "cors";
 import { json } from "body-parser";
 import swaggerUi from "swagger-ui-express";
 import { episodesRouter } from "./routes/episodes";
+import { infraRouter } from "./routes/infra";
+import { accessRouter } from "./routes/access";
+import { authRouter } from "./routes/auth";
 import { openApiSpec } from "./docs/openapi";
 
 const app: Application = express();
@@ -12,6 +15,9 @@ app.use(cors());
 app.use(json());
 
 app.use("/episodes", episodesRouter);
+app.use("/infra", infraRouter);
+app.use("/access", accessRouter);
+app.use("/auth", authRouter);
 
 app.use("/docs", swaggerUi.serve, swaggerUi.setup(openApiSpec));
 
@@ -36,4 +42,3 @@ if (require.main === module) {
     console.log(`InterHCE backend escuchando en puerto ${port}`);
   });
 }
-
