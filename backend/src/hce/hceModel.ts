@@ -1,10 +1,10 @@
-// Modelo FHIR-like del episodio de urgencias, alineado con Mapeo_RDA_FHIR_urgencias.md
-
-// Tipos básicos reutilizables
+// Modelo FHIR-like del episodio de urgencias, alineado con
+// Caracterizacion_RDA_Completa.csv y Mapeo_RDA_FHIR_urgencias.md.
 
 export interface FhirIdentifier {
   system?: string;
   value: string;
+  type?: FhirCodeableConcept;
 }
 
 export interface FhirCoding {
@@ -18,9 +18,25 @@ export interface FhirCodeableConcept {
   text?: string;
 }
 
+export interface FhirExtension {
+  url: string;
+  valueString?: string;
+  valueCode?: string;
+  valueInteger?: number;
+  valueDateTime?: string;
+  valueCodeableConcept?: FhirCodeableConcept;
+}
+
 export interface FhirReference {
   reference?: string;
   display?: string;
+  identifier?: FhirIdentifier;
+}
+
+export interface FhirAddress {
+  country?: string;
+  text?: string;
+  extension?: FhirExtension[];
 }
 
 export interface FhirPeriod {
@@ -28,7 +44,16 @@ export interface FhirPeriod {
   end?: string;
 }
 
-// Recursos principales
+export interface FhirTiming {
+  repeat?: {
+    frequency?: number;
+    period?: number;
+    periodUnit?: string;
+    count?: number;
+    duration?: number;
+    durationUnit?: string;
+  };
+}
 
 export interface FhirPatient {
   resourceType: "Patient";
@@ -37,9 +62,10 @@ export interface FhirPatient {
     family: string;
     given: string[];
   }>;
-  birthDate: string; // YYYY-MM-DD
+  birthDate: string;
   gender?: "male" | "female" | "other" | "unknown";
-  // Campos sociodemográficos adicionales se modelan off-chain
+  extension?: FhirExtension[];
+  address?: FhirAddress[];
 }
 
 export interface FhirOrganization {
@@ -48,16 +74,27 @@ export interface FhirOrganization {
   name?: string;
 }
 
+export interface FhirCoverage {
+  resourceType: "Coverage";
+  beneficiary: FhirReference;
+  payor: Array<{
+    reference?: string;
+    display?: string;
+    identifier: FhirIdentifier;
+  }>;
+}
+
 export interface FhirEncounter {
   resourceType: "Encounter";
   status: "planned" | "in-progress" | "finished";
-  class: FhirCodeableConcept; // entorno/modalidad
-  type?: FhirCodeableConcept[]; // grupo de servicios / tipo de episodio
-  subject: FhirReference; // -> Patient
-  serviceProvider: FhirReference; // -> Organization (IPS)
-  period: FhirPeriod; // inicio / fin atención
-  reasonCode?: FhirCodeableConcept[]; // causa que motiva la atención
-  priority?: FhirCodeableConcept; // triage / prioridad
+  class: FhirCodeableConcept;
+  type?: FhirCodeableConcept[];
+  serviceType?: FhirCodeableConcept;
+  subject: FhirReference;
+  serviceProvider: FhirReference;
+  period: FhirPeriod;
+  reasonCode?: FhirCodeableConcept[];
+  priority?: FhirCodeableConcept;
   diagnosis?: Array<{
     condition: FhirReference;
     use?: FhirCodeableConcept;
@@ -65,14 +102,18 @@ export interface FhirEncounter {
   hospitalization?: {
     dischargeDisposition?: FhirCodeableConcept;
   };
+  participant?: Array<{
+    individual: FhirReference;
+  }>;
+  extension?: FhirExtension[];
 }
 
 export interface FhirCondition {
   resourceType: "Condition";
-  code: FhirCodeableConcept; // CIE-10 / CIE-11
-  subject: FhirReference; // -> Patient
-  encounter?: FhirReference; // -> Encounter
-  category?: FhirCodeableConcept[]; // tipo de diagnóstico (ingreso/egreso, principal/relacionado, etc.)
+  code: FhirCodeableConcept;
+  subject: FhirReference;
+  encounter?: FhirReference;
+  category?: FhirCodeableConcept[];
 }
 
 export interface FhirPractitioner {
@@ -87,7 +128,7 @@ export interface FhirPractitioner {
 export interface FhirObservation {
   resourceType: "Observation";
   code: FhirCodeableConcept;
-  subject: FhirReference; // -> Patient
+  subject: FhirReference;
   encounter?: FhirReference;
   effectiveDateTime?: string;
   valueString?: string;
@@ -102,20 +143,20 @@ export interface FhirObservation {
 
 export interface FhirProcedure {
   resourceType: "Procedure";
-  code: FhirCodeableConcept; // CUPS u otro catálogo
-  subject: FhirReference; // -> Patient
+  code: FhirCodeableConcept;
+  subject: FhirReference;
   encounter?: FhirReference;
   performedDateTime?: string;
-  category?: FhirCodeableConcept; // tipo de tecnología
-  reasonCode?: FhirCodeableConcept[]; // finalidad
+  category?: FhirCodeableConcept;
+  reasonCode?: FhirCodeableConcept[];
   performer?: Array<{
-    actor: FhirReference; // -> Practitioner u Organization
+    actor: FhirReference;
   }>;
 }
 
 export interface FhirMedication {
   resourceType: "Medication";
-  code: FhirCodeableConcept; // ATC / INVIMA
+  code: FhirCodeableConcept;
 }
 
 export interface FhirDosage {
@@ -129,22 +170,24 @@ export interface FhirDosage {
       code?: string;
     };
   }>;
+  timing?: FhirTiming;
 }
 
 export interface FhirMedicationRequest {
   resourceType: "MedicationRequest";
   medicationCodeableConcept?: FhirCodeableConcept;
-  subject: FhirReference; // -> Patient
+  subject: FhirReference;
   encounter?: FhirReference;
   authoredOn?: string;
   dosageInstruction?: FhirDosage[];
-  reasonCode?: FhirCodeableConcept[]; // finalidad
+  reasonCode?: FhirCodeableConcept[];
+  category?: FhirCodeableConcept[];
 }
 
 export interface FhirMedicationAdministration {
   resourceType: "MedicationAdministration";
   medicationCodeableConcept?: FhirCodeableConcept;
-  subject: FhirReference; // -> Patient
+  subject: FhirReference;
   encounter?: FhirReference;
   effectiveDateTime?: string;
   route?: FhirCodeableConcept;
@@ -157,29 +200,30 @@ export interface FhirMedicationAdministration {
     };
   };
   performer?: Array<{
-    actor: FhirReference; // -> Practitioner
+    actor: FhirReference;
   }>;
+  category?: FhirCodeableConcept;
 }
 
 export interface FhirServiceRequest {
   resourceType: "ServiceRequest";
-  code: FhirCodeableConcept; // procedimiento / tecnología ordenada
-  subject: FhirReference; // -> Patient
+  code: FhirCodeableConcept;
+  subject: FhirReference;
   encounter?: FhirReference;
   authoredOn?: string;
-  reasonCode?: FhirCodeableConcept[]; // finalidad
-  category?: FhirCodeableConcept[]; // tipo tecnología
+  reasonCode?: FhirCodeableConcept[];
+  category?: FhirCodeableConcept[];
 }
 
 export interface FhirDocumentReference {
   resourceType: "DocumentReference";
-  subject?: FhirReference; // -> Patient
+  subject?: FhirReference;
   content: Array<{
     attachment: {
       url?: string;
       title?: string;
       contentType?: string;
-      hash?: string; // hash del PDF
+      hash?: string;
     };
   }>;
 }
@@ -198,45 +242,57 @@ export interface FhirFamilyMemberHistory {
   }>;
 }
 
-// Agregado principal del episodio de urgencias usado por el backend
-
 export interface EpisodioClinicoUrgencias {
   patient: FhirPatient;
+  cobertura: FhirCoverage;
   encounter: FhirEncounter;
 
-  // IPS origen/destino
   prestadorOrigen: FhirOrganization;
   prestadorDestino?: FhirOrganization;
 
-  // Diagnósticos principales
   diagnosticoIngreso: FhirCondition;
   diagnosticoEgreso?: FhirCondition;
-  otrosDiagnosticos?: FhirCondition[];
+  diagnosticosRelacionados?: FhirCondition[];
+  diagnosticosComplicacion?: FhirCondition[];
+  causaBasicaMuerte?: FhirCondition;
 
-  // Antecedentes relevantes
   antecedentes?: {
     alergias?: FhirAllergyIntolerance[];
     antecedentesFamiliares?: FhirFamilyMemberHistory[];
     factoresRiesgo?: FhirObservation[];
   };
 
-  // Procedimientos y tecnologías en urgencias
-  procedimientosRealizados?: FhirProcedure[];
-  tecnologiasAdministradas?: FhirProcedure[];
+  procedimientosRealizados?: Array<
+    FhirProcedure & {
+      resultados?: FhirObservation[];
+      profesionalResponsable?: FhirPractitioner;
+    }
+  >;
+  tecnologiasAdministradas?: Array<
+    FhirProcedure & {
+      profesionalResponsable?: FhirPractitioner;
+    }
+  >;
 
-  // Medicación en urgencias
-  medicamentosAdministrados?: FhirMedicationAdministration[];
+  medicamentosAdministrados?: Array<
+    FhirMedicationAdministration & {
+      medication?: FhirMedication;
+      prescripcion?: FhirMedicationRequest;
+      profesionalResponsable?: FhirPractitioner;
+    }
+  >;
 
-  // Órdenes al egreso
-  medicamentosEgreso?: FhirMedicationRequest[];
+  medicamentosEgreso?: Array<
+    FhirMedicationRequest & {
+      medication?: FhirMedication;
+    }
+  >;
   procedimientosOrdenadosEgreso?: FhirServiceRequest[];
   tecnologiasOrdenadasEgreso?: FhirServiceRequest[];
 
-  // Documento clínico soporte (PDF u otro)
+  incapacidad?: FhirObservation;
+  profesionalAlta?: FhirPractitioner;
   documentoSoporte?: FhirDocumentReference;
 }
 
-// Alias de compatibilidad con el nombre anterior
 export type FhirEpisodePayload = EpisodioClinicoUrgencias;
-
-

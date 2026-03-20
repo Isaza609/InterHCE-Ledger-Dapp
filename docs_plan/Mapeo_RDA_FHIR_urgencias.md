@@ -1,10 +1,12 @@
 ## Mapeo de estructura mínima RDA → HL7 FHIR (escenario urgencias InterHCE Ledger)
 
-Este documento define cómo se mapean los campos del **RDA de urgencias** (ya depurado en `Caracterizacion HCE.csv`) a recursos **HL7 FHIR** para:
+Este documento define como se mapean los campos del **RDA de urgencias completo** contenidos en `Caracterizacion_RDA_Completa.csv` a recursos **HL7 FHIR** para:
 
 - Implementación clínica off-chain en **HAPI FHIR** (backend).
 - Diseño de modelos de datos en el backend (`hceModel.ts`, validaciones).
 - Diseño de pantallas y flujos en la DApp (frontend).
+
+La version vigente del modelo tecnico del proyecto toma este documento como referencia canonica y expresa el episodio de urgencias como un agregado FHIR-like compuesto, al menos, por `Patient`, `Coverage`, `Encounter`, `Organization`, `Condition`, `Practitioner`, `Observation`, `Procedure`, `Medication*`, `ServiceRequest` y `DocumentReference`.
 
 Convención en las tablas:
 
@@ -242,4 +244,3 @@ Este mapeo debe servir como base para:
 - Definir los **perfiles FHIR** concretos (constraints y extensiones).
 - Diseñar el **modelo de dominio del backend** (`hceModel`) alineado con estos recursos.
 - Guiar las **pantallas y formularios de la DApp** basados en recursos/relaciones FHIR.
-

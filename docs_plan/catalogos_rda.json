@@ -1,0 +1,277 @@
+{
+  "meta": {
+    "descripcion": "Catalogos para validacion RDA urgencias (fuentes oficiales por completar).",
+    "version": "0.1.0",
+    "actualizadoEn": "2026-03-20",
+    "notas": [
+      "Llena cada catalogo con valores oficiales y conserva code/display.",
+      "Si un catalogo tiene fuente externa grande, puedes guardar solo los codigos usados por el MVP."
+    ]
+  },
+  "catalogos": {
+    "sexoBiologico": {
+      "rda": "5",
+      "fuente": "FHIR AdministrativeGender / RDA Urgencias",
+      "tipo": "enum",
+      "valores": [
+        { "code": "male", "display": "Masculino" },
+        { "code": "female", "display": "Femenino" },
+        { "code": "other", "display": "Otro" },
+        { "code": "unknown", "display": "Desconocido" }
+      ]
+    },
+    "zonaTerritorial": {
+      "rda": "14",
+      "fuente": "RDA Urgencias",
+      "tipo": "enum",
+      "valores": [
+        { "code": "U", "display": "Urbano" },
+        { "code": "R", "display": "Rural" },
+        { "code": "D", "display": "Disperso" }
+      ]
+    },
+    "triageClasificacion": {
+      "rda": "22",
+      "fuente": "RDA Urgencias",
+      "tipo": "enum",
+      "valores": [
+        { "code": "I", "display": "Triage I" },
+        { "code": "II", "display": "Triage II" },
+        { "code": "III", "display": "Triage III" },
+        { "code": "IV", "display": "Triage IV" },
+        { "code": "V", "display": "Triage V" }
+      ]
+    },
+    "entornoAtencion": {
+      "rda": "19",
+      "fuente": "RDA Urgencias",
+      "tipo": "enum",
+      "valores": [
+        { "code": "INTRAMURAL", "display": "Intramural" },
+        { "code": "EXTRAMURAL", "display": "Extramural" }
+      ]
+    },
+    "tipoDiagnostico": {
+      "rda": "23.3 / 37.3",
+      "fuente": "RDA Urgencias",
+      "tipo": "enum",
+      "valores": [
+        { "code": "principal", "display": "Principal" },
+        { "code": "relacionado", "display": "Relacionado" },
+        { "code": "complicacion", "display": "Complicacion" }
+      ]
+    },
+    "tipoDocumentoPersona": {
+      "rda": "2.1 / 49.1",
+      "fuente": "Catalogo Maestro Persona (Minsalud)",
+      "tipo": "catalogo",
+      "valores": [
+        { "code": "CC", "display": "Cedula de Ciudadania" },
+        { "code": "TI", "display": "Tarjeta de Identidad" },
+        { "code": "RC", "display": "Registro Civil" },
+        { "code": "CE", "display": "Cedula de Extranjeria" },
+        { "code": "PA", "display": "Pasaporte" },
+        { "code": "PPT", "display": "Permiso por Proteccion Temporal" },
+        { "code": "PEP", "display": "Permiso Especial de Permanencia" },
+        { "code": "NIT", "display": "Numero de Identificacion Tributaria" },
+        { "code": "NUIP", "display": "Numero Unico de Identificacion" },
+        { "code": "CD", "display": "Carne Diplomatico" },
+        { "code": "SC", "display": "Salvoconducto" },
+        { "code": "DE", "display": "Documento Extranjero" },
+        { "code": "AS", "display": "Adulto sin Identificacion" },
+        { "code": "MS", "display": "Menor sin Identificacion" }
+      ]
+    },
+    "epsAdres": {
+      "rda": "15.1",
+      "fuente": "ADRES",
+      "tipo": "catalogo",
+      "valores": [
+        { "code": "CCF001", "display": "EPSS CCF CAMACOL" },
+        { "code": "CCF002", "display": "EPSS COMFAMA" },
+        { "code": "CCF007", "display": "EPSS COMFAMILIAR CARTAGENA" },
+        { "code": "CCF009", "display": "EPSS COMFABOY" },
+        { "code": "CCF015", "display": "EPSS COMFACOR" },
+        { "code": "CCF018", "display": "EPSS CAFAM" },
+        { "code": "CCF023", "display": "EPSS COMFAMILIAR GUAJIRA" },
+        { "code": "CCF024", "display": "EPSS COMFAMILIAR HUILA" },
+        { "code": "CCF027", "display": "EPSS COMFAMILIAR NARIÑO" },
+        { "code": "CCF028", "display": "EPSS COMFENALCO QUINDIO" },
+        { "code": "CCF029", "display": "EPSS COMFAMILIAR RISARALDA" },
+        { "code": "CCF030", "display": "EPSS CAJASAI" },
+        { "code": "CCF031", "display": "EPSS CAJASAN" },
+        { "code": "CCF032", "display": "EPSS COMFENALCO SANTANDER" },
+        { "code": "CCF033", "display": "EPSS COMFAMILIAR SUCRE" },
+        { "code": "CCF035", "display": "EPSS CAFABA" },
+        { "code": "CCF037", "display": "EPSS COMFENALCO TOLIMA" },
+        { "code": "CCF040", "display": "EPSS COMFACARTAGO" },
+        { "code": "CCF045", "display": "EPSS COMFANORTE" },
+        { "code": "CCF049", "display": "EPSS COMFAORIENTE" },
+        { "code": "CCF053", "display": "EPSS COMFACUNDI" },
+        { "code": "CCF054", "display": "EPSS COMFENALCO CUNDINAMARCA" },
+        { "code": "CCF055", "display": "EPSS CAJACOPI ATLANTICO" },
+        { "code": "CCF101", "display": "EPSS COLSUBSIDIO" },
+        { "code": "CCF102", "display": "EPSS COMFACHOCO" },
+        { "code": "CCF103", "display": "EPSS COMFACA" },
+        { "code": "EAS016", "display": "Empresas Publicas de Medellin (Departamento Medico)" },
+        { "code": "EAS027", "display": "Fondo de Pasivo Social de los Ferrocarriles Nacionales" },
+        { "code": "EPIO06", "display": "EPIO06 M" },
+        { "code": "EPS001", "display": "Salud Colmena EPS" },
+        { "code": "EPS002", "display": "Salud Total EPS" },
+        { "code": "EPS003", "display": "Cafesalud" },
+        { "code": "EPS005", "display": "Sanitas" },
+        { "code": "EPS006", "display": "Instituto de Seguros Sociales" },
+        { "code": "EPS008", "display": "Compensar" },
+        { "code": "EPS009", "display": "Comfenalco Antioquia" },
+        { "code": "EPS010", "display": "SURA" },
+        { "code": "EPS012", "display": "Comfenalco Valle" },
+        { "code": "EPS013", "display": "Saludcoop" },
+        { "code": "EPS014", "display": "Humana Vivir" },
+        { "code": "EPS015", "display": "Salud Colpatria" },
+        { "code": "EPS016", "display": "Coomeva" },
+        { "code": "EPS017", "display": "Famisanar" },
+        { "code": "EPS018", "display": "SOS" },
+        { "code": "EPS020", "display": "Caprecom" },
+        { "code": "EPS022", "display": "Convida" },
+        { "code": "EPS023", "display": "Cruz Blanca" },
+        { "code": "EPS025", "display": "Capresoca" },
+        { "code": "EPS026", "display": "Solsalud" },
+        { "code": "EPS028", "display": "Calisalud" },
+        { "code": "EPS030", "display": "Salud Condor" },
+        { "code": "EPS031", "display": "Selvasalud" },
+        { "code": "EPS033", "display": "Saludvida" },
+        { "code": "EPS034", "display": "Saludcolombia" },
+        { "code": "EPS035", "display": "Red Salud Atencion Humana" },
+        { "code": "EPS037", "display": "Nueva EPS" },
+        { "code": "EPS038", "display": "Multimedicas" },
+        { "code": "EPS039", "display": "Golden Cross" },
+        { "code": "EPSI01", "display": "Dusakawi" },
+        { "code": "EPSI02", "display": "Manexka" },
+        { "code": "EPSI03", "display": "AIC EPSI" },
+        { "code": "EPSI04", "display": "Anas Wayuu" },
+        { "code": "EPSI05", "display": "Mallamas" },
+        { "code": "EPSI06", "display": "Pijaos Salud" },
+        { "code": "EPSS02", "display": "Salud Total" },
+        { "code": "EPSS03", "display": "Cafesalud" },
+        { "code": "EPSS09", "display": "Comfenalco Antioquia" },
+        { "code": "EPSS14", "display": "Humana Vivir" },
+        { "code": "EPSS26", "display": "Solsalud" },
+        { "code": "EPSS33", "display": "Saludvida" },
+        { "code": "ESS002", "display": "Emdisalud" },
+        { "code": "ESS024", "display": "Coosalud" },
+        { "code": "ESS062", "display": "Asmet Salud" },
+        { "code": "ESS068", "display": "Asociacion Solidaria de Astrea" },
+        { "code": "ESS076", "display": "Ambuq" },
+        { "code": "ESS091", "display": "Ecoopsos" },
+        { "code": "ESS115", "display": "Mallamas" },
+        { "code": "ESS118", "display": "Emssanar" },
+        { "code": "ESS133", "display": "Comparta" },
+        { "code": "ESS164", "display": "Pijaos Salud" },
+        { "code": "ESS177", "display": "Dusakawi" },
+        { "code": "ESS182", "display": "AIC" },
+        { "code": "ESS184", "display": "Manexka" },
+        { "code": "ESS207", "display": "Mutual Ser" },
+        { "code": "ESS208", "display": "Anas Wayuu" },
+        { "code": "ESSI06", "display": "ESSI06 M" },
+        { "code": "RES001", "display": "Policia Nacional" },
+        { "code": "RES002", "display": "Ecopetrol" },
+        { "code": "RES003", "display": "Fuerzas Militares" },
+        { "code": "RES004", "display": "Magisterio" },
+        { "code": "RES005", "display": "Universidad de Antioquia" },
+        { "code": "RES006", "display": "CAPRUIS" },
+        { "code": "RES007", "display": "Universidad del Valle" },
+        { "code": "RES008", "display": "UNISALUD" },
+        { "code": "RES009", "display": "Universidad del Cauca" },
+        { "code": "RES010", "display": "Universidad de Cartagena" },
+        { "code": "RES011", "display": "Universidad del Atlantico" },
+        { "code": "RES012", "display": "Universidad de Cordoba" },
+        { "code": "RES013", "display": "Universidad de Nariño" },
+        { "code": "RES014", "display": "UPTC" },
+        { "code": "UT-001", "display": "Cajasalud" },
+        { "code": "UT-002", "display": "Comfamiliares en Salud" },
+        { "code": "UT-003", "display": "Convenio Comfenalco" },
+        { "code": "UT-004", "display": "Convenio Camacol Comfama" }
+      ]
+    },
+    "paisesIso3166_1_alpha2": {
+      "rda": "1.1 / 11.1",
+      "fuente": "ISO 3166-1 alpha-2",
+      "tipo": "catalogo",
+      "valores": []
+    },
+    "ocupacionCuocDane": {
+      "rda": "7.1",
+      "fuente": "DANE CUOC",
+      "tipo": "catalogo",
+      "valores": []
+    },
+    "municipiosDivipolaDane": {
+      "rda": "12.1",
+      "fuente": "DANE DIVIPOLA",
+      "tipo": "catalogo",
+      "valores": []
+    },
+    "modalidadTecnologiaSalud": {
+      "rda": "18.1",
+      "fuente": "Catalogo Minsalud",
+      "tipo": "catalogo",
+      "valores": []
+    },
+    "grupoServicios": {
+      "rda": "18.2",
+      "fuente": "Catalogo grupos de servicios",
+      "tipo": "catalogo",
+      "valores": []
+    },
+    "viaIngresoUsuario": {
+      "rda": "20",
+      "fuente": "Catalogo vias de ingreso",
+      "tipo": "catalogo",
+      "valores": []
+    },
+    "causaMotivaAtencion": {
+      "rda": "21",
+      "fuente": "Catalogo causas",
+      "tipo": "catalogo",
+      "valores": []
+    },
+    "diagnosticosCie10": {
+      "rda": "23.1 / 37.1",
+      "fuente": "CIE-10",
+      "tipo": "catalogo",
+      "valores": []
+    },
+    "diagnosticosCie11": {
+      "rda": "Opcional",
+      "fuente": "CIE-11",
+      "tipo": "catalogo",
+      "valores": []
+    },
+    "condicionDestinoEgreso": {
+      "rda": "41",
+      "fuente": "Catalogo condicion/destino egreso",
+      "tipo": "catalogo",
+      "valores": []
+    },
+    "prestadoresReps": {
+      "rda": "16 / 44",
+      "fuente": "REPS",
+      "tipo": "catalogo",
+      "valores": []
+    },
+    "identidadGenero": {
+      "rda": "6 (opcional)",
+      "fuente": "Catalogo Minsalud",
+      "tipo": "catalogo",
+      "valores": []
+    },
+    "etnia": {
+      "rda": "8/9 (segun implementacion local)",
+      "fuente": "Catalogo etnico oficial",
+      "tipo": "catalogo",
+      "valores": [
+        { "code": "NINGUNO", "display": "Ninguno" }
+      ]
+    }
+  }
+}

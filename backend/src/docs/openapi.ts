@@ -570,6 +570,9 @@ export const openApiSpec = {
           patient: {
             $ref: "#/components/schemas/FhirPatient"
           },
+          cobertura: {
+            $ref: "#/components/schemas/FhirCoverage"
+          },
           encounter: {
             $ref: "#/components/schemas/FhirEncounter"
           },
@@ -577,18 +580,35 @@ export const openApiSpec = {
           prestadorDestino: { $ref: "#/components/schemas/FhirOrganization" },
           diagnosticoIngreso: { $ref: "#/components/schemas/FhirCondition" },
           diagnosticoEgreso: { $ref: "#/components/schemas/FhirCondition" },
-          otrosDiagnosticos: {
+          diagnosticosRelacionados: {
             type: "array",
             items: { $ref: "#/components/schemas/FhirCondition" }
+          },
+          diagnosticosComplicacion: {
+            type: "array",
+            items: { $ref: "#/components/schemas/FhirCondition" }
+          },
+          profesionalAlta: {
+            $ref: "#/components/schemas/FhirPractitioner"
+          },
+          documentoSoporte: {
+            $ref: "#/components/schemas/FhirDocumentReference"
           }
         },
-        required: ["patient", "encounter", "prestadorOrigen", "diagnosticoIngreso"]
+        required: [
+          "patient",
+          "cobertura",
+          "encounter",
+          "prestadorOrigen",
+          "diagnosticoIngreso"
+        ]
       },
       FhirIdentifier: {
         type: "object",
         properties: {
           system: { type: "string", format: "uri" },
-          value: { type: "string" }
+          value: { type: "string" },
+          type: { $ref: "#/components/schemas/FhirCodeableConcept" }
         },
         required: ["value"]
       },
@@ -614,7 +634,31 @@ export const openApiSpec = {
         type: "object",
         properties: {
           reference: { type: "string" },
-          display: { type: "string" }
+          display: { type: "string" },
+          identifier: { $ref: "#/components/schemas/FhirIdentifier" }
+        }
+      },
+      FhirExtension: {
+        type: "object",
+        properties: {
+          url: { type: "string" },
+          valueString: { type: "string" },
+          valueCode: { type: "string" },
+          valueInteger: { type: "integer" },
+          valueDateTime: { type: "string", format: "date-time" },
+          valueCodeableConcept: { $ref: "#/components/schemas/FhirCodeableConcept" }
+        },
+        required: ["url"]
+      },
+      FhirAddress: {
+        type: "object",
+        properties: {
+          country: { type: "string" },
+          text: { type: "string" },
+          extension: {
+            type: "array",
+            items: { $ref: "#/components/schemas/FhirExtension" }
+          }
         }
       },
       FhirPatient: {
@@ -643,9 +687,37 @@ export const openApiSpec = {
           gender: {
             type: "string",
             enum: ["male", "female", "other", "unknown"]
+          },
+          extension: {
+            type: "array",
+            items: { $ref: "#/components/schemas/FhirExtension" }
+          },
+          address: {
+            type: "array",
+            items: { $ref: "#/components/schemas/FhirAddress" }
           }
         },
         required: ["resourceType", "identifier", "name", "birthDate"]
+      },
+      FhirCoverage: {
+        type: "object",
+        properties: {
+          resourceType: { type: "string", enum: ["Coverage"] },
+          beneficiary: { $ref: "#/components/schemas/FhirReference" },
+          payor: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                reference: { type: "string" },
+                display: { type: "string" },
+                identifier: { $ref: "#/components/schemas/FhirIdentifier" }
+              },
+              required: ["identifier"]
+            }
+          }
+        },
+        required: ["resourceType", "beneficiary", "payor"]
       },
       FhirEncounter: {
         type: "object",
@@ -660,6 +732,7 @@ export const openApiSpec = {
             type: "array",
             items: { $ref: "#/components/schemas/FhirCodeableConcept" }
           },
+          serviceType: { $ref: "#/components/schemas/FhirCodeableConcept" },
           subject: { $ref: "#/components/schemas/FhirReference" },
           serviceProvider: { $ref: "#/components/schemas/FhirReference" },
           period: {
@@ -673,6 +746,19 @@ export const openApiSpec = {
           reasonCode: {
             type: "array",
             items: { $ref: "#/components/schemas/FhirCodeableConcept" }
+          },
+          priority: { $ref: "#/components/schemas/FhirCodeableConcept" },
+          hospitalization: {
+            type: "object",
+            properties: {
+              dischargeDisposition: {
+                $ref: "#/components/schemas/FhirCodeableConcept"
+              }
+            }
+          },
+          extension: {
+            type: "array",
+            items: { $ref: "#/components/schemas/FhirExtension" }
           }
         },
         required: [
@@ -709,6 +795,43 @@ export const openApiSpec = {
           name: { type: "string" }
         },
         required: ["resourceType", "identifier"]
+      },
+      FhirPractitioner: {
+        type: "object",
+        properties: {
+          resourceType: { type: "string", enum: ["Practitioner"] },
+          identifier: {
+            type: "array",
+            items: { $ref: "#/components/schemas/FhirIdentifier" }
+          }
+        },
+        required: ["resourceType", "identifier"]
+      },
+      FhirDocumentReference: {
+        type: "object",
+        properties: {
+          resourceType: { type: "string", enum: ["DocumentReference"] },
+          subject: { $ref: "#/components/schemas/FhirReference" },
+          content: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                attachment: {
+                  type: "object",
+                  properties: {
+                    url: { type: "string", format: "uri" },
+                    title: { type: "string" },
+                    contentType: { type: "string" },
+                    hash: { type: "string" }
+                  }
+                }
+              },
+              required: ["attachment"]
+            }
+          }
+        },
+        required: ["resourceType", "content"]
       },
       ValidationErrorResponse: {
         type: "object",

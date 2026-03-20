@@ -1,7 +1,7 @@
 /**
  * Servicio de generación y gestión de documentos clínicos off-chain (HU3-E0).
  *
- * Utiliza el modelo de HCE definido en Caracterizacion HCE_sinmapear.csv
+ * Utiliza el modelo de HCE definido en Caracterizacion_RDA_Completa.csv
  * y su proyección FHIR en Mapeo_RDA_FHIR_urgencias.md para generar
  * documentos clínicos almacenados fuera de la Blockchain, asociados
  * a un único episodio y preparados para cálculo de hash verificable.
@@ -105,16 +105,16 @@ export async function almacenarDocumentoClinico(
   documento: DocumentoClinicoOffChain
 ): Promise<{ hash: string }> {
   const hash = calcularHashDocumento(documento);
-  if (isFhirConfigured()) {
-    await persistEpisodeToFhir(episodeId, documento);
-    return { hash };
-  }
   almacenOffChain.set(episodeId, {
     episodeId,
     document: documento,
     hash,
     createdAt: new Date().toISOString()
   });
+  if (isFhirConfigured()) {
+    await persistEpisodeToFhir(episodeId, documento);
+    return { hash };
+  }
   return { hash };
 }
 
@@ -125,6 +125,8 @@ export async function almacenarDocumentoClinico(
 export async function recuperarDocumentoClinico(
   episodeId: string
 ): Promise<DocumentoAlmacenado | undefined> {
+  const stored = almacenOffChain.get(episodeId);
+  if (stored) return stored;
   if (isFhirConfigured()) {
     const document = await retrieveEpisodeFromFhir(episodeId);
     if (!document) return undefined;
