@@ -1,6 +1,11 @@
 import { useEffect } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { useSesion } from "@/shared/auth/SessionContext";
+import {
+  getDisplayByCode,
+  rdaCatalogos,
+  type CatalogOption
+} from "@/shared/catalogos/rdaCatalogos";
 import type { EpisodioPayload } from "@/shared/types/episodio";
 import { toDateTimeLocal } from "@/shared/utils/episodioPayload";
 import { ErroresValidacion } from "./ErroresValidacion";
@@ -15,6 +20,8 @@ const ADDRESS_MUNICIPALITY_URL = "urn:interhce:rda:address-municipality";
 const ADDRESS_ZONE_URL = "urn:interhce:rda:address-zone";
 const ENCOUNTER_ROUTE_URL = "urn:interhce:rda:encounter-route";
 const ENCOUNTER_TRIAGE_TIME_URL = "urn:interhce:rda:encounter-triage-time";
+
+const etniaSinComunidadCodes = new Set(["NINGUNO", "6"]);
 
 type FormEpisodio = EpisodioPayload & {
   startDate?: string;
@@ -167,6 +174,14 @@ const defaultValues: FormEpisodio = {
   endTime: ""
 };
 
+function renderCatalogOptions(options: CatalogOption[]) {
+  return options.map((option) => (
+    <option key={option.code} value={option.code}>
+      {option.code} - {option.display}
+    </option>
+  ));
+}
+
 interface FormularioEpisodioProps {
   onValidar?: (payload: EpisodioPayload) => void;
   onRegistrar?: (payload: EpisodioPayload) => void;
@@ -221,6 +236,14 @@ function buildPayload(data: FormEpisodio): EpisodioPayload {
 
   const hasValue = (value?: string) => Boolean(value?.trim());
   const isFinished = nextPayload.encounter.status === "finished";
+
+  const dischargeDisposition = nextPayload.encounter.hospitalization?.dischargeDisposition;
+  if (
+    !hasValue(dischargeDisposition?.coding?.[0]?.code) &&
+    !hasValue(dischargeDisposition?.coding?.[0]?.display)
+  ) {
+    delete nextPayload.encounter.hospitalization;
+  }
 
   const genderIdentity = nextPayload.patient.extension?.find(
     (extension) => extension.url === PATIENT_GENDER_IDENTITY_URL
@@ -324,6 +347,34 @@ export function FormularioEpisodio({
     name: "patient.extension.2.valueCodeableConcept.coding.0.code"
   });
   const altaCamposObligatorios = status === "finished";
+  const {
+    tipoDocumentoPersona,
+    epsAdres,
+    paises,
+    ocupacion,
+    municipios,
+    zonaTerritorial,
+    modalidadTecnologiaSalud,
+    grupoServicios,
+    entornoAtencion,
+    viaIngresoUsuario,
+    causaMotivaAtencion,
+    triageClasificacion,
+    condicionDestinoEgreso,
+    tipoDiagnostico,
+    identidadGenero,
+    etnia
+  } = rdaCatalogos;
+
+  const setCatalogDisplay = (
+    path: string,
+    options: CatalogOption[],
+    selectedCode: string
+  ) => {
+    setValue(path as never, getDisplayByCode(options, selectedCode) as never, {
+      shouldDirty: true
+    });
+  };
 
   useEffect(() => {
     if (sesion?.ipsId) {
@@ -384,12 +435,18 @@ export function FormularioEpisodio({
             <label htmlFor="eps-code" className="form-label form-label--required">
               Codigo administrador plan beneficios
             </label>
-            <input
+            <select
               id="eps-code"
-              type="text"
               className="form-input"
-              {...register("cobertura.payor.0.identifier.value", { required: true })}
-            />
+              {...register("cobertura.payor.0.identifier.value", {
+                required: true,
+                onChange: (event) =>
+                  setCatalogDisplay("cobertura.payor.0.display", epsAdres, event.target.value)
+              })}
+            >
+              <option value="">Seleccione una EPS/EAPB</option>
+              {renderCatalogOptions(epsAdres)}
+            </select>
           </div>
 
           <div className="form-group">
@@ -400,6 +457,7 @@ export function FormularioEpisodio({
               id="eps-name"
               type="text"
               className="form-input"
+              readOnly
               {...register("cobertura.payor.0.display", { required: true })}
             />
           </div>
@@ -413,12 +471,14 @@ export function FormularioEpisodio({
             <label htmlFor="doc-type" className="form-label form-label--required">
               Tipo documento
             </label>
-            <input
+            <select
               id="doc-type"
-              type="text"
               className="form-input"
               {...register("patient.identifier.0.type.coding.0.code", { required: true })}
-            />
+            >
+              <option value="">Seleccione tipo de documento</option>
+              {renderCatalogOptions(tipoDocumentoPersona)}
+            </select>
           </div>
 
           <div className="form-group">
@@ -490,12 +550,22 @@ export function FormularioEpisodio({
             <label htmlFor="nationality-code" className="form-label form-label--required">
               Codigo pais nacionalidad
             </label>
-            <input
+            <select
               id="nationality-code"
-              type="text"
               className="form-input"
-              {...register("patient.extension.0.valueCodeableConcept.coding.0.code", { required: true })}
-            />
+              {...register("patient.extension.0.valueCodeableConcept.coding.0.code", {
+                required: true,
+                onChange: (event) =>
+                  setCatalogDisplay(
+                    "patient.extension.0.valueCodeableConcept.coding.0.display",
+                    paises,
+                    event.target.value
+                  )
+              })}
+            >
+              <option value="">Seleccione pais</option>
+              {renderCatalogOptions(paises)}
+            </select>
           </div>
 
           <div className="form-group">
@@ -506,6 +576,7 @@ export function FormularioEpisodio({
               id="nationality-name"
               type="text"
               className="form-input"
+              readOnly
               {...register("patient.extension.0.valueCodeableConcept.coding.0.display", { required: true })}
             />
           </div>
@@ -514,12 +585,22 @@ export function FormularioEpisodio({
             <label htmlFor="occupation-code" className="form-label form-label--required">
               Codigo ocupacion
             </label>
-            <input
+            <select
               id="occupation-code"
-              type="text"
               className="form-input"
-              {...register("patient.extension.5.valueCodeableConcept.coding.0.code", { required: true })}
-            />
+              {...register("patient.extension.5.valueCodeableConcept.coding.0.code", {
+                required: true,
+                onChange: (event) =>
+                  setCatalogDisplay(
+                    "patient.extension.5.valueCodeableConcept.coding.0.display",
+                    ocupacion,
+                    event.target.value
+                  )
+              })}
+            >
+              <option value="">Seleccione ocupacion</option>
+              {renderCatalogOptions(ocupacion)}
+            </select>
           </div>
 
           <div className="form-group">
@@ -530,6 +611,7 @@ export function FormularioEpisodio({
               id="occupation-name"
               type="text"
               className="form-input"
+              readOnly
               {...register("patient.extension.5.valueCodeableConcept.coding.0.display", { required: true })}
             />
           </div>
@@ -538,24 +620,36 @@ export function FormularioEpisodio({
             <label htmlFor="res-country" className="form-label form-label--required">
               Codigo pais residencia
             </label>
-            <input
+            <select
               id="res-country"
-              type="text"
               className="form-input"
               {...register("patient.address.0.country", { required: true })}
-            />
+            >
+              <option value="">Seleccione pais</option>
+              {renderCatalogOptions(paises)}
+            </select>
           </div>
 
           <div className="form-group">
             <label htmlFor="municipio-code" className="form-label form-label--required">
               Codigo municipio residencia
             </label>
-            <input
+            <select
               id="municipio-code"
-              type="text"
               className="form-input"
-              {...register("patient.address.0.extension.0.valueCodeableConcept.coding.0.code", { required: true })}
-            />
+              {...register("patient.address.0.extension.0.valueCodeableConcept.coding.0.code", {
+                required: true,
+                onChange: (event) =>
+                  setCatalogDisplay(
+                    "patient.address.0.extension.0.valueCodeableConcept.coding.0.display",
+                    municipios,
+                    event.target.value
+                  )
+              })}
+            >
+              <option value="">Seleccione municipio</option>
+              {renderCatalogOptions(municipios)}
+            </select>
           </div>
 
           <div className="form-group">
@@ -566,6 +660,7 @@ export function FormularioEpisodio({
               id="municipio-name"
               type="text"
               className="form-input"
+              readOnly
               {...register("patient.address.0.extension.0.valueCodeableConcept.coding.0.display", { required: true })}
             />
           </div>
@@ -574,22 +669,45 @@ export function FormularioEpisodio({
             <label htmlFor="zona-code" className="form-label form-label--required">
               Zona territorial
             </label>
-            <input
+            <select
               id="zona-code"
-              type="text"
               className="form-input"
-              {...register("patient.address.0.extension.1.valueCodeableConcept.coding.0.code", { required: true })}
-            />
+              {...register("patient.address.0.extension.1.valueCodeableConcept.coding.0.code", {
+                required: true,
+                onChange: (event) =>
+                  setCatalogDisplay(
+                    "patient.address.0.extension.1.valueCodeableConcept.coding.0.display",
+                    zonaTerritorial,
+                    event.target.value
+                  )
+              })}
+            >
+              <option value="">Seleccione zona</option>
+              {renderCatalogOptions(zonaTerritorial)}
+            </select>
           </div>
 
           <div className="form-group">
             <label htmlFor="gender-identity" className="form-label">
               Identidad de genero
             </label>
-            <input
+            <select
               id="gender-identity"
-              type="text"
               className="form-input"
+              {...register("patient.extension.1.valueCodeableConcept.coding.0.code", {
+                onChange: (event) =>
+                  setCatalogDisplay(
+                    "patient.extension.1.valueCodeableConcept.coding.0.display",
+                    identidadGenero,
+                    event.target.value
+                  )
+              })}
+            >
+              <option value="">Seleccione identidad de genero</option>
+              {renderCatalogOptions(identidadGenero)}
+            </select>
+            <input
+              type="hidden"
               {...register("patient.extension.1.valueCodeableConcept.coding.0.display")}
             />
           </div>
@@ -598,12 +716,21 @@ export function FormularioEpisodio({
             <label htmlFor="ethnicity-code" className="form-label">
               Etnia
             </label>
-            <input
+            <select
               id="ethnicity-code"
-              type="text"
               className="form-input"
-              {...register("patient.extension.2.valueCodeableConcept.coding.0.code")}
-            />
+              {...register("patient.extension.2.valueCodeableConcept.coding.0.code", {
+                onChange: (event) =>
+                  setCatalogDisplay(
+                    "patient.extension.2.valueCodeableConcept.coding.0.display",
+                    etnia,
+                    event.target.value
+                  )
+              })}
+            >
+              <option value="">Seleccione etnia</option>
+              {renderCatalogOptions(etnia)}
+            </select>
           </div>
 
           <div className="form-group">
@@ -614,11 +741,12 @@ export function FormularioEpisodio({
               id="ethnicity-name"
               type="text"
               className="form-input"
+              readOnly
               {...register("patient.extension.2.valueCodeableConcept.coding.0.display")}
             />
           </div>
 
-          {etniaCode && etniaCode !== "NINGUNO" && (
+          {etniaCode && !etniaSinComunidadCodes.has(etniaCode) && (
             <div className="form-group">
               <label htmlFor="ethnic-community" className="form-label form-label--required">
                 Comunidad etnica
@@ -721,72 +849,132 @@ export function FormularioEpisodio({
             <label htmlFor="modalidad-code" className="form-label form-label--required">
               Modalidad tecnologia salud
             </label>
-            <input
+            <select
               id="modalidad-code"
-              type="text"
               className="form-input"
-              {...register("encounter.type.0.coding.0.code", { required: true })}
-            />
+              {...register("encounter.type.0.coding.0.code", {
+                required: true,
+                onChange: (event) =>
+                  setCatalogDisplay(
+                    "encounter.type.0.coding.0.display",
+                    modalidadTecnologiaSalud,
+                    event.target.value
+                  )
+              })}
+            >
+              <option value="">Seleccione modalidad</option>
+              {renderCatalogOptions(modalidadTecnologiaSalud)}
+            </select>
           </div>
 
           <div className="form-group">
             <label htmlFor="grupo-servicio" className="form-label form-label--required">
               Grupo servicios
             </label>
-            <input
+            <select
               id="grupo-servicio"
-              type="text"
               className="form-input"
-              {...register("encounter.serviceType.coding.0.code", { required: true })}
-            />
+              {...register("encounter.serviceType.coding.0.code", {
+                required: true,
+                onChange: (event) =>
+                  setCatalogDisplay(
+                    "encounter.serviceType.coding.0.display",
+                    grupoServicios,
+                    event.target.value
+                  )
+              })}
+            >
+              <option value="">Seleccione grupo</option>
+              {renderCatalogOptions(grupoServicios)}
+            </select>
           </div>
 
           <div className="form-group">
             <label htmlFor="entorno-code" className="form-label form-label--required">
               Entorno atencion
             </label>
-            <input
+            <select
               id="entorno-code"
-              type="text"
               className="form-input"
-              {...register("encounter.class.coding.0.code", { required: true })}
-            />
+              {...register("encounter.class.coding.0.code", {
+                required: true,
+                onChange: (event) =>
+                  setCatalogDisplay(
+                    "encounter.class.coding.0.display",
+                    entornoAtencion,
+                    event.target.value
+                  )
+              })}
+            >
+              <option value="">Seleccione entorno</option>
+              {renderCatalogOptions(entornoAtencion)}
+            </select>
           </div>
 
           <div className="form-group">
             <label htmlFor="via-ingreso" className="form-label form-label--required">
               Via ingreso
             </label>
-            <input
+            <select
               id="via-ingreso"
-              type="text"
               className="form-input"
-              {...register("encounter.extension.0.valueCodeableConcept.coding.0.code", { required: true })}
-            />
+              {...register("encounter.extension.0.valueCodeableConcept.coding.0.code", {
+                required: true,
+                onChange: (event) =>
+                  setCatalogDisplay(
+                    "encounter.extension.0.valueCodeableConcept.coding.0.display",
+                    viaIngresoUsuario,
+                    event.target.value
+                  )
+              })}
+            >
+              <option value="">Seleccione via de ingreso</option>
+              {renderCatalogOptions(viaIngresoUsuario)}
+            </select>
           </div>
 
           <div className="form-group">
             <label htmlFor="causa-code" className="form-label form-label--required">
               Causa que motiva atencion
             </label>
-            <input
+            <select
               id="causa-code"
-              type="text"
               className="form-input"
-              {...register("encounter.reasonCode.0.coding.0.code", { required: true })}
-            />
+              {...register("encounter.reasonCode.0.coding.0.code", {
+                required: true,
+                onChange: (event) =>
+                  setCatalogDisplay(
+                    "encounter.reasonCode.0.coding.0.display",
+                    causaMotivaAtencion,
+                    event.target.value
+                  )
+              })}
+            >
+              <option value="">Seleccione causa</option>
+              {renderCatalogOptions(causaMotivaAtencion)}
+            </select>
           </div>
 
           <div className="form-group">
             <label htmlFor="triage-level" className="form-label form-label--required">
               Clasificacion triage
             </label>
-            <input
+            <select
               id="triage-level"
-              type="text"
               className="form-input"
-              {...register("encounter.priority.coding.0.code", { required: true })}
-            />
+              {...register("encounter.priority.coding.0.code", {
+                required: true,
+                onChange: (event) =>
+                  setCatalogDisplay(
+                    "encounter.priority.coding.0.display",
+                    triageClasificacion,
+                    event.target.value
+                  )
+              })}
+            >
+              <option value="">Seleccione triage</option>
+              {renderCatalogOptions(triageClasificacion)}
+            </select>
           </div>
 
           {status === "finished" && (
@@ -795,14 +983,22 @@ export function FormularioEpisodio({
                 <label htmlFor="egreso-code" className="form-label form-label--required">
                   Condicion y destino egreso
                 </label>
-                <input
+                <select
                   id="egreso-code"
-                  type="text"
                   className="form-input"
                   {...register("encounter.hospitalization.dischargeDisposition.coding.0.code", {
-                    required: true
+                    required: true,
+                    onChange: (event) =>
+                      setCatalogDisplay(
+                        "encounter.hospitalization.dischargeDisposition.coding.0.display",
+                        condicionDestinoEgreso,
+                        event.target.value
+                      )
                   })}
-                />
+                >
+                  <option value="">Seleccione condicion/destino</option>
+                  {renderCatalogOptions(condicionDestinoEgreso)}
+                </select>
               </div>
 
               <div className="form-group">
@@ -852,12 +1048,22 @@ export function FormularioEpisodio({
             <label htmlFor="dx-ingreso-type" className="form-label form-label--required">
               Tipo diagnostico ingreso
             </label>
-            <input
+            <select
               id="dx-ingreso-type"
-              type="text"
               className="form-input"
-              {...register("diagnosticoIngreso.category.0.coding.0.code", { required: true })}
-            />
+              {...register("diagnosticoIngreso.category.0.coding.0.code", {
+                required: true,
+                onChange: (event) =>
+                  setCatalogDisplay(
+                    "diagnosticoIngreso.category.0.coding.0.display",
+                    tipoDiagnostico,
+                    event.target.value
+                  )
+              })}
+            >
+              <option value="">Seleccione tipo</option>
+              {renderCatalogOptions(tipoDiagnostico)}
+            </select>
           </div>
 
           {status === "finished" && (
@@ -890,12 +1096,22 @@ export function FormularioEpisodio({
                 <label htmlFor="dx-egreso-type" className="form-label form-label--required">
                   Tipo diagnostico egreso
                 </label>
-                <input
+                <select
                   id="dx-egreso-type"
-                  type="text"
                   className="form-input"
-                  {...register("diagnosticoEgreso.category.0.coding.0.code", { required: true })}
-                />
+                  {...register("diagnosticoEgreso.category.0.coding.0.code", {
+                    required: true,
+                    onChange: (event) =>
+                      setCatalogDisplay(
+                        "diagnosticoEgreso.category.0.coding.0.display",
+                        tipoDiagnostico,
+                        event.target.value
+                      )
+                  })}
+                >
+                  <option value="">Seleccione tipo</option>
+                  {renderCatalogOptions(tipoDiagnostico)}
+                </select>
               </div>
             </>
           )}
@@ -912,14 +1128,16 @@ export function FormularioEpisodio({
             >
               Tipo documento profesional alta
             </label>
-            <input
+            <select
               id="alta-doc-type"
-              type="text"
               className="form-input"
               {...register("profesionalAlta.identifier.0.type.coding.0.code", {
                 required: altaCamposObligatorios
               })}
-            />
+            >
+              <option value="">Seleccione tipo de documento</option>
+              {renderCatalogOptions(tipoDocumentoPersona)}
+            </select>
           </div>
 
           <div className="form-group">

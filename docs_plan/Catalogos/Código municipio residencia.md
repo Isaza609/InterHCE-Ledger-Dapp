@@ -1,70 +1,80 @@
-# Catálogo de Ocupaciones (CUOC - DANE Colombia)
+# Catálogo de Municipios (DIVIPOLA - DANE Colombia)
 
 ## Uso
-- Código de ocupación (personas)
-- Historia clínica, talento humano, afiliaciones
-- Basado en: **CUOC DANE (adaptación CIUO-08)**
+- Código municipio de residencia
+- Direcciones en salud (Patient.address)
+- Estándar oficial: **DIVIPOLA - DANE**
 
 ---
 
 ## Estructura del código
 
-El código CUOC tiene estructura jerárquica:
+El código DIVIPOLA tiene **5 dígitos**:
 
-| Nivel | Descripción            | Ejemplo |
-|------|------------------------|---------|
-| 1 dígito | Gran grupo          | 2       |
-| 2 dígitos | Subgrupo principal | 21      |
-| 3 dígitos | Subgrupo           | 211     |
-| 4 dígitos | Ocupación          | 2111    |
-
----
-
-## Gran Grupos (Nivel 1)
-
-| Código | Nombre |
-|--------|--------|
-| 1 | Directores y gerentes |
-| 2 | Profesionales científicos e intelectuales |
-| 3 | Técnicos y profesionales de nivel medio |
-| 4 | Personal de apoyo administrativo |
-| 5 | Trabajadores de servicios y vendedores |
-| 6 | Agricultores y trabajadores agropecuarios |
-| 7 | Oficiales, operarios y artesanos |
-| 8 | Operadores de máquinas y ensambladores |
-| 9 | Ocupaciones elementales |
-| 0 | Ocupaciones militares |
+| Parte | Descripción        | Ejemplo |
+|------|--------------------|---------|
+| 2 dígitos | Departamento | 19 (Cauca) |
+| 3 dígitos | Municipio    | 001 (Popayán) |
+| **Total** | Código completo | **19001** |
 
 ---
 
-## Ejemplos de Ocupaciones (Nivel 4)
+## Ejemplos de Departamentos
 
-| Código | Ocupación |
-|--------|-----------|
-| 1111 | Directores generales |
-| 1120 | Directores financieros |
-| 1219 | Gerentes de servicios no clasificados |
-| 2111 | Físicos y astrónomos |
-| 2131 | Biólogos, botánicos, zoólogos |
-| 2145 | Ingenieros químicos |
-| 2211 | Médicos generales |
-| 2212 | Médicos especialistas |
-| 2221 | Profesionales de enfermería |
-| 2512 | Desarrolladores de software |
-| 2521 | Diseñadores de bases de datos |
-| 2611 | Abogados |
-| 2631 | Economistas |
-| 2635 | Trabajadores sociales |
-| 3112 | Técnicos en ingeniería civil |
-| 3211 | Técnicos en laboratorio clínico |
-| 3312 | Oficiales de crédito |
-| 4110 | Empleados de oficina |
-| 5120 | Cocineros |
-| 5131 | Meseros |
-| 6111 | Agricultores |
-| 7112 | Albañiles |
-| 7212 | Soldadores |
-| 8112 | Operadores de plantas |
-| 8322 | Conductores de automóviles |
-| 9112 | Personal de limpieza |
-| 9211 | Trabajadores agrícolas no calificados |
+| Código | Departamento |
+|--------|-------------|
+| 05 | Antioquia |
+| 08 | Atlántico |
+| 11 | Bogotá D.C. |
+| 13 | Bolívar |
+| 15 | Boyacá |
+| 17 | Caldas |
+| 18 | Caquetá |
+| 19 | Cauca |
+| 20 | Cesar |
+| 23 | Córdoba |
+| 25 | Cundinamarca |
+| 27 | Chocó |
+| 41 | Huila |
+| 44 | La Guajira |
+| 47 | Magdalena |
+| 50 | Meta |
+| 52 | Nariño |
+| 54 | Norte de Santander |
+| 63 | Quindío |
+| 66 | Risaralda |
+| 68 | Santander |
+| 70 | Sucre |
+| 73 | Tolima |
+| 76 | Valle del Cauca |
+
+---
+
+## Ejemplos de Municipios
+
+| Código | Municipio | Departamento |
+|--------|----------|-------------|
+| 11001 | Bogotá D.C. | Bogotá D.C. |
+| 05001 | Medellín | Antioquia |
+| 08001 | Barranquilla | Atlántico |
+| 13001 | Cartagena | Bolívar |
+| 15001 | Tunja | Boyacá |
+| 17001 | Manizales | Caldas |
+| 18001 | Florencia | Caquetá |
+| 19001 | Popayán | Cauca |
+| 20001 | Valledupar | Cesar |
+| 23001 | Montería | Córdoba |
+| 25001 | Agua de Dios | Cundinamarca |
+| 41001 | Neiva | Huila |
+| 44001 | Riohacha | La Guajira |
+| 47001 | Santa Marta | Magdalena |
+| 50001 | Villavicencio | Meta |
+| 52001 | Pasto | Nariño |
+| 54001 | Cúcuta | Norte de Santander |
+| 63001 | Armenia | Quindío |
+| 66001 | Pereira | Risaralda |
+| 68001 | Bucaramanga | Santander |
+| 70001 | Sincelejo | Sucre |
+| 73001 | Ibagué | Tolima |
+| 76001 | Cali | Valle del Cauca |
+

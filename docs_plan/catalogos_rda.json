@@ -197,48 +197,169 @@
       "rda": "1.1 / 11.1",
       "fuente": "ISO 3166-1 alpha-2",
       "tipo": "catalogo",
-      "valores": []
+      "valores": [
+        { "code": "CO", "display": "Colombia" },
+        { "code": "US", "display": "Estados Unidos" },
+        { "code": "MX", "display": "Mexico" },
+        { "code": "ES", "display": "España" },
+        { "code": "AR", "display": "Argentina" },
+        { "code": "CL", "display": "Chile" },
+        { "code": "PE", "display": "Peru" },
+        { "code": "EC", "display": "Ecuador" },
+        { "code": "VE", "display": "Venezuela" },
+        { "code": "BR", "display": "Brasil" },
+        { "code": "CA", "display": "Canada" },
+        { "code": "FR", "display": "Francia" },
+        { "code": "DE", "display": "Alemania" },
+        { "code": "IT", "display": "Italia" },
+        { "code": "GB", "display": "Reino Unido" },
+        { "code": "PT", "display": "Portugal" },
+        { "code": "NL", "display": "Paises Bajos" },
+        { "code": "BE", "display": "Belgica" },
+        { "code": "CH", "display": "Suiza" },
+        { "code": "AU", "display": "Australia" },
+        { "code": "CN", "display": "China" },
+        { "code": "JP", "display": "Japon" },
+        { "code": "KR", "display": "Corea del Sur" },
+        { "code": "IN", "display": "India" },
+        { "code": "RU", "display": "Rusia" },
+        { "code": "ZA", "display": "Sudafrica" }
+      ]
     },
     "ocupacionCuocDane": {
       "rda": "7.1",
       "fuente": "DANE CUOC",
       "tipo": "catalogo",
-      "valores": []
+      "valores": [
+        { "code": "1111", "display": "Directores generales" },
+        { "code": "1120", "display": "Directores financieros" },
+        { "code": "1219", "display": "Gerentes de servicios no clasificados" },
+        { "code": "2111", "display": "Fisicos y astronomos" },
+        { "code": "2131", "display": "Biologos, botanicos, zoologos" },
+        { "code": "2145", "display": "Ingenieros quimicos" },
+        { "code": "2211", "display": "Medicos generales" },
+        { "code": "2212", "display": "Medicos especialistas" },
+        { "code": "2221", "display": "Profesionales de enfermeria" },
+        { "code": "2512", "display": "Desarrolladores de software" },
+        { "code": "2521", "display": "Diseñadores de bases de datos" },
+        { "code": "2611", "display": "Abogados" },
+        { "code": "2631", "display": "Economistas" },
+        { "code": "2635", "display": "Trabajadores sociales" },
+        { "code": "3112", "display": "Tecnicos en ingenieria civil" },
+        { "code": "3211", "display": "Tecnicos en laboratorio clinico" },
+        { "code": "3312", "display": "Oficiales de credito" },
+        { "code": "4110", "display": "Empleados de oficina" },
+        { "code": "5120", "display": "Cocineros" },
+        { "code": "5131", "display": "Meseros" },
+        { "code": "6111", "display": "Agricultores" },
+        { "code": "7112", "display": "Albañiles" },
+        { "code": "7212", "display": "Soldadores" },
+        { "code": "8112", "display": "Operadores de plantas" },
+        { "code": "8322", "display": "Conductores de automoviles" },
+        { "code": "9112", "display": "Personal de limpieza" },
+        { "code": "9211", "display": "Trabajadores agricolas no calificados" }
+      ]
     },
     "municipiosDivipolaDane": {
       "rda": "12.1",
       "fuente": "DANE DIVIPOLA",
       "tipo": "catalogo",
-      "valores": []
+      "valores": [
+        { "code": "11001", "display": "Bogota D.C." },
+        { "code": "05001", "display": "Medellin" },
+        { "code": "08001", "display": "Barranquilla" },
+        { "code": "13001", "display": "Cartagena" },
+        { "code": "15001", "display": "Tunja" },
+        { "code": "17001", "display": "Manizales" },
+        { "code": "18001", "display": "Florencia" },
+        { "code": "19001", "display": "Popayan" },
+        { "code": "20001", "display": "Valledupar" },
+        { "code": "23001", "display": "Monteria" },
+        { "code": "25001", "display": "Agua de Dios" },
+        { "code": "41001", "display": "Neiva" },
+        { "code": "44001", "display": "Riohacha" },
+        { "code": "47001", "display": "Santa Marta" },
+        { "code": "50001", "display": "Villavicencio" },
+        { "code": "52001", "display": "Pasto" },
+        { "code": "54001", "display": "Cucuta" },
+        { "code": "63001", "display": "Armenia" },
+        { "code": "66001", "display": "Pereira" },
+        { "code": "68001", "display": "Bucaramanga" },
+        { "code": "70001", "display": "Sincelejo" },
+        { "code": "73001", "display": "Ibague" },
+        { "code": "76001", "display": "Cali" }
+      ]
     },
     "modalidadTecnologiaSalud": {
       "rda": "18.1",
       "fuente": "Catalogo Minsalud",
       "tipo": "catalogo",
-      "valores": []
+      "valores": [
+        { "code": "01", "display": "Intramural" },
+        { "code": "02", "display": "Extramural" },
+        { "code": "03", "display": "Telemedicina" },
+        { "code": "04", "display": "Domiciliaria" }
+      ]
     },
     "grupoServicios": {
       "rda": "18.2",
       "fuente": "Catalogo grupos de servicios",
       "tipo": "catalogo",
-      "valores": []
+      "valores": [
+        { "code": "01", "display": "Consulta externa" },
+        { "code": "02", "display": "Urgencias" },
+        { "code": "03", "display": "Hospitalizacion" },
+        { "code": "04", "display": "Apoyo diagnostico y complementacion terapeutica" },
+        { "code": "05", "display": "Quirurgicos" },
+        { "code": "06", "display": "Proteccion especifica y deteccion temprana" },
+        { "code": "07", "display": "Rehabilitacion" },
+        { "code": "08", "display": "Atencion domiciliaria" },
+        { "code": "09", "display": "Telemedicina" },
+        { "code": "10", "display": "Otros servicios" }
+      ]
     },
     "viaIngresoUsuario": {
       "rda": "20",
       "fuente": "Catalogo vias de ingreso",
       "tipo": "catalogo",
-      "valores": []
+      "valores": [
+        { "code": "01", "display": "Demanda espontanea" },
+        { "code": "02", "display": "Remision" },
+        { "code": "03", "display": "Referencia" },
+        { "code": "04", "display": "Urgencias" },
+        { "code": "05", "display": "Programado" },
+        { "code": "06", "display": "Traslado" }
+      ]
     },
     "causaMotivaAtencion": {
       "rda": "21",
       "fuente": "Catalogo causas",
       "tipo": "catalogo",
-      "valores": []
+      "valores": [
+        { "code": "01", "display": "Promocion y prevencion" },
+        { "code": "02", "display": "Enfermedad general" },
+        { "code": "03", "display": "Enfermedad laboral" },
+        { "code": "04", "display": "Accidente de trabajo" },
+        { "code": "05", "display": "Accidente de transito" },
+        { "code": "06", "display": "Evento catastrofico" },
+        { "code": "07", "display": "Lesion por agresion" },
+        { "code": "08", "display": "Lesion autoinfligida" },
+        { "code": "09", "display": "Otra causa" }
+      ]
     },
     "diagnosticosCie10": {
       "rda": "23.1 / 37.1",
-      "fuente": "CIE-10",
+      "fuente": "CIE-10 (tabla de referencia externa)",
       "tipo": "catalogo",
+      "archivoFuente": "docs_plan/Catalogos/TablaReferencia_CIE10__1.csv",
+      "tamanoAproxRegistros": 12634,
+      "columnas": {
+        "code": "Codigo",
+        "display": "Nombre",
+        "descripcion": "Descripcion",
+        "habilitado": "Habilitado"
+      },
+      "estrategiaUso": "No cargar completo en JSON de catalogos; consumir por busqueda paginada/autocomplete.",
       "valores": []
     },
     "diagnosticosCie11": {
@@ -251,25 +372,57 @@
       "rda": "41",
       "fuente": "Catalogo condicion/destino egreso",
       "tipo": "catalogo",
-      "valores": []
+      "valores": [
+        { "code": "01", "display": "Domicilio" },
+        { "code": "02", "display": "Remision a otro prestador" },
+        { "code": "03", "display": "Hospitalizacion" },
+        { "code": "04", "display": "Fallecido" },
+        { "code": "05", "display": "Alta voluntaria" },
+        { "code": "06", "display": "Fuga" },
+        { "code": "07", "display": "Traslado" },
+        { "code": "08", "display": "Otro" }
+      ]
     },
     "prestadoresReps": {
       "rda": "16 / 44",
       "fuente": "REPS",
       "tipo": "catalogo",
+      "estrategiaUso": "Catalogo dinamico externo (REPS). Consultar por API o carga periodica; no mantener lista fija local.",
+      "estructuraEsperada": {
+        "codigoHabilitacion": "string",
+        "nombrePrestador": "string",
+        "nit": "string",
+        "municipio": "string",
+        "estado": "ACTIVO|INACTIVO"
+      },
       "valores": []
     },
     "identidadGenero": {
       "rda": "6 (opcional)",
       "fuente": "Catalogo Minsalud",
       "tipo": "catalogo",
-      "valores": []
+      "valores": [
+        { "code": "M", "display": "Masculino" },
+        { "code": "F", "display": "Femenino" },
+        { "code": "I", "display": "Intersexual" },
+        { "code": "T", "display": "Transgenero" },
+        { "code": "NB", "display": "No binario" },
+        { "code": "O", "display": "Otro" },
+        { "code": "NA", "display": "No aplica" },
+        { "code": "NS", "display": "No sabe / No informa" }
+      ]
     },
     "etnia": {
       "rda": "8/9 (segun implementacion local)",
       "fuente": "Catalogo etnico oficial",
       "tipo": "catalogo",
       "valores": [
+        { "code": "1", "display": "Indigena" },
+        { "code": "2", "display": "Rom (Gitano)" },
+        { "code": "3", "display": "Raizal (Archipielago de San Andres y Providencia)" },
+        { "code": "4", "display": "Palenquero de San Basilio" },
+        { "code": "5", "display": "Negro, mulato, afrocolombiano o afrodescendiente" },
+        { "code": "6", "display": "Ninguno de los anteriores" },
         { "code": "NINGUNO", "display": "Ninguno" }
       ]
     }
