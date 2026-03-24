@@ -30,6 +30,7 @@ export const rdaCatalogos = {
   triageClasificacion: readCatalog("triageClasificacion"),
   condicionDestinoEgreso: readCatalog("condicionDestinoEgreso"),
   tipoDiagnostico: readCatalog("tipoDiagnostico"),
+  diagnosticosCie10: readCatalog("diagnosticosCie10"),
   identidadGenero: readCatalog("identidadGenero"),
   etnia: readCatalog("etnia")
 };

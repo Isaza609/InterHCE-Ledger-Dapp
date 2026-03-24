@@ -1,7 +1,6 @@
 import { Router } from "express";
 import { verificarConexionBlockchainReal } from "../infra/blockchainTraceService";
 import {
-  activarContratosSimulados,
   configurarIpsSimuladas,
   listarIpsSimuladas,
   obtenerEstadoInfraestructura
@@ -49,11 +48,3 @@ infraRouter.post("/ips", (req, res) => {
   });
 });
 
-infraRouter.post("/contracts/mock-deploy", (_req, res) => {
-  activarContratosSimulados();
-  return res.status(200).json({
-    code: "CONTRACTS_SIMULATED",
-    message: "Contratos marcados como operativos en modo simulado (HU1-E5).",
-    data: obtenerEstadoInfraestructura().blockchain
-  });
-});

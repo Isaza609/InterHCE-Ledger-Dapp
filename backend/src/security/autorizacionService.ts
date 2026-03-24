@@ -6,7 +6,8 @@ const ROLES_VALIDOS: RolUsuario[] = [
   "profesional_salud",
   "admin_ips",
   "paciente",
-  "auditor"
+  "auditor",
+  "super_admin"
 ];
 
 export function obtenerActorDesdeRequest(req: Request): ActorContexto | null {

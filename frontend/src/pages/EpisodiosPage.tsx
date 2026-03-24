@@ -5,6 +5,32 @@ import { sesionTieneCapacidad } from "@/shared/auth/capabilities";
 import { buscarEpisodiosPorPaciente, listarTodosLosEpisodios } from "@/shared/services/api";
 import type { EpisodioResumen } from "@/shared/services/api";
 
+function buildActualizarHref(ep: EpisodioResumen): string {
+  const params = new URLSearchParams();
+  if (ep.patientIdentifier?.trim()) params.set("patient", ep.patientIdentifier.trim());
+  params.set("episodeId", ep.episodeId);
+  return `/episodios/actualizar?${params.toString()}`;
+}
+
+function buildTrazabilidadHref(ep: EpisodioResumen): string {
+  const params = new URLSearchParams();
+  params.set("episodeId", ep.episodeId);
+  return `/episodios/trazabilidad?${params.toString()}`;
+}
+
+function accessScopeLabel(scope?: EpisodioResumen["accessScope"]): string {
+  switch (scope) {
+    case "propio":
+      return "Caso propio";
+    case "autorizado":
+      return "Compartido con su IPS";
+    case "auditoria":
+      return "Vista de auditoría";
+    default:
+      return "Acceso autorizado";
+  }
+}
+
 function EpisodioList({
   episodios,
   titulo,
@@ -44,6 +70,9 @@ function EpisodioList({
                 <small>
                   {ep.patientIdentifier ?? "Documento no disponible"} · {ep.prestadorOrigenId ?? "IPS no disponible"}
                 </small>
+                <small>
+                  {accessScopeLabel(ep.accessScope)} · IPS propietaria: {ep.ownerIpsId ?? ep.prestadorOrigenId ?? "No disponible"}
+                </small>
                 {ep.documentHash && (
                   <small>
                     Hash actual: <code>{ep.documentHash}</code>
@@ -58,12 +87,12 @@ function EpisodioList({
                     </Link>
                   )}
                   {canUpdateEpisode && (
-                    <Link to="/episodios/actualizar" className="btn btn--ghost">
+                    <Link to={buildActualizarHref(ep)} className="btn btn--ghost">
                       Actualizar
                     </Link>
                   )}
                   {canViewTrace && (
-                    <Link to="/episodios/trazabilidad" className="btn btn--ghost">
+                    <Link to={buildTrazabilidadHref(ep)} className="btn btn--ghost">
                       Trazabilidad
                     </Link>
                   )}
@@ -159,31 +188,27 @@ export function EpisodiosPage() {
   };
 
   return (
-    <div className="container">
-      <section className="page-banner">
-        <div>
-          <p className="eyebrow">Continuidad asistencial</p>
-          <h1 className="page-title">Pacientes y episodios</h1>
-          <p className="page-subtitle">
-            Encuentre rápidamente el episodio correcto, consulte su documento y continúe el flujo
-            de atención o auditoría.
-          </p>
+    <>
+      <div className="page-header">
+        <div className="page-header__row">
+          <div>
+            <h1 className="page-title">Episodios clínicos</h1>
+            <p className="page-subtitle">
+              Busque, consulte y gestione episodios de atención registrados en la plataforma.
+            </p>
+          </div>
+          <div className="page-actions">
+            {canCreateEpisode && (
+              <Link to="/episodios/crear" className="btn btn--primary">Nuevo episodio</Link>
+            )}
+            {canUpdateEpisode && (
+              <Link to="/episodios/actualizar" className="btn btn--secondary">Actualizar</Link>
+            )}
+          </div>
         </div>
-        <div className="page-banner__actions">
-          {canCreateEpisode && (
-            <Link to="/episodios/crear" className="btn btn--primary">
-              Nuevo episodio
-            </Link>
-          )}
-          {canUpdateEpisode && (
-            <Link to="/episodios/actualizar" className="btn btn--secondary">
-              Actualizar episodio
-            </Link>
-          )}
-        </div>
-      </section>
+      </div>
 
-      <section className="card card--elevated" style={{ marginBottom: "1rem" }}>
+      <section className="card card--elevated" style={{ marginBottom: 16 }}>
         <div className="section-head section-head--tight">
           <div>
             <h2 className="section-title">Buscar por documento del paciente</h2>
@@ -217,14 +242,14 @@ export function EpisodiosPage() {
           </div>
         </div>
         {message && (
-          <div className={searchResults.length ? "alert alert--success" : "alert alert--info"} style={{ marginTop: "1rem" }}>
+          <div className={searchResults.length ? "alert alert--success" : "alert alert--info"} style={{ marginTop: 12 }}>
             {message}
           </div>
         )}
       </section>
 
       {searchResults.length > 0 && (
-        <div style={{ marginBottom: "1rem" }}>
+        <div style={{ marginBottom: 16 }}>
           <EpisodioList
             episodios={searchResults}
             titulo="Resultado de búsqueda"
@@ -246,6 +271,6 @@ export function EpisodiosPage() {
         canViewTrace={canViewTrace}
         canUpdateEpisode={canUpdateEpisode}
       />
-    </div>
+    </>
   );
 }

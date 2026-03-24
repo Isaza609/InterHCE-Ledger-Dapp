@@ -34,6 +34,13 @@ docker compose up -d hapi-fhir
 - Interfaz web: http://localhost:8080/  
 - API FHIR: http://localhost:8080/fhir/
 
+La configuracion de `docker-compose.yml` ahora usa PostgreSQL con volumen persistente para que los recursos FHIR no se pierdan al reiniciar la maquina o recrear el contenedor.
+
+Importante:
+
+- No uses `docker compose down -v` si quieres conservar la base de datos de HAPI FHIR.
+- `docker compose up -d hapi-fhir` levantara tambien la base `hapi-fhir-db` por dependencia.
+
 ### 3. Configurar el backend
 
 ```bash
@@ -48,6 +55,14 @@ FHIR_BASE_URL=http://localhost:8080/fhir
 ```
 
 Si no defines `FHIR_BASE_URL`, el backend usará almacenamiento en memoria (los datos se pierden al reiniciar).
+
+Ademas, el backend persiste en `backend/data/` el estado complementario del producto para que no se pierdan al reiniciar:
+
+- lifecycle de episodios,
+- permisos entre IPS,
+- trazabilidad consultada por la app.
+
+Ese directorio se genera automaticamente y no se versiona en git.
 
 ### 4. Instalar y ejecutar el backend
 

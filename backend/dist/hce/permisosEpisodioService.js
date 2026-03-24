@@ -7,7 +7,25 @@ exports.otorgarPermisoEpisodio = otorgarPermisoEpisodio;
 exports.revocarPermisoEpisodio = revocarPermisoEpisodio;
 exports.puedeAccederDocumento = puedeAccederDocumento;
 exports.listarPermisosEpisodio = listarPermisosEpisodio;
-const permisosPorEpisodio = new Map();
+exports.actorPuedeActualizarEpisodioConContinuidad = actorPuedeActualizarEpisodioConContinuidad;
+exports.listarEpisodiosAccesiblesPorIps = listarEpisodiosAccesiblesPorIps;
+const jsonFileStore_1 = require("../shared/jsonFileStore");
+const PERMISOS_STORE_FILE = "episodio-permisos.json";
+const permisosPorEpisodio = new Map((0, jsonFileStore_1.loadJsonFile)(PERMISOS_STORE_FILE, []).map((item) => [
+    item.episodeId,
+    {
+        ownerIpsId: item.ownerIpsId,
+        permissions: new Map(item.permissions.map((permission) => [permission.targetIpsId, permission]))
+    }
+]));
+function persistPermisosStore() {
+    const serialized = [...permisosPorEpisodio.entries()].map(([episodeId, registro]) => ({
+        episodeId,
+        ownerIpsId: registro.ownerIpsId,
+        permissions: [...registro.permissions.values()]
+    }));
+    (0, jsonFileStore_1.saveJsonFile)(PERMISOS_STORE_FILE, serialized);
+}
 function nowIso() {
     return new Date().toISOString();
 }
@@ -33,6 +51,7 @@ function registrarPropietarioEpisodio(episodeId, ipsOwner) {
         ])
     };
     permisosPorEpisodio.set(episodeId, registro);
+    persistPermisosStore();
 }
 function obtenerPropietarioEpisodio(episodeId) {
     return permisosPorEpisodio.get(episodeId)?.ownerIpsId;
@@ -80,6 +99,7 @@ function otorgarPermisoEpisodio(episodeId, actorIps, targetIps) {
         ultimoCambioEn: timestamp
     };
     registro.permissions.set(targetIps, permission);
+    persistPermisosStore();
     return { ok: true, permission: { ...permission } };
 }
 function revocarPermisoEpisodio(episodeId, actorIps, targetIps) {
@@ -121,6 +141,7 @@ function revocarPermisoEpisodio(episodeId, actorIps, targetIps) {
         ultimoCambioEn: timestamp
     };
     registro.permissions.set(targetIps, permission);
+    persistPermisosStore();
     return { ok: true, permission: { ...permission } };
 }
 function puedeAccederDocumento(episodeId, ipsId, rol) {
@@ -138,4 +159,21 @@ function listarPermisosEpisodio(episodeId) {
     return obtenerEstadosPermisosEpisodio(episodeId)
         .filter((item) => item.activo)
         .map((item) => item.targetIpsId);
+}
+function actorPuedeActualizarEpisodioConContinuidad(episodeId, ipsId, rol) {
+    if (rol !== "profesional_salud" && rol !== "admin_ips") {
+        return false;
+    }
+    return puedeAccederDocumento(episodeId, ipsId, rol);
+}
+function listarEpisodiosAccesiblesPorIps(ipsId, rol) {
+    if (rol === "auditor") {
+        return [...permisosPorEpisodio.keys()].sort((a, b) => a.localeCompare(b));
+    }
+    if (!ipsId)
+        return [];
+    return [...permisosPorEpisodio.entries()]
+        .filter(([, registro]) => Boolean(registro.permissions.get(ipsId)?.activo))
+        .map(([episodeId]) => episodeId)
+        .sort((a, b) => a.localeCompare(b));
 }

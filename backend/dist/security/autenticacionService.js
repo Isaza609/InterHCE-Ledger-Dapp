@@ -45,7 +45,8 @@ function iniciarSesion(identificador, password) {
     sesiones.set(registro.token, registro);
     return {
         ok: true,
-        session: construirSesion(auth.user, registro)
+        session: construirSesion(auth.user, registro),
+        requiereCambioPassword: auth.user.requiereCambioPassword ?? false
     };
 }
 function obtenerSesionPorToken(token) {

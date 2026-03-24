@@ -1,0 +1,408 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.generarDashboardEvaluacionPrototipo = generarDashboardEvaluacionPrototipo;
+const perf_hooks_1 = require("perf_hooks");
+const accesoUsuariosService_1 = require("../access/accesoUsuariosService");
+const documentoClinicoService_1 = require("../hce/documentoClinicoService");
+const episodioLifecycleService_1 = require("../hce/episodioLifecycleService");
+const permisosEpisodioService_1 = require("../hce/permisosEpisodioService");
+const trazabilidadService_1 = require("../hce/trazabilidadService");
+const validationService_1 = require("../hce/validationService");
+const blockchainTraceService_1 = require("../infra/blockchainTraceService");
+const infraestructuraService_1 = require("../infra/infraestructuraService");
+function roundMetric(value) {
+    return Number(value.toFixed(2));
+}
+function average(values) {
+    if (!values.length)
+        return 0;
+    return values.reduce((total, value) => total + value, 0) / values.length;
+}
+function standardDeviation(values) {
+    if (values.length <= 1)
+        return 0;
+    const avg = average(values);
+    const variance = average(values.map((value) => (value - avg) ** 2));
+    return Math.sqrt(variance);
+}
+function buildConsistency(values) {
+    if (!values.length)
+        return "baja";
+    const avg = average(values);
+    if (avg === 0)
+        return "alta";
+    const variation = standardDeviation(values) / avg;
+    if (variation <= 0.1)
+        return "alta";
+    if (variation <= 0.25)
+        return "media";
+    return "baja";
+}
+function buildTimingSummary(label, values) {
+    if (!values.length) {
+        return {
+            label,
+            samples: 0,
+            averageMs: 0,
+            minMs: 0,
+            maxMs: 0,
+            standardDeviationMs: 0,
+            consistency: "baja"
+        };
+    }
+    return {
+        label,
+        samples: values.length,
+        averageMs: roundMetric(average(values)),
+        minMs: roundMetric(Math.min(...values)),
+        maxMs: roundMetric(Math.max(...values)),
+        standardDeviationMs: roundMetric(standardDeviation(values)),
+        consistency: buildConsistency(values)
+    };
+}
+async function medirOperacion(fn) {
+    const start = perf_hooks_1.performance.now();
+    const result = await fn();
+    const elapsedMs = perf_hooks_1.performance.now() - start;
+    return {
+        elapsedMs: roundMetric(elapsedMs),
+        result
+    };
+}
+async function measureTimingScenario(episodeId, runs) {
+    const metadataOnChainMs = [];
+    const documentOffChainMs = [];
+    const integrityVerificationMs = [];
+    for (let index = 0; index < runs; index += 1) {
+        const metadataMeasure = await medirOperacion(async () => (0, documentoClinicoService_1.obtenerRegistroOnChainMetadata)(episodeId));
+        if (!metadataMeasure.result)
+            return null;
+        metadataOnChainMs.push(metadataMeasure.elapsedMs);
+        const documentMeasure = await medirOperacion(async () => (0, documentoClinicoService_1.recuperarDocumentoClinico)(episodeId));
+        if (!documentMeasure.result)
+            return null;
+        documentOffChainMs.push(documentMeasure.elapsedMs);
+        const integrityMeasure = await medirOperacion(async () => {
+            const [offChainHash, latestTrace] = await Promise.all([
+                (0, documentoClinicoService_1.obtenerHashEpisodio)(episodeId),
+                Promise.resolve((0, trazabilidadService_1.obtenerUltimoHashRegistradoOnChain)(episodeId))
+            ]);
+            return {
+                offChainHash,
+                onChainHash: latestTrace.documentHash
+            };
+        });
+        if (!integrityMeasure.result.offChainHash || !integrityMeasure.result.onChainHash)
+            return null;
+        integrityVerificationMs.push(integrityMeasure.elapsedMs);
+    }
+    return {
+        episodeId,
+        runs,
+        metadataOnChainMs,
+        documentOffChainMs,
+        integrityVerificationMs
+    };
+}
+function buildTraceLabel(eventType) {
+    switch (eventType) {
+        case "EPISODE_CREATED":
+            return "Creación de episodio";
+        case "EPISODE_UPDATED":
+            return "Actualización de episodio";
+        case "PERMISSION_GRANTED":
+            return "Otorgamiento de permiso";
+        case "PERMISSION_REVOKED":
+            return "Revocación de permiso";
+        case "AUDITABLE_ACCESS":
+            return "Acceso auditable";
+        case "INTEGRITY_CHECK":
+            return "Verificación de integridad";
+        default:
+            return eventType;
+    }
+}
+async function generarDashboardEvaluacionPrototipo(input) {
+    const generatedAt = new Date().toISOString();
+    const runs = Math.max(1, Math.min(Number(input?.runs ?? 3), 5));
+    const infraestructura = (0, infraestructuraService_1.obtenerEstadoInfraestructura)();
+    const blockchainConfig = (0, blockchainTraceService_1.obtenerConfiguracionBlockchainReal)();
+    const episodios = await (0, documentoClinicoService_1.listarTodosLosEpisodios)();
+    const traceEvents = (0, trazabilidadService_1.listarEventosTrazabilidad)();
+    const roles = (0, accesoUsuariosService_1.listarRolesSistema)();
+    const scenarioSummaries = await Promise.all(episodios.map(async (episodio) => {
+        const lifecycle = (0, episodioLifecycleService_1.obtenerRegistroLifecycleEpisodio)(episodio.episodeId);
+        const permissions = (0, permisosEpisodioService_1.obtenerEstadosPermisosEpisodio)(episodio.episodeId);
+        const events = traceEvents.filter((item) => item.episodeId === episodio.episodeId);
+        const latestHash = (0, trazabilidadService_1.obtenerUltimoHashRegistradoOnChain)(episodio.episodeId);
+        const documento = await (0, documentoClinicoService_1.recuperarDocumentoClinico)(episodio.episodeId);
+        const ownerIpsId = (0, permisosEpisodioService_1.obtenerPropietarioEpisodio)(episodio.episodeId);
+        const ipsInvolucradas = new Set();
+        if (ownerIpsId) {
+            ipsInvolucradas.add(ownerIpsId);
+        }
+        for (const version of lifecycle?.versiones ?? []) {
+            if (version.actor.ipsId) {
+                ipsInvolucradas.add(version.actor.ipsId);
+            }
+        }
+        for (const permission of permissions) {
+            ipsInvolucradas.add(permission.sourceIpsId);
+            ipsInvolucradas.add(permission.targetIpsId);
+        }
+        const offChainHash = documento ? (0, documentoClinicoService_1.calcularHashDocumento)(documento.document) : undefined;
+        const integrityValid = Boolean(latestHash.documentHash &&
+            offChainHash &&
+            latestHash.documentHash === offChainHash);
+        const modelValidation = documento ? (0, validationService_1.validateEpisodioClinico)(documento.document) : { valid: false, issues: [] };
+        return {
+            episodeId: episodio.episodeId,
+            ownerIpsId,
+            eventId: lifecycle?.eventoUrgencias.eventoUrgenciasId,
+            versionCount: lifecycle?.versiones.length ?? 0,
+            traceEventCount: events.length,
+            activePermissions: permissions.filter((item) => item.activo).length,
+            ipsInvolucradas: [...ipsInvolucradas].filter(Boolean).sort((a, b) => a.localeCompare(b)),
+            hasCrossIpsContinuity: (lifecycle?.versiones ?? []).some((item) => item.actor.ipsId && item.actor.ipsId !== ownerIpsId),
+            hasPermissionFlow: permissions.some((item) => item.targetIpsId !== item.sourceIpsId),
+            integrityStatus: integrityValid ? "integro" : latestHash.documentHash || offChainHash ? "revision_requerida" : "sin_evidencia",
+            consistencyStatus: integrityValid &&
+                Boolean(lifecycle?.versiones.length) &&
+                Boolean(events.length)
+                ? "consistente"
+                : "con_riesgos",
+            modelValidation
+        };
+    }));
+    const measuredScenarios = (await Promise.all(scenarioSummaries.slice(0, 5).map((item) => measureTimingScenario(item.episodeId, runs)))).filter((item) => Boolean(item));
+    const metadataSamples = measuredScenarios.flatMap((item) => item.metadataOnChainMs);
+    const documentSamples = measuredScenarios.flatMap((item) => item.documentOffChainMs);
+    const integritySamples = measuredScenarios.flatMap((item) => item.integrityVerificationMs);
+    const traceMetricsByType = traceEvents.reduce((accumulator, event) => {
+        const key = event.eventType;
+        if (!accumulator[key]) {
+            accumulator[key] = {
+                count: 0,
+                confirmationMs: [],
+                gasUsed: [],
+                transactionCostWei: [],
+                emitters: new Set(),
+                roles: new Set(),
+                metricsMode: "no_disponible"
+            };
+        }
+        const entry = accumulator[key];
+        entry.count += 1;
+        entry.roles.add(event.actor.rol);
+        entry.emitters.add(event.evidence.emitterId ??
+            event.actor.usuarioId ??
+            event.actor.ipsId ??
+            "sin-identificador");
+        if (typeof event.evidence.confirmationMs === "number") {
+            entry.confirmationMs.push(event.evidence.confirmationMs);
+        }
+        if (event.evidence.gasUsed) {
+            entry.gasUsed.push(Number(event.evidence.gasUsed));
+        }
+        if (event.evidence.transactionCostWei) {
+            entry.transactionCostWei.push(Number(event.evidence.transactionCostWei));
+        }
+        if (event.evidence.metricsMode === "measured" || event.evidence.metricsMode === "estimated") {
+            entry.metricsMode = event.evidence.metricsMode;
+        }
+        return accumulator;
+    }, {});
+    const blockchainOperations = Object.entries(traceMetricsByType)
+        .map(([eventType, item]) => ({
+        eventType,
+        label: buildTraceLabel(eventType),
+        count: item.count,
+        metricsMode: item.metricsMode === "measured" ? "medido" : item.metricsMode === "estimated" ? "estimado" : "no_disponible",
+        averageConfirmationMs: item.confirmationMs.length ? roundMetric(average(item.confirmationMs)) : undefined,
+        averageGasUsed: item.gasUsed.length ? roundMetric(average(item.gasUsed)) : undefined,
+        averageTransactionCostWei: item.transactionCostWei.length ? roundMetric(average(item.transactionCostWei)) : undefined,
+        emitters: [...item.emitters],
+        roles: [...item.roles]
+    }))
+        .sort((left, right) => right.count - left.count);
+    const mostExpensiveOperation = blockchainOperations
+        .filter((item) => typeof item.averageTransactionCostWei === "number")
+        .sort((left, right) => (right.averageTransactionCostWei ?? 0) - (left.averageTransactionCostWei ?? 0))[0];
+    const crossIpsEpisodes = scenarioSummaries.filter((item) => item.ipsInvolucradas.length >= 2);
+    const consistentEpisodes = scenarioSummaries.filter((item) => item.consistencyStatus === "consistente");
+    const integrityIssues = scenarioSummaries
+        .filter((item) => item.integrityStatus !== "integro")
+        .map((item) => ({
+        episodeId: item.episodeId,
+        issue: item.integrityStatus === "sin_evidencia"
+            ? "No existe evidencia suficiente para contrastar hash on-chain y documento off-chain."
+            : "El hash del documento no coincide con la última evidencia registrada."
+    }));
+    const modelValidEpisodes = scenarioSummaries.filter((item) => item.modelValidation.valid);
+    const limitations = [];
+    if (!infraestructura.blockchain.contratosOperativos) {
+        limitations.push("La blockchain real no está operativa en este entorno; las métricas de costo/rendimiento se presentan como estimadas cuando la traza fue generada en modo mock.");
+    }
+    if (infraestructura.offChain.almacenamiento === "memoria") {
+        limitations.push("El almacenamiento clínico actual usa memoria local; los tiempos medidos representan el prototipo y no una instalación productiva de HAPI FHIR.");
+    }
+    if (!scenarioSummaries.length) {
+        limitations.push("No existen episodios registrados suficientes para evaluar interoperabilidad, integridad y continuidad de extremo a extremo.");
+    }
+    if (!crossIpsEpisodes.length) {
+        limitations.push("Aún no hay evidencia de continuidad multi-IPS en los episodios visibles; se requiere ejecutar permisos y actualización desde otra IPS.");
+    }
+    const requirements = [
+        {
+            requirementId: "RF8",
+            label: "Verificación de integridad",
+            status: integrityIssues.length ? "parcial" : "cumple",
+            detail: integrityIssues.length
+                ? `Se identificaron ${integrityIssues.length} episodio(s) con revisión pendiente o sin evidencia completa.`
+                : "Todos los episodios con evidencia registrada mantienen coincidencia entre hash on-chain y documento off-chain."
+        },
+        {
+            requirementId: "RF9",
+            label: "Interfaz DApp para interacción con Smart Contract",
+            status: infraestructura.cumpleHu1E5 ? "cumple" : "parcial",
+            detail: infraestructura.cumpleHu1E5
+                ? "La DApp dispone de vistas para episodios, permisos, trazabilidad e infraestructura con soporte multirol."
+                : "La interfaz existe, pero el entorno aún requiere completar alistamiento de blockchain real o simulación multi-IPS."
+        },
+        {
+            requirementId: "RF10",
+            label: "Registro de auditoría para evaluación",
+            status: traceEvents.length ? "cumple" : "pendiente",
+            detail: traceEvents.length
+                ? `Se registran ${traceEvents.length} transacción(es)/evento(s) auditables con rol, IPS y emisor técnico disponible cuando la evidencia lo permite.`
+                : "Todavía no existen eventos suficientes para evaluar comportamiento de DApp y Smart Contract."
+        },
+        {
+            requirementId: "RF11",
+            label: "Estructura mínima de HCE para urgencias",
+            status: modelValidEpisodes.length === scenarioSummaries.length && scenarioSummaries.length > 0 ? "cumple" : "parcial",
+            detail: scenarioSummaries.length
+                ? `${modelValidEpisodes.length} de ${scenarioSummaries.length} episodio(s) visibles cumplen la validación estructural del modelo HCE.`
+                : "No hay episodios para contrastar contra la estructura mínima definida."
+        }
+    ];
+    const interoperabilidadConclusion = crossIpsEpisodes.length
+        ? `Se observaron ${crossIpsEpisodes.length} episodio(s) con interacción entre múltiples IPS y ${consistentEpisodes.length} mantienen continuidad e integridad sin hallazgos.`
+        : "La simulación multi-IPS está disponible, pero aún falta evidencia suficiente de traslados o continuidad asistencial entre instituciones.";
+    const tiemposConclusion = measuredScenarios.length
+        ? `Se midieron ${metadataSamples.length + documentSamples.length + integritySamples.length} operaciones técnicas en ${measuredScenarios.length} episodio(s) para metadatos, documento e integridad.`
+        : "No fue posible medir tiempos porque todavía no existen episodios visibles con evidencia suficiente.";
+    const blockchainConclusion = blockchainOperations.length
+        ? `La operación con mayor costo promedio observado es ${mostExpensiveOperation?.label ?? "sin determinar"} y el análisis distingue entre evidencia medida y estimada según el modo de blockchain.`
+        : "Aún no existen transacciones auditables suficientes para analizar costo y rendimiento blockchain.";
+    return {
+        generatedAt,
+        overview: {
+            totalEpisodes: episodios.length,
+            totalTraceEvents: traceEvents.length,
+            totalIpsSimuladas: infraestructura.simulacionIps.total,
+            blockchainMode: blockchainConfig.enabled ? "real" : "mock",
+            rolesConfigurados: roles.map((item) => item.rol)
+        },
+        interoperability: {
+            multipleIpsReady: infraestructura.simulacionIps.multipleIpsActivo,
+            simulatedIps: infraestructura.simulacionIps.ips,
+            scenarios: scenarioSummaries,
+            summary: {
+                totalScenarios: scenarioSummaries.length,
+                crossIpsScenarios: crossIpsEpisodes.length,
+                episodesWithContinuity: scenarioSummaries.filter((item) => item.hasCrossIpsContinuity).length,
+                episodesWithPermissionFlow: scenarioSummaries.filter((item) => item.hasPermissionFlow).length,
+                consistentEpisodes: consistentEpisodes.length
+            },
+            conclusion: interoperabilidadConclusion
+        },
+        timings: {
+            runs,
+            measuredAt: generatedAt,
+            scenarios: measuredScenarios,
+            operations: {
+                metadataOnChain: buildTimingSummary("Consulta de metadatos on-chain", metadataSamples),
+                documentOffChain: buildTimingSummary("Acceso a documento off-chain", documentSamples),
+                integrityVerification: buildTimingSummary("Verificación de integridad", integritySamples)
+            },
+            conclusion: tiemposConclusion
+        },
+        blockchainPerformance: {
+            mode: infraestructura.blockchain.modo === "real" ? "real" : "mock",
+            metricKind: blockchainOperations.some((item) => item.metricsMode === "medido")
+                ? "medido"
+                : blockchainOperations.some((item) => item.metricsMode === "estimado")
+                    ? "estimado"
+                    : "no_disponible",
+            operations: blockchainOperations,
+            mostExpensiveOperation: mostExpensiveOperation?.label,
+            conclusion: blockchainConclusion
+        },
+        audit: {
+            totalEvents: traceEvents.length,
+            eventsByType: Object.fromEntries(Object.entries(traceMetricsByType).map(([key, value]) => [key, value.count])),
+            integrityValidEpisodes: scenarioSummaries.filter((item) => item.integrityStatus === "integro").length,
+            episodesWithIssues: integrityIssues,
+            versionHistoryComplete: scenarioSummaries.every((item) => item.versionCount >= 1),
+            endToEndTraceability: scenarioSummaries.every((item) => item.traceEventCount >= 1),
+            observedActors: Object.values(traceEvents.reduce((accumulator, item) => {
+                const key = item.actor.rol;
+                if (!accumulator[key]) {
+                    accumulator[key] = {
+                        rol: item.actor.rol,
+                        totalEventos: 0,
+                        ipsIds: new Set()
+                    };
+                }
+                accumulator[key].totalEventos += 1;
+                if (item.actor.ipsId) {
+                    accumulator[key].ipsIds.add(item.actor.ipsId);
+                }
+                return accumulator;
+            }, {})).map((item) => ({
+                rol: item.rol,
+                totalEventos: item.totalEventos,
+                ipsIds: [...item.ipsIds].sort((left, right) => left.localeCompare(right))
+            }))
+        },
+        compliance: {
+            hceModel: {
+                totalEpisodes: scenarioSummaries.length,
+                validEpisodes: modelValidEpisodes.length,
+                invalidEpisodes: scenarioSummaries.length - modelValidEpisodes.length
+            },
+            requirements,
+            limitations
+        },
+        documentation: {
+            resumenEjecutivo: [
+                interoperabilidadConclusion,
+                tiemposConclusion,
+                blockchainConclusion
+            ],
+            conclusiones: [
+                scenarioSummaries.length
+                    ? "El prototipo permite consolidar interoperabilidad, integridad y control de acceso en un mismo flujo auditable."
+                    : "Se requiere poblar el entorno con episodios y trazas para emitir conclusiones completas del prototipo.",
+                integrityIssues.length
+                    ? "La trazabilidad permite detectar de forma explícita episodios con revisión pendiente o evidencia insuficiente."
+                    : "No se detectaron inconsistencias entre registros on-chain/off-chain en los episodios con evidencia disponible.",
+                infraestructura.simulacionIps.multipleIpsActivo
+                    ? "La simulación de múltiples IPS habilita escenarios comparables para continuidad asistencial y permisos institucionales."
+                    : "El entorno debe completar la simulación multi-IPS para validar flujos interinstitucionales."
+            ],
+            aportes: [
+                "Separación entre documento clínico off-chain y evidencia on-chain con verificación por hash.",
+                "Trazabilidad por rol, IPS y tipo de evento para soportar auditoría operativa y académica.",
+                "Panel de evaluación que consolida interoperabilidad, tiempos, costo/rendimiento y cumplimiento del modelo HCE."
+            ],
+            limitaciones: limitations,
+            trabajoFuturo: [
+                "Ejecutar la evaluación en una red blockchain real para contrastar costos y latencias frente a los valores estimados del prototipo.",
+                "Incorporar persistencia histórica de mediciones para comparar sprints, escenarios e instituciones en el tiempo.",
+                "Ampliar la validación no funcional con pruebas de carga, concurrencia y resiliencia sobre HAPI FHIR y contratos."
+            ]
+        }
+    };
+}

@@ -1,8 +1,10 @@
-import { useState } from "react";
-import { Link } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
+import { useSesion } from "@/shared/auth/SessionContext";
 import {
-  obtenerTrazabilidadEpisodio,
-  verificarIntegridadEpisodio
+  buscarEventosTrazabilidad,
+  consultarIntegridadEpisodio,
+  consultarTrazabilidadEpisodio
 } from "@/shared/services/api";
 import type {
   EstadoPermisoEpisodio,
@@ -28,6 +30,10 @@ function shortHash(value?: string) {
   if (!value) return "—";
   if (value.length <= 18) return value;
   return `${value.slice(0, 10)}...${value.slice(-8)}`;
+}
+
+function ledgerLabel(event: TraceabilityEvent) {
+  return event.evidence.ledgerMode === "real" ? "Registrado en blockchain" : "Evidencia simulada";
 }
 
 function VersionesTable({ versions }: { versions: VersionEpisodio[] }) {
@@ -105,8 +111,8 @@ function TraceEventsList({ events }: { events: TraceabilityEvent[] }) {
               <strong>{EVENT_LABELS[item.eventType]}</strong>
               <span>{formatDate(item.recordedAt)}</span>
             </div>
-            <div className={item.evidence.ledgerMode === "real" ? "status-chip status-chip--ready" : "status-chip"}>
-              {item.evidence.ledgerMode === "real" ? "Registrado en testnet" : "Evidencia simulada"}
+            <div className={item.evidence.ledgerMode === "real" ? "status-chip status-chip--ready" : "status-chip status-chip--info"}>
+              {ledgerLabel(item)}
             </div>
           </div>
           <div className="key-value-grid">
@@ -117,6 +123,10 @@ function TraceEventsList({ events }: { events: TraceabilityEvent[] }) {
             <div>
               <strong>IPS</strong>
               <span>{item.actor.ipsId ?? "—"}</span>
+            </div>
+            <div>
+              <strong>Tipo</strong>
+              <span>{EVENT_LABELS[item.eventType]}</span>
             </div>
             <div>
               <strong>Transacción</strong>
@@ -136,75 +146,124 @@ function TraceEventsList({ events }: { events: TraceabilityEvent[] }) {
 }
 
 export function TrazabilidadEpisodioPage() {
-  const [episodeId, setEpisodeId] = useState("");
+  const { sesion } = useSesion();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [episodeId, setEpisodeId] = useState(searchParams.get("episodeId") ?? "");
+  const [eventType, setEventType] = useState<TraceabilityEvent["eventType"] | "">("");
+  const [ipsFilter, setIpsFilter] = useState("");
   const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [traceData, setTraceData] = useState<Awaited<ReturnType<typeof obtenerTrazabilidadEpisodio>>>(null);
-  const [integrityData, setIntegrityData] = useState<Awaited<ReturnType<typeof verificarIntegridadEpisodio>>>(null);
-  const ultimoEvento =
-    traceData && traceData.traceEvents.length > 0
-      ? traceData.traceEvents[traceData.traceEvents.length - 1]
-      : undefined;
-  const permisosActivos = traceData?.estadosPermisos.filter((item) => item.activo).length ?? 0;
-  const versionesRegistradas = traceData?.versiones.length ?? 0;
+  const [traceData, setTraceData] = useState<Awaited<ReturnType<typeof consultarTrazabilidadEpisodio>>["data"]>();
+  const [integrityData, setIntegrityData] = useState<Awaited<ReturnType<typeof consultarIntegridadEpisodio>>["data"]>();
+  const [eventSearch, setEventSearch] = useState<Awaited<ReturnType<typeof buscarEventosTrazabilidad>>["data"]>();
+
+  const ultimoEvento = useMemo(
+    () => (traceData?.traceEvents.length ? traceData.traceEvents[traceData.traceEvents.length - 1] : undefined),
+    [traceData]
+  );
 
   const consultar = async () => {
-    const id = episodeId.trim();
-    if (!id) {
-      setError("Debe indicar el ID del episodio.");
+    setLoading(true);
+    setError(null);
+    setMessage(null);
+
+    const nextParams = new URLSearchParams();
+    if (episodeId.trim()) nextParams.set("episodeId", episodeId.trim());
+    setSearchParams(nextParams, { replace: true });
+
+    if (episodeId.trim()) {
+      const [traceRes, integrityRes, eventsRes] = await Promise.all([
+        consultarTrazabilidadEpisodio(episodeId.trim(), sesion),
+        consultarIntegridadEpisodio(episodeId.trim(), sesion),
+        buscarEventosTrazabilidad(
+          {
+            episodeId: episodeId.trim(),
+            eventType: eventType || undefined,
+            ipsId: sesion?.rol === "auditor" ? ipsFilter.trim() || undefined : undefined
+          },
+          sesion
+        )
+      ]);
+
+      setTraceData(traceRes.data);
+      setIntegrityData(integrityRes.data);
+      setEventSearch(eventsRes.data);
+
+      if (!traceRes.ok) {
+        setError(traceRes.message);
+      } else {
+        setMessage(traceRes.message);
+      }
+      if (traceRes.ok && !integrityRes.ok) {
+        setError(integrityRes.message);
+      }
+      if (traceRes.ok && !eventsRes.ok) {
+        setError(eventsRes.message);
+      }
+      setLoading(false);
       return;
     }
 
-    setLoading(true);
-    setError(null);
-    const [traceRes, integrityRes] = await Promise.all([
-      obtenerTrazabilidadEpisodio(id),
-      verificarIntegridadEpisodio(id)
-    ]);
-    setTraceData(traceRes);
-    setIntegrityData(integrityRes);
-    if (!traceRes) {
-      setError("No se encontró trazabilidad autorizada para este episodio.");
+    const eventsRes = await buscarEventosTrazabilidad(
+      {
+        eventType: eventType || undefined,
+        ipsId: sesion?.rol === "auditor" ? ipsFilter.trim() || undefined : undefined
+      },
+      sesion
+    );
+    setTraceData(undefined);
+    setIntegrityData(undefined);
+    setEventSearch(eventsRes.data);
+    if (!eventsRes.ok) {
+      setError(eventsRes.message);
+    } else {
+      setMessage(eventsRes.message);
     }
     setLoading(false);
   };
 
-  return (
-    <div className="container">
-      <nav aria-label="Migas de pan" className="breadcrumb">
-        <Link to="/">Inicio</Link>
-        {" / "}
-        <Link to="/episodios">Episodios</Link>
-        {" / Trazabilidad"}
-      </nav>
-      <section className="page-banner">
-        <div>
-          <p className="eyebrow">Auditoría e integridad</p>
-          <h1 className="page-title">Seguimiento claro del episodio</h1>
-          <p className="page-subtitle">
-            Consulte en un solo lugar el origen del caso, los cambios clínicos, los accesos
-            compartidos y la evidencia que respalda la integridad del documento.
-          </p>
-        </div>
-        <div className="context-note">
-          <strong>{traceData?.episodeId ?? "Busque un episodio"}</strong>
-          <span>{versionesRegistradas} versiones registradas</span>
-          <small>{permisosActivos} permisos activos entre IPS</small>
-        </div>
-      </section>
+  useEffect(() => {
+    if (!searchParams.get("episodeId")) return;
+    void consultar();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-      <section className="card card--elevated" style={{ marginBottom: "1rem" }}>
+  return (
+    <>
+      <nav aria-label="Migas de pan" className="breadcrumb">
+        <Link to="/portal">Panel</Link>{" / "}
+        <Link to="/episodios">Episodios</Link>{" / Trazabilidad"}
+      </nav>
+
+      <div className="page-header">
+        <div className="page-header__row">
+          <div>
+            <h1 className="page-title">Trazabilidad clínica</h1>
+            <p className="page-subtitle">
+              Evidencia de creación, actualizaciones, accesos y permisos sin exponer datos clínicos.
+            </p>
+          </div>
+          <div className="context-note">
+            <strong>{episodeId.trim() || "Consulta general"}</strong>
+            <span>{eventSearch?.total ?? 0} evento(s)</span>
+            <small>{sesion?.rol ?? "Sin sesión"}{sesion?.ipsId ? ` · ${sesion.ipsId}` : ""}</small>
+          </div>
+        </div>
+      </div>
+
+      <section className="card card--elevated" style={{ marginBottom: 16 }}>
         <div className="section-head section-head--tight">
           <div>
-            <h2 className="section-title">Buscar episodio</h2>
+            <h2 className="section-title">Filtros de trazabilidad</h2>
             <p className="section-copy">
-              Pegue el identificador del episodio para revisar continuidad, integridad y evidencia.
+              Puede consultar un episodio específico o revisar todos los eventos visibles para su alcance actual.
             </p>
           </div>
         </div>
-        <div className="search-layout">
-          <div className="form-group" style={{ flex: "1 1 320px", marginBottom: 0 }}>
-            <label htmlFor="episode-id-trace" className="form-label form-label--required">
+        <div className="form-columns">
+          <div className="form-group">
+            <label htmlFor="episode-id-trace" className="form-label">
               ID de episodio
             </label>
             <input
@@ -213,56 +272,95 @@ export function TrazabilidadEpisodioPage() {
               type="text"
               value={episodeId}
               onChange={(e) => setEpisodeId(e.target.value)}
-              placeholder="Ej. episode-1234"
+              placeholder="Ej. 8f2c..."
             />
-            <small className="form-hint">
-              Puede copiarlo desde la ficha del episodio o desde la jornada clínica.
-            </small>
           </div>
-          <div className="form-group form-group--actions">
-            <button type="button" className="btn btn--primary" onClick={consultar} disabled={loading}>
-              {loading ? "Consultando..." : "Consultar trazabilidad"}
-            </button>
+          <div className="form-group">
+            <label htmlFor="event-type-trace" className="form-label">
+              Tipo de evento
+            </label>
+            <select
+              id="event-type-trace"
+              className="form-input"
+              value={eventType}
+              onChange={(e) => setEventType(e.target.value as TraceabilityEvent["eventType"] | "")}
+            >
+              <option value="">Todos</option>
+              {Object.entries(EVENT_LABELS).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
           </div>
+          {sesion?.rol === "auditor" && (
+            <div className="form-group">
+              <label htmlFor="ips-filter" className="form-label">
+                IPS
+              </label>
+              <input
+                id="ips-filter"
+                className="form-input"
+                value={ipsFilter}
+                onChange={(e) => setIpsFilter(e.target.value)}
+                placeholder="Ej. IPS-001"
+              />
+            </div>
+          )}
         </div>
-        {error && (
-          <div className="alert alert--error" style={{ marginTop: "1rem" }}>
-            {error}
-          </div>
-        )}
+        <div className="btn-group">
+          <button type="button" className="btn btn--primary" onClick={consultar} disabled={loading}>
+            {loading ? "Consultando..." : "Consultar trazabilidad"}
+          </button>
+          <button
+            type="button"
+            className="btn btn--ghost"
+            onClick={() => {
+              setEpisodeId("");
+              setEventType("");
+              setIpsFilter("");
+              setTraceData(undefined);
+              setIntegrityData(undefined);
+              setEventSearch(undefined);
+              setMessage(null);
+              setError(null);
+              setSearchParams(new URLSearchParams(), { replace: true });
+            }}
+          >
+            Limpiar filtros
+          </button>
+        </div>
+        {message && <div className="alert alert--info" style={{ marginTop: 12 }}>{message}</div>}
+        {error && <div className="alert alert--error" style={{ marginTop: 12 }}>{error}</div>}
       </section>
 
       {traceData && (
-        <div className="result-panel" style={{ marginBottom: "1rem" }}>
+        <div className="result-panel" style={{ marginBottom: 16 }}>
           <div>
             <strong>Evento clínico asociado</strong>
             <span>{traceData.event.eventoUrgenciasId}</span>
           </div>
           <div>
-            <strong>Inicio del caso</strong>
-            <span>{formatDate(traceData.event.fechaHoraInicio)}</span>
-          </div>
-          <div>
             <strong>Última evidencia</strong>
             <span>{ultimoEvento ? EVENT_LABELS[ultimoEvento.eventType] : "Sin eventos"}</span>
+          </div>
+          <div>
+            <strong>Continuidad entre IPS</strong>
+            <span>{traceData.continuidad?.ipsInvolucradas.join(", ") || traceData.event.ipsOrigenId}</span>
           </div>
         </div>
       )}
 
       {integrityData && (
-        <section className="card card--elevated" style={{ marginBottom: "1rem" }}>
+        <section className="card card--elevated" style={{ marginBottom: 16 }}>
           <div className="section-head section-head--tight">
             <div>
               <h2 className="section-title">Estado de integridad</h2>
               <p className="section-copy">
-                Verificación entre el hash almacenado del documento y la evidencia registrada.
+                Comparación entre el hash vigente del documento off-chain y la evidencia registrada.
               </p>
             </div>
-            <div
-              className={
-                integrityData.isIntegrityValid ? "status-chip status-chip--ready" : "status-chip status-chip--alert"
-              }
-            >
+            <div className={integrityData.isIntegrityValid ? "status-chip status-chip--ready" : "status-chip status-chip--alert"}>
               {integrityData.isIntegrityValid ? "Documento íntegro" : "Revisión requerida"}
             </div>
           </div>
@@ -272,11 +370,11 @@ export function TrazabilidadEpisodioPage() {
               <code>{shortHash(integrityData.onChainHash)}</code>
             </div>
             <div>
-              <strong>Hash del documento</strong>
+              <strong>Hash documento</strong>
               <code>{shortHash(integrityData.offChainHash)}</code>
             </div>
             <div>
-              <strong>Evidencia fuente</strong>
+              <strong>Evidencia</strong>
               <code>{shortHash(integrityData.evidence.sourceTransactionHash)}</code>
             </div>
           </div>
@@ -284,11 +382,13 @@ export function TrazabilidadEpisodioPage() {
       )}
 
       {traceData && (
-        <section className="card card--elevated" style={{ marginBottom: "1rem" }}>
+        <section className="card card--elevated" style={{ marginBottom: 16 }}>
           <div className="section-head section-head--tight">
             <div>
-              <h2 className="section-title">Resumen del caso</h2>
-              <p className="section-copy">Datos clave para entender cómo evolucionó el episodio.</p>
+              <h2 className="section-title">Continuidad asistencial</h2>
+              <p className="section-copy">
+                El episodio conserva el mismo identificador y refleja qué IPS participaron en su ciclo de vida.
+              </p>
             </div>
           </div>
           <div className="key-value-grid">
@@ -297,25 +397,23 @@ export function TrazabilidadEpisodioPage() {
               <span>{traceData.event.ipsOrigenId}</span>
             </div>
             <div>
-              <strong>Tipo de atención</strong>
-              <span>{traceData.event.tipoAtencion}</span>
+              <strong>IPS propietaria</strong>
+              <span>{traceData.continuidad?.ownerIpsId ?? traceData.event.ipsOrigenId}</span>
             </div>
             <div>
-              <strong>IPS con acceso vigente</strong>
-              <span>{traceData.permisosActivos.join(", ") || "Sin IPS adicionales"}</span>
+              <strong>IPS involucradas</strong>
+              <span>{traceData.continuidad?.ipsInvolucradas.join(", ") || traceData.event.ipsOrigenId}</span>
             </div>
           </div>
         </section>
       )}
 
       {traceData && (
-        <section className="card card--elevated" style={{ marginBottom: "1rem" }}>
+        <section className="card card--elevated" style={{ marginBottom: 16 }}>
           <div className="section-head section-head--tight">
             <div>
               <h2 className="section-title">Historial de versiones</h2>
-              <p className="section-copy">
-                Cada actualización conserva evidencia independiente para mantener trazabilidad clínica.
-              </p>
+              <p className="section-copy">Cada actualización conserva evidencia independiente y actor responsable.</p>
             </div>
           </div>
           <VersionesTable versions={traceData.versiones} />
@@ -323,37 +421,32 @@ export function TrazabilidadEpisodioPage() {
       )}
 
       {traceData && (
-        <section className="card card--elevated" style={{ marginBottom: "1rem" }}>
+        <section className="card card--elevated" style={{ marginBottom: 16 }}>
           <div className="section-head section-head--tight">
             <div>
-              <h2 className="section-title">Accesos compartidos entre IPS</h2>
-              <p className="section-copy">
-                Estado histórico de permisos otorgados o revocados para continuidad asistencial.
-              </p>
+              <h2 className="section-title">Permisos entre IPS</h2>
+              <p className="section-copy">Resumen de accesos otorgados o revocados sobre el episodio.</p>
             </div>
-          </div>
-          <div className="pill-row" style={{ marginBottom: "1rem" }}>
-            <span className={permisosActivos ? "status-chip status-chip--ready" : "status-chip"}>
-              {permisosActivos ? `${permisosActivos} accesos activos` : "Sin accesos adicionales"}
-            </span>
           </div>
           <PermisosTable estados={traceData.estadosPermisos} />
         </section>
       )}
 
-      {traceData && (
-        <section className="card card--elevated">
+      {eventSearch && (
+        <section className="card card--elevated" style={{ marginBottom: 16 }}>
           <div className="section-head section-head--tight">
             <div>
-              <h2 className="section-title">Evidencia y trazabilidad</h2>
+              <h2 className="section-title">Eventos visibles</h2>
               <p className="section-copy">
-                Registro cronológico de acciones relevantes con su evidencia de backend y blockchain.
+                {episodeId.trim()
+                  ? "Eventos asociados al episodio filtrado."
+                  : "Eventos disponibles para su rol e institución en el alcance actual."}
               </p>
             </div>
           </div>
-          <TraceEventsList events={traceData.traceEvents} />
+          <TraceEventsList events={eventSearch.events} />
         </section>
       )}
-    </div>
+    </>
   );
 }

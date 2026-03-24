@@ -22,28 +22,51 @@ function utf8ToHex(value: string): string {
     .join("")}`;
 }
 
+function parseEthereumError(error: unknown, fallback: string): string {
+  if (!(error instanceof Error)) return fallback;
+  const raw = error.message.trim();
+  if (!raw) return fallback;
+  if (raw.includes("User rejected") || raw.includes("user rejected") || raw.includes("4001")) {
+    return "La operación fue cancelada desde la wallet.";
+  }
+  if (raw.includes("Unsupported chain") || raw.includes("switchEthereumChain")) {
+    return `Cambie la wallet a Sepolia (chainId ${CHAIN_ID}) para continuar.`;
+  }
+  return raw;
+}
+
 export async function conectarWallet(): Promise<{ ok: boolean; address?: string; message?: string }> {
   const eth = getEthereum();
   if (!eth) {
     return { ok: false, message: "No se detectó wallet EVM (MetaMask u otra)." };
   }
-  const accounts = (await eth.request({ method: "eth_requestAccounts" })) as string[];
-  return { ok: true, address: accounts?.[0] };
+  try {
+    const accounts = (await eth.request({ method: "eth_requestAccounts" })) as string[];
+    if (!accounts?.[0]) {
+      return { ok: false, message: "La wallet no devolvió una cuenta activa." };
+    }
+    return { ok: true, address: accounts[0] };
+  } catch (error) {
+    return { ok: false, message: parseEthereumError(error, "No fue posible conectar la wallet.") };
+  }
 }
 
 export async function asegurarCadenaSepolia(): Promise<{ ok: boolean; message?: string }> {
   const eth = getEthereum();
   if (!eth) return { ok: false, message: "Wallet no disponible." };
-  const chainId = String(await eth.request({ method: "eth_chainId" }));
-  if (chainId.toLowerCase() === CHAIN_HEX.toLowerCase()) return { ok: true };
   try {
+    const chainId = String(await eth.request({ method: "eth_chainId" }));
+    if (chainId.toLowerCase() === CHAIN_HEX.toLowerCase()) return { ok: true };
     await eth.request({
       method: "wallet_switchEthereumChain",
       params: [{ chainId: CHAIN_HEX }]
     });
     return { ok: true };
-  } catch {
-    return { ok: false, message: `Cambie la wallet a Sepolia (chainId ${CHAIN_ID}).` };
+  } catch (error) {
+    return {
+      ok: false,
+      message: parseEthereumError(error, `Cambie la wallet a Sepolia (chainId ${CHAIN_ID}).`)
+    };
   }
 }
 
@@ -62,34 +85,42 @@ export async function enviarTrazaBlockchain(input: {
       message: "Falta VITE_TRACE_CONTRACT_ADDRESS para enviar trazas a testnet."
     };
   }
-  const accounts = (await eth.request({ method: "eth_requestAccounts" })) as string[];
-  const from = accounts?.[0];
-  if (!from) return { ok: false, message: "No hay cuenta seleccionada en la wallet." };
 
-  const body = JSON.stringify({
-    action: input.action,
-    episodeId: input.episodeId ?? null,
-    actorRole: input.actorRole ?? null,
-    ipsId: input.ipsId ?? null,
-    payload: input.payload ?? {},
-    timestamp: new Date().toISOString()
-  });
-  const data = utf8ToHex(body);
+  try {
+    const accounts = (await eth.request({ method: "eth_requestAccounts" })) as string[];
+    const from = accounts?.[0];
+    if (!from) return { ok: false, message: "No hay cuenta seleccionada en la wallet." };
 
-  const txHash = (await eth.request({
-    method: "eth_sendTransaction",
-    params: [
-      {
-        from,
-        to: CONTRACT_ADDRESS,
-        data
-      }
-    ]
-  })) as string;
+    const body = JSON.stringify({
+      action: input.action,
+      episodeId: input.episodeId ?? null,
+      actorRole: input.actorRole ?? null,
+      ipsId: input.ipsId ?? null,
+      payload: input.payload ?? {},
+      timestamp: new Date().toISOString()
+    });
+    const data = utf8ToHex(body);
 
-  return {
-    ok: true,
-    txHash,
-    explorerUrl: `${EXPLORER_TX_BASE}${txHash}`
-  };
+    const txHash = (await eth.request({
+      method: "eth_sendTransaction",
+      params: [
+        {
+          from,
+          to: CONTRACT_ADDRESS,
+          data
+        }
+      ]
+    })) as string;
+
+    return {
+      ok: true,
+      txHash,
+      explorerUrl: `${EXPLORER_TX_BASE}${txHash}`
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      message: parseEthereumError(error, "No fue posible enviar la transacción a blockchain.")
+    };
+  }
 }

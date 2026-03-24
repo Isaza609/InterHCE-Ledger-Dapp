@@ -1,49 +1,59 @@
 "use strict";
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
-    o["default"] = v;
-});
-var __importStar = (this && this.__importStar) || (function () {
-    var ownKeys = function(o) {
-        ownKeys = Object.getOwnPropertyNames || function (o) {
-            var ar = [];
-            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
-            return ar;
-        };
-        return ownKeys(o);
-    };
-    return function (mod) {
-        if (mod && mod.__esModule) return mod;
-        var result = {};
-        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
-        __setModuleDefault(result, mod);
-        return result;
-    };
-})();
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.BlockchainTraceError = void 0;
 exports.obtenerConfiguracionBlockchainReal = obtenerConfiguracionBlockchainReal;
 exports.verificarConexionBlockchainReal = verificarConexionBlockchainReal;
 exports.registrarEventoBlockchainReal = registrarEventoBlockchainReal;
+const crypto_1 = require("crypto");
 const fs_1 = require("fs");
+const module_1 = require("module");
 const path_1 = __importDefault(require("path"));
-const url_1 = require("url");
 const dotenv_1 = require("dotenv");
+class BlockchainTraceError extends Error {
+    constructor(message, details) {
+        super(message);
+        this.name = "BlockchainTraceError";
+        this.details = details;
+    }
+}
+exports.BlockchainTraceError = BlockchainTraceError;
+const MOCK_METRICS = {
+    EPISODE_CREATED: {
+        confirmationMs: 1280,
+        gasUsed: "205000",
+        gasPriceWei: "15000000000"
+    },
+    EPISODE_UPDATED: {
+        confirmationMs: 1160,
+        gasUsed: "189000",
+        gasPriceWei: "15000000000"
+    },
+    PERMISSION_GRANTED: {
+        confirmationMs: 910,
+        gasUsed: "128000",
+        gasPriceWei: "14000000000"
+    },
+    PERMISSION_REVOKED: {
+        confirmationMs: 880,
+        gasUsed: "124000",
+        gasPriceWei: "14000000000"
+    },
+    AUDITABLE_ACCESS: {
+        confirmationMs: 760,
+        gasUsed: "91000",
+        gasPriceWei: "12000000000"
+    },
+    INTEGRITY_CHECK: {
+        confirmationMs: 740,
+        gasUsed: "88000",
+        gasPriceWei: "12000000000"
+    }
+};
 let envLoaded = false;
+const requireFromBackend = (0, module_1.createRequire)(__filename);
 function ensureEnvLoaded() {
     if (envLoaded)
         return;
@@ -84,12 +94,11 @@ function readContractAbi() {
 }
 async function loadEthersModule() {
     try {
-        const packageName = "ethers";
-        return await Promise.resolve(`${packageName}`).then(s => __importStar(require(s)));
+        return requireFromBackend("ethers");
     }
     catch {
         const localEthers = path_1.default.resolve(__dirname, "../../../contracts/node_modules/ethers/lib.commonjs/index.js");
-        return Promise.resolve(`${(0, url_1.pathToFileURL)(localEthers).href}`).then(s => __importStar(require(s)));
+        return requireFromBackend(localEthers);
     }
 }
 function normalizeSha256ToBytes32(hash) {
@@ -105,6 +114,36 @@ function buildExplorerUrl(network, txHash) {
     }
     return undefined;
 }
+function addMilliseconds(baseIso, milliseconds) {
+    return new Date(Date.parse(baseIso) + milliseconds).toISOString();
+}
+function buildMockReceipt(input, config) {
+    const seed = MOCK_METRICS[input.eventType];
+    const submittedAt = new Date().toISOString();
+    const confirmedAt = addMilliseconds(submittedAt, seed.confirmationMs);
+    const transactionHash = `0x${(0, crypto_1.createHash)("sha256")
+        .update(JSON.stringify({ input, issuedAt: submittedAt }), "utf8")
+        .digest("hex")}`;
+    const contractAddress = config.contractAddress || "0x0000000000000000000000000000000000000000";
+    const transactionCostWei = (BigInt(seed.gasUsed) * BigInt(seed.gasPriceWei)).toString();
+    return {
+        ledgerMode: "real",
+        network: config.network,
+        chainId: config.chainId,
+        contractAddress,
+        transactionHash,
+        explorerUrl: buildExplorerUrl(config.network, transactionHash),
+        emitterId: "mock-backend-signer",
+        metricsMode: "estimated",
+        submittedAt,
+        confirmedAt,
+        confirmationMs: seed.confirmationMs,
+        gasUsed: seed.gasUsed,
+        gasPriceWei: seed.gasPriceWei,
+        transactionCostWei,
+        blockNumber: 0
+    };
+}
 function obtenerConfiguracionBlockchainReal() {
     ensureEnvLoaded();
     const deployment = readDeploymentConfig();
@@ -112,6 +151,16 @@ function obtenerConfiguracionBlockchainReal() {
     const privateKey = String(process.env.DEPLOYER_PRIVATE_KEY ?? "").trim();
     const contractAddress = deployment.contracts?.InterHCELedger?.trim();
     const traceMode = String(process.env.BLOCKCHAIN_TRACE_MODE ?? "auto").trim().toLowerCase();
+    if (traceMode === "mock") {
+        return {
+            enabled: true,
+            network: deployment.network || "sepolia",
+            chainId: deployment.chainId || 11155111,
+            contractAddress: contractAddress || "0x0000000000000000000000000000000000000000",
+            rpcUrlConfigured: true,
+            signerConfigured: true
+        };
+    }
     const enabledByMode = traceMode !== "disabled";
     return {
         enabled: enabledByMode && Boolean(rpcUrl && privateKey && contractAddress),
@@ -125,6 +174,15 @@ function obtenerConfiguracionBlockchainReal() {
 async function verificarConexionBlockchainReal() {
     ensureEnvLoaded();
     const checkedAt = new Date().toISOString();
+    const traceMode = String(process.env.BLOCKCHAIN_TRACE_MODE ?? "auto").trim().toLowerCase();
+    if (traceMode === "mock") {
+        return {
+            checkedAt,
+            rpcReachable: true,
+            blockNumber: 0,
+            message: "Modo mock activo para validaciones automatizadas."
+        };
+    }
     const rpcUrl = String(process.env.SEPOLIA_RPC_URL ?? "").trim();
     if (!rpcUrl) {
         return null;
@@ -148,9 +206,19 @@ async function verificarConexionBlockchainReal() {
     }
 }
 async function registrarEventoBlockchainReal(input) {
+    const traceMode = String(process.env.BLOCKCHAIN_TRACE_MODE ?? "auto").trim().toLowerCase();
     const config = obtenerConfiguracionBlockchainReal();
+    if (traceMode === "mock") {
+        return buildMockReceipt(input, config);
+    }
     if (!config.enabled || !config.contractAddress) {
-        return null;
+        throw new BlockchainTraceError("La configuración de blockchain real es obligatoria.", {
+            network: config.network,
+            chainId: config.chainId,
+            contractAddress: config.contractAddress,
+            rpcUrlConfigured: config.rpcUrlConfigured,
+            signerConfigured: config.signerConfigured
+        });
     }
     const rpcUrl = String(process.env.SEPOLIA_RPC_URL ?? "").trim();
     const privateKey = String(process.env.DEPLOYER_PRIVATE_KEY ?? "").trim();
@@ -162,6 +230,7 @@ async function registrarEventoBlockchainReal(input) {
     const episodeIdHash = ethers.keccak256(ethers.toUtf8Bytes(input.episodeId));
     const sourceIpsId = String(input.metadata.sourceIpsId ?? input.actor.ipsId ?? "").trim();
     const sourceIpsHash = ethers.keccak256(ethers.toUtf8Bytes(sourceIpsId || "SIN_IPS"));
+    const submittedAt = new Date().toISOString();
     let txResponse;
     switch (input.eventType) {
         case "EPISODE_CREATED":
@@ -185,13 +254,31 @@ async function registrarEventoBlockchainReal(input) {
         default:
             return null;
     }
-    await txResponse.wait();
+    const receipt = await txResponse.wait();
+    const confirmedAt = new Date().toISOString();
+    const confirmationMs = Date.parse(confirmedAt) - Date.parse(submittedAt);
+    const gasUsed = receipt?.gasUsed ? receipt.gasUsed.toString() : undefined;
+    const gasPriceWei = (receipt?.gasPrice ?? receipt?.effectiveGasPrice ?? txResponse.gasPrice)
+        ? String(receipt?.gasPrice ?? receipt?.effectiveGasPrice ?? txResponse.gasPrice)
+        : undefined;
+    const transactionCostWei = gasUsed && gasPriceWei
+        ? (BigInt(gasUsed) * BigInt(gasPriceWei)).toString()
+        : undefined;
     return {
         ledgerMode: "real",
         network: config.network,
         chainId: config.chainId,
         contractAddress: config.contractAddress,
         transactionHash: txResponse.hash,
-        explorerUrl: buildExplorerUrl(config.network, txResponse.hash)
+        explorerUrl: buildExplorerUrl(config.network, txResponse.hash),
+        emitterId: wallet.address,
+        metricsMode: "measured",
+        submittedAt,
+        confirmedAt,
+        confirmationMs,
+        gasUsed,
+        gasPriceWei,
+        transactionCostWei,
+        blockNumber: typeof receipt?.blockNumber === "number" ? receipt.blockNumber : undefined
     };
 }

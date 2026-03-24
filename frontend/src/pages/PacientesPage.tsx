@@ -15,6 +15,13 @@ interface PacienteResumen {
   episodios: EpisodioResumen[];
 }
 
+function buildActualizarPacienteHref(patientIdentifier: string, episodeId: string): string {
+  const params = new URLSearchParams();
+  params.set("patient", patientIdentifier);
+  params.set("episodeId", episodeId);
+  return `/episodios/actualizar?${params.toString()}`;
+}
+
 function agruparPacientes(episodios: EpisodioResumen[]): PacienteResumen[] {
   const pacientes = new Map<string, PacienteResumen>();
 
@@ -118,52 +125,43 @@ export function PacientesPage() {
   };
 
   return (
-    <div>
-      <section className="page-banner">
-        <div>
-          <p className="eyebrow">Módulo administrativo</p>
-          <h1 className="page-title">Pacientes</h1>
-          <p className="page-subtitle">
-            Consulte, ubique y gestione la información clínica del paciente a partir de los
-            episodios registrados en la plataforma.
-          </p>
-        </div>
-        <div className="page-banner__actions">
-          {canCreateEpisode && (
-            <Link to="/episodios/crear" className="btn btn--primary">
-              Registrar episodio
-            </Link>
-          )}
-          <Link to="/episodios" className="btn btn--secondary">
-            Ir a episodios
-          </Link>
-        </div>
-      </section>
-
-      <div className="result-panel" style={{ marginBottom: "1rem" }}>
-        <div>
-          <strong>Pacientes identificados</strong>
-          <span>{pacientes.length}</span>
-        </div>
-        <div>
-          <strong>Resultados visibles</strong>
-          <span>{pacientesFiltrados.length}</span>
-        </div>
-        <div>
-          <strong>Capacidades disponibles</strong>
-          <span>
-            {[
-              canViewDocument ? "Consultar" : null,
-              canUpdateEpisode ? "Actualizar" : null,
-              canCreateEpisode ? "Registrar" : null
-            ]
-              .filter(Boolean)
-              .join(" · ") || "Consulta general"}
-          </span>
+    <>
+      <div className="page-header">
+        <div className="page-header__row">
+          <div>
+            <h1 className="page-title">Pacientes</h1>
+            <p className="page-subtitle">
+              Consulte y gestione la información clínica a partir de los episodios registrados.
+            </p>
+          </div>
+          <div className="page-actions">
+            {canCreateEpisode && (
+              <Link to="/episodios/crear" className="btn btn--primary">Registrar episodio</Link>
+            )}
+            <Link to="/episodios" className="btn btn--secondary">Ir a episodios</Link>
+          </div>
         </div>
       </div>
 
-      <section className="card card--elevated" style={{ marginBottom: "1rem" }}>
+      <div className="stats-row">
+        <div className="stat-card">
+          <span className="stat-card__value">{pacientes.length}</span>
+          <span className="stat-card__label">Pacientes</span>
+        </div>
+        <div className="stat-card">
+          <span className="stat-card__value">{pacientesFiltrados.length}</span>
+          <span className="stat-card__label">Resultados</span>
+        </div>
+        <div className="stat-card">
+          <span className="stat-card__value">
+            {[canViewDocument ? "Consultar" : null, canUpdateEpisode ? "Actualizar" : null, canCreateEpisode ? "Registrar" : null]
+              .filter(Boolean).join(" · ") || "—"}
+          </span>
+          <span className="stat-card__label">Capacidades</span>
+        </div>
+      </div>
+
+      <section className="card card--elevated" style={{ marginBottom: 16 }}>
         <div className="section-head section-head--tight">
           <div>
             <h2 className="section-title">Buscar paciente</h2>
@@ -202,7 +200,7 @@ export function PacientesPage() {
             </button>
           </div>
         </div>
-        {message && <div className="alert alert--info" style={{ marginTop: "1rem" }}>{message}</div>}
+        {message && <div className="alert alert--info" style={{ marginTop: 12 }}>{message}</div>}
       </section>
 
       <div className="admin-grid">
@@ -251,7 +249,7 @@ export function PacientesPage() {
             <p className="empty-state">Seleccione un paciente del listado para revisar su información.</p>
           ) : (
             <>
-              <div className="key-value-grid" style={{ marginBottom: "1rem" }}>
+              <div className="key-value-grid" style={{ marginBottom: 16 }}>
                 <div>
                   <strong>Paciente</strong>
                   <span>{pacienteSeleccionado.patientName}</span>
@@ -266,7 +264,7 @@ export function PacientesPage() {
                 </div>
               </div>
 
-              <div className="module-action-grid" style={{ marginBottom: "1rem" }}>
+              <div className="module-action-grid" style={{ marginBottom: 16 }}>
                 <button
                   type="button"
                   className="action-card action-card--button"
@@ -287,9 +285,15 @@ export function PacientesPage() {
                   </Link>
                 )}
                 {canUpdateEpisode && (
-                  <Link to="/episodios/actualizar" className="action-card">
+                  <Link
+                    to={buildActualizarPacienteHref(
+                      pacienteSeleccionado.patientIdentifier,
+                      pacienteSeleccionado.ultimoEpisodioId
+                    )}
+                    className="action-card"
+                  >
                     <strong>Actualizar episodio</strong>
-                    <p>Ir al formulario de actualización para continuar la atención del paciente.</p>
+                    <p>Ir al formulario de actualización con el episodio más reciente ya precargado.</p>
                     <span>Actualizar</span>
                   </Link>
                 )}
@@ -323,6 +327,6 @@ export function PacientesPage() {
           )}
         </section>
       </div>
-    </div>
+    </>
   );
 }

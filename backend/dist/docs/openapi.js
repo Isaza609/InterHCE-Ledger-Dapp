@@ -433,7 +433,7 @@ exports.openApiSpec = {
         "/infra/status": {
             get: {
                 summary: "Estado de infraestructura del prototipo (HU1-E5)",
-                description: "Entrega estado de backend, modo blockchain real o simulado, salud de la RPC, conectividad off-chain y simulación multi-IPS.",
+                description: "Entrega estado de backend, disponibilidad de blockchain real, salud de la RPC, conectividad off-chain y simulación multi-IPS.",
                 responses: {
                     "200": { description: "Estado de infraestructura" }
                 }
@@ -476,14 +476,6 @@ exports.openApiSpec = {
                 responses: {
                     "200": { description: "Configuración de IPS actualizada" },
                     "400": { description: "Configuración inválida" }
-                }
-            }
-        },
-        "/infra/contracts/mock-deploy": {
-            post: {
-                summary: "Marcar contratos como operativos en modo simulado (HU1-E5)",
-                responses: {
-                    "200": { description: "Estado de contratos simulado actualizado" }
                 }
             }
         },

@@ -3,16 +3,16 @@ import { Link } from "react-router-dom";
 import { useSesion } from "@/shared/auth/SessionContext";
 import {
   actualizarUsuarioIps,
+  consultarDocumentoEpisodio,
+  consultarIntegridadEpisodio,
+  consultarTrazabilidadEpisodio,
   crearUsuarioIps,
   listarPermisosDocumento,
   listarRolesSistema,
   listarUsuariosIps,
   obtenerCapacidadesActor,
-  obtenerDocumentoEpisodio,
-  obtenerTrazabilidadEpisodio,
   otorgarPermisoDocumento,
   revocarPermisoDocumento,
-  verificarIntegridadEpisodio,
   type RolSistema,
   type UsuarioIps
 } from "@/shared/services/api";
@@ -24,13 +24,15 @@ export function PortalClinicoPage() {
   const [capabilities, setCapabilities] = useState<string[]>([]);
   const [usuarios, setUsuarios] = useState<UsuarioIps[]>([]);
   const [episodeIdDoc, setEpisodeIdDoc] = useState("");
-  const [docInfo, setDocInfo] = useState<Awaited<ReturnType<typeof obtenerDocumentoEpisodio>>>(null);
+  const [docInfo, setDocInfo] = useState<Awaited<ReturnType<typeof consultarDocumentoEpisodio>>["data"]>();
   const [docPerms, setDocPerms] = useState<string[]>([]);
-  const [traceInfo, setTraceInfo] = useState<Awaited<ReturnType<typeof obtenerTrazabilidadEpisodio>>>(null);
-  const [integrityInfo, setIntegrityInfo] = useState<Awaited<ReturnType<typeof verificarIntegridadEpisodio>>>(null);
+  const [traceInfo, setTraceInfo] = useState<Awaited<ReturnType<typeof consultarTrazabilidadEpisodio>>["data"]>();
+  const [integrityInfo, setIntegrityInfo] = useState<Awaited<ReturnType<typeof consultarIntegridadEpisodio>>["data"]>();
   const [targetIps, setTargetIps] = useState("IPS-002");
-  const [blockchainMsg, setBlockchainMsg] = useState<string | null>(null);
+  const [blockchainFeedback, setBlockchainFeedback] = useState<{ kind: "success" | "error"; message: string } | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [messageKind, setMessageKind] = useState<"info" | "error" | "success">("info");
+  const [permisosHint, setPermisosHint] = useState<string | null>(null);
   const [newUser, setNewUser] = useState({
     usuarioId: "",
     nombre: "",
@@ -76,22 +78,31 @@ export function PortalClinicoPage() {
   }, [sesion]);
 
   const cargarResumenEpisodio = async (episodeId: string) => {
-    const [doc, perms, trace, integrity] = await Promise.all([
-      obtenerDocumentoEpisodio(episodeId, sesion),
+    const [docRes, perms, traceRes, integrityRes] = await Promise.all([
+      consultarDocumentoEpisodio(episodeId, sesion),
       listarPermisosDocumento(episodeId, sesion),
-      obtenerTrazabilidadEpisodio(episodeId, sesion),
-      verificarIntegridadEpisodio(episodeId, sesion)
+      consultarTrazabilidadEpisodio(episodeId, sesion),
+      consultarIntegridadEpisodio(episodeId, sesion)
     ]);
-    setDocInfo(doc);
+    setDocInfo(docRes.data);
     setDocPerms(perms);
-    setTraceInfo(trace);
-    setIntegrityInfo(integrity);
+    setTraceInfo(traceRes.data);
+    setIntegrityInfo(integrityRes.data);
+
+    const feedback = [docRes.ok ? null : docRes.message, traceRes.ok ? null : traceRes.message, integrityRes.ok ? null : integrityRes.message]
+      .filter(Boolean)
+      .join(" ");
+    if (feedback) {
+      setMessage(feedback);
+      setMessageKind("error");
+    }
   };
 
   const onCrearUsuario = async () => {
     if (!canManageUsers) return;
     const result = await crearUsuarioIps(newUser, sesion);
     setMessage(result.message);
+    setMessageKind(result.ok ? "success" : "error");
     if (result.ok) {
       setNewUser({ usuarioId: "", nombre: "", rol: "profesional_salud" });
       await refreshAccess();
@@ -102,6 +113,7 @@ export function PortalClinicoPage() {
     if (!canManageUsers) return;
     const result = await actualizarUsuarioIps(user.usuarioId, { activo: !user.activo }, sesion);
     setMessage(result.message);
+    setMessageKind(result.ok ? "success" : "error");
     await refreshAccess();
   };
 
@@ -110,46 +122,74 @@ export function PortalClinicoPage() {
     const id = episodeIdDoc.trim();
     if (!id) {
       setMessage("Ingrese un ID de episodio para consultar continuidad e integridad.");
+      setMessageKind("error");
       return;
     }
+    setPermisosHint(null);
     await cargarResumenEpisodio(id);
   };
 
   const onGrant = async () => {
     if (!canManagePermissions) return;
     const id = episodeIdDoc.trim();
-    if (!id) return;
+    if (!id) {
+      setPermisosHint(null);
+      setMessage(
+        "Indique el ID del episodio en el campo de abajo (o en «Consultar episodio») antes de otorgar permiso."
+      );
+      setMessageKind("error");
+      return;
+    }
     const result = await otorgarPermisoDocumento(id, targetIps.trim(), sesion);
-    setMessage(
-      result.traceEvent
-        ? `${result.message} Evidencia: ${result.traceEvent.evidence.transactionHash}`
-        : result.message
-    );
-    await cargarResumenEpisodio(id);
+    const texto = result.traceEvent
+      ? `${result.message} Evidencia: ${result.traceEvent.evidence.transactionHash}`
+      : result.message;
+    setMessage(texto);
+    setMessageKind(result.ok ? "success" : "error");
+    setPermisosHint(result.ok ? `Permiso aplicado al episodio ${id}.` : null);
+    if (canViewDocuments) {
+      await cargarResumenEpisodio(id);
+    } else {
+      const perms = await listarPermisosDocumento(id, sesion);
+      setDocPerms(perms);
+    }
   };
 
   const onRevoke = async () => {
     if (!canManagePermissions) return;
     const id = episodeIdDoc.trim();
-    if (!id) return;
+    if (!id) {
+      setPermisosHint(null);
+      setMessage(
+        "Indique el ID del episodio en el campo de abajo (o en «Consultar episodio») antes de revocar permiso."
+      );
+      setMessageKind("error");
+      return;
+    }
     const result = await revocarPermisoDocumento(id, targetIps.trim(), sesion);
-    setMessage(
-      result.traceEvent
-        ? `${result.message} Evidencia: ${result.traceEvent.evidence.transactionHash}`
-        : result.message
-    );
-    await cargarResumenEpisodio(id);
+    const texto = result.traceEvent
+      ? `${result.message} Evidencia: ${result.traceEvent.evidence.transactionHash}`
+      : result.message;
+    setMessage(texto);
+    setMessageKind(result.ok ? "success" : "error");
+    setPermisosHint(result.ok ? `Permiso revocado en el episodio ${id}.` : null);
+    if (canViewDocuments) {
+      await cargarResumenEpisodio(id);
+    } else {
+      const perms = await listarPermisosDocumento(id, sesion);
+      setDocPerms(perms);
+    }
   };
 
   const onBlockchainTrace = async (action: string) => {
     const wallet = await conectarWallet();
     if (!wallet.ok) {
-      setBlockchainMsg(wallet.message ?? "No se pudo conectar la wallet.");
+      setBlockchainFeedback({ kind: "error", message: wallet.message ?? "No se pudo conectar la wallet." });
       return;
     }
     const chain = await asegurarCadenaSepolia();
     if (!chain.ok) {
-      setBlockchainMsg(chain.message ?? "La wallet no está en la red correcta.");
+      setBlockchainFeedback({ kind: "error", message: chain.message ?? "La wallet no está en la red correcta." });
       return;
     }
     const tx = await enviarTrazaBlockchain({
@@ -160,39 +200,69 @@ export function PortalClinicoPage() {
       payload: { source: "portal-clinico-rediseñado" }
     });
     if (!tx.ok) {
-      setBlockchainMsg(tx.message ?? "No fue posible enviar la transacción.");
+      setBlockchainFeedback({ kind: "error", message: tx.message ?? "No fue posible enviar la transacción." });
       return;
     }
-    setBlockchainMsg(`Transacción enviada: ${tx.txHash}`);
+    setBlockchainFeedback({
+      kind: "success",
+      message: tx.explorerUrl ? `Transacción enviada: ${tx.explorerUrl}` : `Transacción enviada: ${tx.txHash}`
+    });
   };
 
   return (
-    <div className="container">
-      <section className="page-banner">
-        <div>
-          <p className="eyebrow">Mi jornada</p>
-          <h1 className="page-title">Hola, {sesion?.nombre}</h1>
-          <p className="page-subtitle">
-            Desde aquí puede resolver las tareas más comunes de su rol: revisar continuidad
-            del episodio, compartir acceso entre IPS y validar la evidencia del caso.
-          </p>
+    <>
+      <div className="page-header">
+        <div className="page-header__row">
+          <div>
+            <h1 className="page-title">Bienvenido, {sesion?.nombre}</h1>
+            <p className="page-subtitle">
+              Panel de operaciones clínicas y administrativas de su sesión activa.
+            </p>
+          </div>
         </div>
-        <div className="context-note">
-          <strong>{sesion?.rol ?? "Sin sesión"}</strong>
-          <span>{sesion?.ipsId ?? "Sin IPS"}</span>
-          <small>{capabilities.length} capacidades activas</small>
-        </div>
-      </section>
+      </div>
 
-      {message && <div className="alert alert--info" style={{ marginBottom: "1rem" }}>{message}</div>}
-      {blockchainMsg && <div className="alert alert--success" style={{ marginBottom: "1rem" }}>{blockchainMsg}</div>}
+      <div className="stats-row">
+        <div className="stat-card">
+          <span className="stat-card__value">{capabilities.length}</span>
+          <span className="stat-card__label">Capacidades</span>
+        </div>
+        <div className="stat-card">
+          <span className="stat-card__value">{usuarios.length}</span>
+          <span className="stat-card__label">Usuarios IPS</span>
+        </div>
+        <div className="stat-card">
+          <span className="stat-card__value">{roles.length}</span>
+          <span className="stat-card__label">Roles sistema</span>
+        </div>
+        <div className="stat-card">
+          <span className="stat-card__value">{sesion?.ipsId ?? "—"}</span>
+          <span className="stat-card__label">Institución</span>
+        </div>
+      </div>
+
+      {message && (
+        <div
+          className={`alert ${
+            messageKind === "success"
+              ? "alert--success"
+              : messageKind === "error"
+                ? "alert--error"
+                : "alert--info"
+          }`}
+          style={{ marginBottom: 16 }}
+        >
+          {message}
+        </div>
+      )}
+      {blockchainFeedback && <div className={`alert ${blockchainFeedback.kind === "success" ? "alert--success" : "alert--error"}`} style={{ marginBottom: 16 }}>{blockchainFeedback.message}</div>}
 
       <div className="dashboard-grid dashboard-grid--wide">
         <section className="card card--elevated">
           <div className="section-head section-head--tight">
             <div>
               <h2 className="section-title">Resumen de acceso</h2>
-              <p className="section-copy">Así reconoce la plataforma su perfil actual.</p>
+              <p className="section-copy">Perfil reconocido por la plataforma.</p>
             </div>
           </div>
           <div className="stack-list">
@@ -215,14 +285,12 @@ export function PortalClinicoPage() {
           <section className="card card--elevated">
             <div className="section-head section-head--tight">
               <div>
-                <h2 className="section-title">Consultar continuidad del episodio</h2>
-                <p className="section-copy">
-                  Ingrese un episodio para revisar documento, integridad y permisos vigentes.
-                </p>
+                <h2 className="section-title">Consultar episodio</h2>
+                <p className="section-copy">Revisar documento, integridad y permisos vigentes.</p>
               </div>
             </div>
             <div className="search-layout">
-              <div className="form-group">
+              <div className="form-group" style={{ flex: 1, marginBottom: 0 }}>
                 <label className="form-label">ID del episodio</label>
                 <input
                   className="form-input"
@@ -232,18 +300,14 @@ export function PortalClinicoPage() {
                 />
               </div>
               <div className="btn-group">
-                <button className="btn btn--primary" onClick={onConsultarDocumento}>
-                  Consultar episodio
-                </button>
-                <Link to="/episodios/trazabilidad" className="btn btn--secondary">
-                  Vista completa
-                </Link>
+                <button className="btn btn--primary" onClick={onConsultarDocumento}>Consultar</button>
+                <Link to="/episodios/trazabilidad" className="btn btn--ghost">Vista completa</Link>
               </div>
             </div>
             {docInfo && (
-              <div className="result-panel" style={{ marginTop: "1rem" }}>
+              <div className="result-panel" style={{ marginTop: 12 }}>
                 <div>
-                  <strong>Documento disponible</strong>
+                  <strong>Documento</strong>
                   <code>{docInfo.hash}</code>
                 </div>
                 <div>
@@ -263,14 +327,31 @@ export function PortalClinicoPage() {
           <section className="card card--elevated">
             <div className="section-head section-head--tight">
               <div>
-                <h2 className="section-title">Compartir acceso con otra IPS</h2>
+                <h2 className="section-title">Compartir acceso</h2>
                 <p className="section-copy">
-                  Otorgue o revoque acceso solo cuando la continuidad asistencial lo requiera.
+                  Otorgue o revoque acceso a otra IPS sobre un episodio concreto. Debe usar el mismo
+                  ID que aparece al crear el episodio (UUID).
                 </p>
               </div>
             </div>
+            {!canViewDocuments ? (
+              <div className="form-group" style={{ marginBottom: 12 }}>
+                <label className="form-label form-label--required">ID del episodio</label>
+                <input
+                  className="form-input"
+                  value={episodeIdDoc}
+                  onChange={(e) => setEpisodeIdDoc(e.target.value)}
+                  placeholder="Pegue el UUID del episodio"
+                />
+              </div>
+            ) : (
+              <p className="form-hint" style={{ marginBottom: 12 }}>
+                Use el <strong>ID del episodio</strong> del recuadro «Consultar episodio» de arriba (o
+                péguelo allí primero y pulse <strong>Consultar</strong> para ver permisos actuales).
+              </p>
+            )}
             <div className="search-layout">
-              <div className="form-group">
+              <div className="form-group" style={{ flex: 1, marginBottom: 0 }}>
                 <label className="form-label">IPS receptora</label>
                 <input
                   className="form-input"
@@ -280,16 +361,22 @@ export function PortalClinicoPage() {
                 />
               </div>
               <div className="btn-group">
-                <button className="btn btn--primary" onClick={onGrant}>
-                  Otorgar acceso
-                </button>
-                <button className="btn btn--secondary" onClick={onRevoke}>
-                  Revocar acceso
-                </button>
+                <button type="button" className="btn btn--primary" onClick={onGrant}>Otorgar</button>
+                <button type="button" className="btn btn--ghost" onClick={onRevoke}>Revocar</button>
               </div>
             </div>
-            <p className="section-copy" style={{ marginBottom: 0 }}>
-              Estado actual: {docPerms.join(", ") || "Sin IPS adicionales autorizadas"}
+            {permisosHint && (
+              <p className="section-copy" style={{ marginTop: 8, color: "var(--success)" }}>
+                {permisosHint}
+              </p>
+            )}
+            <p className="section-copy" style={{ marginTop: 8, marginBottom: 0 }}>
+              <strong>IPS con acceso activo al episodio:</strong>{" "}
+              {docPerms.length ? docPerms.join(", ") : "Ninguna aún (solo la propietaria hasta otorgar)"}
+            </p>
+            <p className="form-hint" style={{ marginTop: 6 }}>
+              Requisitos: blockchain real configurada en el backend; como admin de la IPS que creó el
+              episodio (o super administrador). No otorgue permiso a la misma IPS propietaria.
             </p>
           </section>
         )}
@@ -298,8 +385,8 @@ export function PortalClinicoPage() {
           <section className="card card--elevated">
             <div className="section-head section-head--tight">
               <div>
-                <h2 className="section-title">Gestión de usuarios de la IPS</h2>
-                <p className="section-copy">Active o desactive usuarios de su institución sin afectar la trazabilidad.</p>
+                <h2 className="section-title">Usuarios de la IPS</h2>
+                <p className="section-copy">Active o desactive usuarios de su institución.</p>
               </div>
             </div>
             <div className="form-columns">
@@ -333,10 +420,8 @@ export function PortalClinicoPage() {
                 </select>
               </div>
             </div>
-            <div className="btn-group" style={{ marginBottom: "1rem" }}>
-              <button className="btn btn--primary" type="button" onClick={onCrearUsuario}>
-                Crear usuario
-              </button>
+            <div className="btn-group" style={{ marginBottom: 12 }}>
+              <button className="btn btn--primary" type="button" onClick={onCrearUsuario}>Crear usuario</button>
             </div>
             <div className="table-wrapper">
               <table className="tabla-clinica">
@@ -355,9 +440,13 @@ export function PortalClinicoPage() {
                       <td>{user.usuarioId}</td>
                       <td>{user.correo ?? "—"}</td>
                       <td>{user.rol}</td>
-                      <td>{user.activo ? "Activo" : "Inactivo"}</td>
                       <td>
-                        <button className="btn btn--ghost" onClick={() => onToggleActivo(user)}>
+                        <span className={`status-chip${user.activo ? " status-chip--ready" : " status-chip--alert"}`}>
+                          {user.activo ? "Activo" : "Inactivo"}
+                        </span>
+                      </td>
+                      <td>
+                        <button className="btn btn--ghost btn--sm" onClick={() => onToggleActivo(user)}>
                           {user.activo ? "Desactivar" : "Activar"}
                         </button>
                       </td>
@@ -372,8 +461,8 @@ export function PortalClinicoPage() {
         <section className="card card--elevated">
           <div className="section-head section-head--tight">
             <div>
-              <h2 className="section-title">Qué está pasando con este episodio</h2>
-              <p className="section-copy">Resumen rápido de integridad, versiones y último evento trazado.</p>
+              <h2 className="section-title">Estado del episodio</h2>
+              <p className="section-copy">Integridad, versiones y último evento trazado.</p>
             </div>
           </div>
           {!traceInfo ? (
@@ -381,11 +470,11 @@ export function PortalClinicoPage() {
           ) : (
             <div className="stack-list">
               <div className="stack-item">
-                <strong>Evento clínico asociado</strong>
+                <strong>Evento clínico</strong>
                 <span>{traceInfo.event.eventoUrgenciasId}</span>
               </div>
               <div className="stack-item">
-                <strong>Versiones registradas</strong>
+                <strong>Versiones</strong>
                 <span>{traceInfo.versiones.length}</span>
               </div>
               <div className="stack-item">
@@ -393,7 +482,7 @@ export function PortalClinicoPage() {
                 <small>{ultimoEventoTraza?.eventType ?? "—"}</small>
               </div>
               <div className="stack-item">
-                <strong>Modo de evidencia</strong>
+                <strong>Modo evidencia</strong>
                 <small>{ultimoEventoTraza?.evidence.ledgerMode ?? "—"}</small>
               </div>
             </div>
@@ -404,7 +493,7 @@ export function PortalClinicoPage() {
           <div className="section-head section-head--tight">
             <div>
               <h2 className="section-title">Roles del sistema</h2>
-              <p className="section-copy">Referencia rápida de los permisos funcionales disponibles en la plataforma.</p>
+              <p className="section-copy">Permisos funcionales disponibles en la plataforma.</p>
             </div>
           </div>
           <div className="stack-list">
@@ -417,28 +506,39 @@ export function PortalClinicoPage() {
           </div>
         </section>
 
+        {sesion?.rol === "auditor" && (
+          <section className="card card--elevated">
+            <div className="section-head section-head--tight">
+              <div>
+                <h2 className="section-title">Evaluación</h2>
+                <p className="section-copy">Dashboard de interoperabilidad, integridad y documentación.</p>
+              </div>
+            </div>
+            <Link to="/auditoria/evaluacion" className="btn btn--primary">
+              Abrir evaluación
+            </Link>
+          </section>
+        )}
+
         {(sesion?.rol === "admin_ips" || sesion?.rol === "auditor") && (
           <section className="card card--elevated">
             <div className="section-head section-head--tight">
               <div>
-                <h2 className="section-title">Registro directo con wallet</h2>
-                <p className="section-copy">
-                  Si necesita contrastar el flujo del backend con una acción manual desde wallet,
-                  puede registrar una transacción directa en Sepolia.
-                </p>
+                <h2 className="section-title">Registro con wallet</h2>
+                <p className="section-copy">Transacción directa en Sepolia para validación manual.</p>
               </div>
             </div>
             <div className="btn-group">
               <button className="btn btn--primary" onClick={() => onBlockchainTrace("DOCUMENT_ACCESS")}>
                 Registrar acceso
               </button>
-              <button className="btn btn--secondary" onClick={() => onBlockchainTrace("PERMISSION_CHANGE")}>
-                Registrar cambio de permiso
+              <button className="btn btn--ghost" onClick={() => onBlockchainTrace("PERMISSION_CHANGE")}>
+                Registrar permiso
               </button>
             </div>
           </section>
         )}
       </div>
-    </div>
+    </>
   );
 }

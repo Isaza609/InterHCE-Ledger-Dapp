@@ -1,3 +1,5 @@
+import { loadJsonFile, saveJsonFile } from "../shared/jsonFileStore";
+
 export interface EstadoPermisoEpisodio {
   episodeId: string;
   sourceIpsId: string;
@@ -13,7 +15,33 @@ interface RegistroPermisosEpisodio {
   permissions: Map<string, EstadoPermisoEpisodio>;
 }
 
-const permisosPorEpisodio = new Map<string, RegistroPermisosEpisodio>();
+interface RegistroPermisosPersistido {
+  episodeId: string;
+  ownerIpsId: string;
+  permissions: EstadoPermisoEpisodio[];
+}
+
+const PERMISOS_STORE_FILE = "episodio-permisos.json";
+const permisosPorEpisodio = new Map<string, RegistroPermisosEpisodio>(
+  loadJsonFile<RegistroPermisosPersistido[]>(PERMISOS_STORE_FILE, []).map((item) => [
+    item.episodeId,
+    {
+      ownerIpsId: item.ownerIpsId,
+      permissions: new Map(item.permissions.map((permission) => [permission.targetIpsId, permission]))
+    }
+  ])
+);
+
+function persistPermisosStore(): void {
+  const serialized: RegistroPermisosPersistido[] = [...permisosPorEpisodio.entries()].map(
+    ([episodeId, registro]) => ({
+      episodeId,
+      ownerIpsId: registro.ownerIpsId,
+      permissions: [...registro.permissions.values()]
+    })
+  );
+  saveJsonFile(PERMISOS_STORE_FILE, serialized);
+}
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -45,6 +73,7 @@ export function registrarPropietarioEpisodio(
     ])
   };
   permisosPorEpisodio.set(episodeId, registro);
+  persistPermisosStore();
 }
 
 export function obtenerPropietarioEpisodio(episodeId: string): string | undefined {
@@ -102,6 +131,7 @@ export function otorgarPermisoEpisodio(
     ultimoCambioEn: timestamp
   };
   registro.permissions.set(targetIps, permission);
+  persistPermisosStore();
   return { ok: true, permission: { ...permission } };
 }
 
@@ -150,6 +180,7 @@ export function revocarPermisoEpisodio(
     ultimoCambioEn: timestamp
   };
   registro.permissions.set(targetIps, permission);
+  persistPermisosStore();
   return { ok: true, permission: { ...permission } };
 }
 
@@ -170,4 +201,31 @@ export function listarPermisosEpisodio(episodeId: string): string[] {
   return obtenerEstadosPermisosEpisodio(episodeId)
     .filter((item) => item.activo)
     .map((item) => item.targetIpsId);
+}
+
+
+export function actorPuedeActualizarEpisodioConContinuidad(
+  episodeId: string,
+  ipsId?: string,
+  rol?: string
+): boolean {
+  if (rol !== "profesional_salud" && rol !== "admin_ips") {
+    return false;
+  }
+  return puedeAccederDocumento(episodeId, ipsId, rol);
+}
+
+export function listarEpisodiosAccesiblesPorIps(
+  ipsId?: string,
+  rol?: string
+): string[] {
+  if (rol === "auditor") {
+    return [...permisosPorEpisodio.keys()].sort((a, b) => a.localeCompare(b));
+  }
+  if (!ipsId) return [];
+
+  return [...permisosPorEpisodio.entries()]
+    .filter(([, registro]) => Boolean(registro.permissions.get(ipsId)?.activo))
+    .map(([episodeId]) => episodeId)
+    .sort((a, b) => a.localeCompare(b));
 }

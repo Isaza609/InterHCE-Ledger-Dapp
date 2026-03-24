@@ -1,8 +1,6 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
 import {
   configurarIpsInfra,
-  desplegarContratosMock,
   obtenerEstadoInfraestructura,
   type EstadoInfraestructura
 } from "@/shared/services/api";
@@ -21,6 +19,7 @@ export function InfraestructuraPage() {
     setLoading(true);
     const res = await obtenerEstadoInfraestructura();
     setEstado(res);
+    setMessage(res ? null : "No fue posible consultar el estado de la infraestructura ni la conectividad blockchain.");
     setLoading(false);
   };
 
@@ -31,6 +30,7 @@ export function InfraestructuraPage() {
       .then((res) => {
         if (!active) return;
         setEstado(res);
+        setMessage(res ? null : "No fue posible consultar el estado de la infraestructura ni la conectividad blockchain.");
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -48,46 +48,29 @@ export function InfraestructuraPage() {
     await refrescar();
   };
 
-  const setupContracts = async () => {
-    setLoading(true);
-    const result = await desplegarContratosMock();
-    setMessage(result.message);
-    await refrescar();
-  };
-
   return (
-    <div className="container">
-      <nav aria-label="Migas de pan" className="breadcrumb">
-        <Link to="/">Inicio</Link>
-        {" / Infraestructura"}
-      </nav>
-
-      <section className="page-banner page-banner--compact">
-        <div>
-          <p className="eyebrow">Estado técnico</p>
-          <h1 className="page-title">Infraestructura del entorno</h1>
-          <p className="page-subtitle">
-            Revise si el backend, el almacenamiento off-chain y la red blockchain están listos
-            para operar los flujos interinstitucionales.
-          </p>
+    <>
+      <div className="page-header">
+        <div className="page-header__row">
+          <div>
+            <h1 className="page-title">Infraestructura</h1>
+            <p className="page-subtitle">
+              Estado del backend, almacenamiento off-chain y red blockchain.
+            </p>
+          </div>
+          <div className="page-actions">
+            <button className="btn btn--secondary" onClick={setupIps} disabled={loading}>
+              Preparar IPS
+            </button>
+            <button className="btn btn--ghost" onClick={refrescar} disabled={loading}>
+              {loading ? "Consultando..." : "Actualizar"}
+            </button>
+          </div>
         </div>
-        <div className="page-banner__actions">
-          <button className="btn btn--secondary" onClick={setupIps} disabled={loading}>
-            Preparar IPS de prueba
-          </button>
-          <button className="btn btn--primary" onClick={setupContracts} disabled={loading}>
-            Activar modo blockchain
-          </button>
-          <button className="btn btn--ghost" onClick={refrescar} disabled={loading}>
-            {loading ? "Consultando..." : "Actualizar estado"}
-          </button>
-        </div>
-      </section>
+      </div>
 
       {message && (
-        <div className="alert alert--info" style={{ marginBottom: "1rem" }}>
-          {message}
-        </div>
+        <div className="alert alert--info" style={{ marginBottom: 16 }}>{message}</div>
       )}
 
       {estado && (
@@ -107,7 +90,7 @@ export function InfraestructuraPage() {
                     : "status-chip"
                 }
               >
-                {estado.blockchain.modo === "real" ? "Modo real" : "Modo simulado"}
+                {estado.blockchain.modo === "real" ? "Modo real" : "No disponible"}
               </div>
             </div>
             <div className="stack-list">
@@ -125,7 +108,7 @@ export function InfraestructuraPage() {
                 <small>
                   {estado.blockchain.contratosOperativos
                     ? "Los contratos están disponibles para registrar eventos."
-                    : "La evidencia solo está disponible en modo simulado."}
+                    : "Las operaciones auditables quedarán bloqueadas hasta configurar la blockchain real."}
                 </small>
               </div>
               <div className="stack-item">
@@ -182,6 +165,6 @@ export function InfraestructuraPage() {
           </section>
         </div>
       )}
-    </div>
+    </>
   );
 }

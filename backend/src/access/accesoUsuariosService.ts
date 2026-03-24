@@ -1,5 +1,6 @@
 import { createHash } from "crypto";
 import type { ActorContexto, RolUsuario } from "../hce/episodioLifecycleService";
+import { existeIps } from "../ips/ipsService";
 
 export interface UsuarioIps {
   usuarioId: string;
@@ -9,16 +10,30 @@ export interface UsuarioIps {
   rol: RolUsuario;
   ipsId: string;
   activo: boolean;
+  documentoIdentidad?: string;
+  requiereCambioPassword: boolean;
   creadoEn: string;
   actualizadoEn: string;
 }
 
 const CAPABILIDADES_POR_ROL: Record<RolUsuario, string[]> = {
+  super_admin: [
+    "ips.crear",
+    "ips.actualizar",
+    "ips.listar",
+    "ips.usuarios.gestionar",
+    "ips.permisos.gestionar",
+    "episodios.consultar",
+    "episodios.documento.ver",
+    "sistema.configurar",
+    "trazabilidad.consultar"
+  ],
   profesional_salud: [
     "episodios.crear",
     "episodios.actualizar",
     "episodios.consultar",
-    "episodios.documento.ver"
+    "episodios.documento.ver",
+    "trazabilidad.consultar"
   ],
   admin_ips: [
     "episodios.crear",
@@ -26,10 +41,19 @@ const CAPABILIDADES_POR_ROL: Record<RolUsuario, string[]> = {
     "episodios.consultar",
     "episodios.documento.ver",
     "ips.usuarios.gestionar",
-    "ips.permisos.gestionar"
+    "ips.permisos.gestionar",
+    "trazabilidad.consultar"
   ],
   paciente: ["episodios.consultar"],
-  auditor: ["trazabilidad.consultar"]
+  auditor: ["trazabilidad.consultar", "evaluacion.consultar"]
+};
+
+const ROLES_CREABLES_POR: Record<RolUsuario, RolUsuario[]> = {
+  super_admin: ["admin_ips", "profesional_salud", "paciente", "auditor"],
+  admin_ips: ["profesional_salud", "paciente"],
+  profesional_salud: [],
+  paciente: [],
+  auditor: []
 };
 
 const usuariosStore = new Map<string, UsuarioIps>();
@@ -42,7 +66,7 @@ function normalizarCorreo(value: string): string {
   return value.trim().toLowerCase();
 }
 
-function crearPasswordHash(password: string): string {
+export function crearPasswordHash(password: string): string {
   return createHash("sha256").update(password, "utf8").digest("hex");
 }
 
@@ -54,6 +78,18 @@ function buildCorreoPorDefecto(usuarioId: string, ipsId: string): string {
 function seedUsuariosIniciales() {
   const base: UsuarioIps[] = [
     {
+      usuarioId: "super-admin-001",
+      nombre: "Super Administrador",
+      correo: "superadmin@interhce.local",
+      passwordHash: crearPasswordHash("SuperAdmin001!"),
+      rol: "super_admin",
+      ipsId: "SISTEMA",
+      activo: true,
+      requiereCambioPassword: false,
+      creadoEn: nowIso(),
+      actualizadoEn: nowIso()
+    },
+    {
       usuarioId: "admin-ips-001",
       nombre: "Administrador IPS 001",
       correo: "admin.ips001@interhce.local",
@@ -61,6 +97,7 @@ function seedUsuariosIniciales() {
       rol: "admin_ips",
       ipsId: "IPS-001",
       activo: true,
+      requiereCambioPassword: false,
       creadoEn: nowIso(),
       actualizadoEn: nowIso()
     },
@@ -72,6 +109,7 @@ function seedUsuariosIniciales() {
       rol: "profesional_salud",
       ipsId: "IPS-001",
       activo: true,
+      requiereCambioPassword: false,
       creadoEn: nowIso(),
       actualizadoEn: nowIso()
     },
@@ -83,6 +121,7 @@ function seedUsuariosIniciales() {
       rol: "admin_ips",
       ipsId: "IPS-002",
       activo: true,
+      requiereCambioPassword: false,
       creadoEn: nowIso(),
       actualizadoEn: nowIso()
     },
@@ -94,6 +133,7 @@ function seedUsuariosIniciales() {
       rol: "profesional_salud",
       ipsId: "IPS-002",
       activo: true,
+      requiereCambioPassword: false,
       creadoEn: nowIso(),
       actualizadoEn: nowIso()
     },
@@ -105,6 +145,7 @@ function seedUsuariosIniciales() {
       rol: "auditor",
       ipsId: "AUDITORIA",
       activo: true,
+      requiereCambioPassword: false,
       creadoEn: nowIso(),
       actualizadoEn: nowIso()
     },
@@ -116,6 +157,8 @@ function seedUsuariosIniciales() {
       rol: "paciente",
       ipsId: "PACIENTE",
       activo: true,
+      documentoIdentidad: "1234567890",
+      requiereCambioPassword: false,
       creadoEn: nowIso(),
       actualizadoEn: nowIso()
     }
@@ -144,29 +187,74 @@ export function listarUsuariosPorIps(ipsId: string): UsuarioIps[] {
   return [...usuariosStore.values()].filter((item) => item.ipsId === ipsId);
 }
 
+export function listarTodosUsuarios(): UsuarioIps[] {
+  return [...usuariosStore.values()];
+}
+
+export function rolesCreablesPor(actor: ActorContexto): RolUsuario[] {
+  return ROLES_CREABLES_POR[actor.rol] ?? [];
+}
+
 export function crearUsuarioIps(input: {
   usuarioId: string;
   nombre: string;
+  correo?: string;
+  password?: string;
   rol: RolUsuario;
   ipsId: string;
-}): { ok: true; user: UsuarioIps } | { ok: false; message: string } {
+  documentoIdentidad?: string;
+}, actor?: ActorContexto): { ok: true; user: UsuarioIps } | { ok: false; code: string; message: string } {
   const usuarioId = input.usuarioId.trim();
   const nombre = input.nombre.trim();
   const ipsId = input.ipsId.trim();
   if (!usuarioId || !nombre || !ipsId) {
-    return { ok: false, message: "usuarioId, nombre e ipsId son obligatorios." };
+    return { ok: false, code: "MISSING_FIELDS", message: "usuarioId, nombre e ipsId son obligatorios." };
   }
   if (usuariosStore.has(usuarioId)) {
-    return { ok: false, message: "Ya existe un usuario con ese usuarioId." };
+    return { ok: false, code: "USER_EXISTS", message: "Ya existe un usuario con ese usuarioId." };
   }
+
+  if (actor) {
+    const permitidos = ROLES_CREABLES_POR[actor.rol] ?? [];
+    if (!permitidos.includes(input.rol)) {
+      return {
+        ok: false,
+        code: "ROLE_NOT_ALLOWED",
+        message: `El rol ${actor.rol} no puede crear usuarios con rol ${input.rol}.`
+      };
+    }
+    if (actor.rol === "admin_ips" && actor.ipsId !== ipsId) {
+      return {
+        ok: false,
+        code: "IPS_SCOPE_VIOLATION",
+        message: "El admin_ips solo puede crear usuarios dentro de su propia IPS."
+      };
+    }
+  }
+
+  const ipsEspeciales = ["SISTEMA", "AUDITORIA", "PACIENTE"];
+  if (!ipsEspeciales.includes(ipsId) && !existeIps(ipsId)) {
+    return { ok: false, code: "IPS_NOT_FOUND", message: `La IPS '${ipsId}' no existe en el sistema.` };
+  }
+
+  if (input.documentoIdentidad?.trim()) {
+    const existing = buscarUsuarioPorDocumento(input.documentoIdentidad.trim());
+    if (existing) {
+      return { ok: false, code: "DOCUMENT_EXISTS", message: "Ya existe un usuario con ese documento de identidad." };
+    }
+  }
+
+  const passwordRaw = input.password?.trim() || `Temporal-${usuarioId}`;
   const user: UsuarioIps = {
     usuarioId,
     nombre,
-    correo: buildCorreoPorDefecto(usuarioId, ipsId),
-    passwordHash: crearPasswordHash(`Temporal-${usuarioId}`),
+    correo: input.correo?.trim() || buildCorreoPorDefecto(usuarioId, ipsId),
+    passwordHash: crearPasswordHash(passwordRaw),
     rol: input.rol,
     ipsId,
     activo: true,
+    documentoIdentidad: input.documentoIdentidad?.trim() || undefined,
+    requiereCambioPassword: !input.password,
     creadoEn: nowIso(),
     actualizadoEn: nowIso()
   };
@@ -197,8 +285,56 @@ export function actualizarUsuarioIps(
   return { ok: true, user: updated };
 }
 
+export function cambiarPassword(
+  usuarioId: string,
+  passwordActual: string,
+  passwordNueva: string
+): { ok: true } | { ok: false; code: string; message: string } {
+  const user = usuariosStore.get(usuarioId);
+  if (!user) {
+    return { ok: false, code: "USER_NOT_FOUND", message: "Usuario no encontrado." };
+  }
+  if (user.passwordHash !== crearPasswordHash(passwordActual)) {
+    return { ok: false, code: "INVALID_PASSWORD", message: "La contraseña actual es incorrecta." };
+  }
+  if (passwordNueva.length < 6) {
+    return { ok: false, code: "WEAK_PASSWORD", message: "La nueva contraseña debe tener al menos 6 caracteres." };
+  }
+  user.passwordHash = crearPasswordHash(passwordNueva);
+  user.requiereCambioPassword = false;
+  user.actualizadoEn = nowIso();
+  usuariosStore.set(usuarioId, user);
+  return { ok: true };
+}
+
+export function resetearPassword(
+  usuarioId: string,
+  nuevaPassword?: string
+): { ok: true; passwordTemporal: string } | { ok: false; code: string; message: string } {
+  const user = usuariosStore.get(usuarioId);
+  if (!user) {
+    return { ok: false, code: "USER_NOT_FOUND", message: "Usuario no encontrado." };
+  }
+  const passwordTemporal = nuevaPassword?.trim() || `Reset-${usuarioId}-${Date.now().toString(36)}`;
+  user.passwordHash = crearPasswordHash(passwordTemporal);
+  user.requiereCambioPassword = true;
+  user.actualizadoEn = nowIso();
+  usuariosStore.set(usuarioId, user);
+  return { ok: true, passwordTemporal };
+}
+
 export function obtenerUsuario(usuarioId: string): UsuarioIps | undefined {
   return usuariosStore.get(usuarioId);
+}
+
+export function buscarUsuarioPorDocumento(
+  documento: string
+): UsuarioIps | undefined {
+  const normalized = documento.trim();
+  if (!normalized) return undefined;
+  return [...usuariosStore.values()].find(
+    (item) => item.documentoIdentidad === normalized
+  );
 }
 
 export function buscarUsuarioPorIdentificador(
@@ -208,7 +344,13 @@ export function buscarUsuarioPorIdentificador(
   if (!normalized) return undefined;
   const byId = usuariosStore.get(identificador.trim());
   if (byId) return byId;
-  return [...usuariosStore.values()].find((item) => normalizarCorreo(item.correo) === normalized);
+  const byEmail = [...usuariosStore.values()].find(
+    (item) => normalizarCorreo(item.correo) === normalized
+  );
+  if (byEmail) return byEmail;
+  return [...usuariosStore.values()].find(
+    (item) => item.documentoIdentidad === identificador.trim()
+  );
 }
 
 export function autenticarUsuario(
@@ -279,5 +421,5 @@ export function validarActorContraUsuarios(
 }
 
 export function actorPuedeGestionarUsuarios(actor: ActorContexto): boolean {
-  return actor.rol === "admin_ips";
+  return actor.rol === "admin_ips" || actor.rol === "super_admin";
 }

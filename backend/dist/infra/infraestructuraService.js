@@ -2,14 +2,12 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.configurarIpsSimuladas = configurarIpsSimuladas;
 exports.listarIpsSimuladas = listarIpsSimuladas;
-exports.activarContratosSimulados = activarContratosSimulados;
 exports.obtenerEstadoInfraestructura = obtenerEstadoInfraestructura;
 const fhirClient_1 = require("../hce/fhirClient");
 const blockchainTraceService_1 = require("./blockchainTraceService");
 const estadoInfra = {
     red: "sepolia",
-    chainId: 11155111,
-    contratosOperativos: false
+    chainId: 11155111
 };
 const ipsSimuladas = new Map();
 function configurarIpsSimuladas(ips) {
@@ -39,15 +37,12 @@ function configurarIpsSimuladas(ips) {
 function listarIpsSimuladas() {
     return [...ipsSimuladas.values()];
 }
-function activarContratosSimulados() {
-    estadoInfra.contratosOperativos = true;
-}
 function obtenerEstadoInfraestructura() {
     const ips = listarIpsSimuladas();
     const fhirConfigurado = (0, fhirClient_1.isFhirConfigured)();
     const blockchainReal = (0, blockchainTraceService_1.obtenerConfiguracionBlockchainReal)();
-    const blockchainMode = blockchainReal.enabled ? "real" : "simulado";
-    const contratosOperativos = estadoInfra.contratosOperativos || blockchainReal.enabled;
+    const blockchainMode = blockchainReal.enabled ? "real" : "no_disponible";
+    const contratosOperativos = blockchainReal.enabled;
     const cumpleHu1E5 = contratosOperativos && ips.length >= 2;
     return {
         backend: {

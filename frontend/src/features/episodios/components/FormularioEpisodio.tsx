@@ -174,6 +174,94 @@ const defaultValues: FormEpisodio = {
   endTime: ""
 };
 
+function cloneValue<T>(value: T): T {
+  return structuredClone(value);
+}
+
+function mergeWithDefaults<T>(base: T, incoming: unknown): T {
+  if (incoming === undefined) {
+    return cloneValue(base);
+  }
+
+  if (Array.isArray(base)) {
+    const baseArray = base as unknown[];
+    const incomingArray = Array.isArray(incoming) ? incoming : [];
+    const maxLength = Math.max(baseArray.length, incomingArray.length);
+
+    return Array.from({ length: maxLength }, (_, index) => {
+      const baseValue = baseArray[index];
+      const incomingValue = incomingArray[index];
+      if (baseValue === undefined) {
+        return cloneValue(incomingValue);
+      }
+      return mergeWithDefaults(baseValue, incomingValue);
+    }) as T;
+  }
+
+  if (base && typeof base === "object") {
+    const baseObject = base as Record<string, unknown>;
+    const incomingObject = incoming && typeof incoming === "object"
+      ? (incoming as Record<string, unknown>)
+      : {};
+    const result: Record<string, unknown> = {};
+    const keys = new Set([...Object.keys(baseObject), ...Object.keys(incomingObject)]);
+
+    for (const key of keys) {
+      const baseValue = baseObject[key];
+      const incomingValue = incomingObject[key];
+      if (baseValue === undefined) {
+        result[key] = cloneValue(incomingValue);
+      } else {
+        result[key] = mergeWithDefaults(baseValue, incomingValue);
+      }
+    }
+
+    return result as T;
+  }
+
+  return (incoming as T) ?? base;
+}
+
+function splitDateTime(value?: string): { date: string; time: string } {
+  const normalized = String(value ?? "").trim();
+  if (!normalized) {
+    return { date: "", time: "" };
+  }
+
+  const [datePart = "", timePartRaw = ""] = normalized.split("T");
+  const timePart = timePartRaw.replace(/Z$/, "").split(".")[0] ?? "";
+  const [hours = "00", minutes = "00"] = timePart.split(":");
+
+  return {
+    date: datePart,
+    time: `${hours.padStart(2, "0")}:${minutes.padStart(2, "0")}`
+  };
+}
+
+function buildFormValues(initialData?: EpisodioPayload | null, ipsId?: string): FormEpisodio {
+  const merged = mergeWithDefaults(defaultValues, initialData ?? {}) as FormEpisodio;
+  const start = splitDateTime(initialData?.encounter.period.start);
+  const triage = splitDateTime(
+    initialData?.encounter.extension?.find(
+      (extension) => extension.url === ENCOUNTER_TRIAGE_TIME_URL
+    )?.valueDateTime
+  );
+  const end = splitDateTime(initialData?.encounter.period.end);
+
+  merged.startDate = start.date;
+  merged.startTime = start.time || defaultValues.startTime;
+  merged.triageDate = triage.date || start.date;
+  merged.triageTime = triage.time || defaultValues.triageTime;
+  merged.endDate = end.date;
+  merged.endTime = end.time;
+
+  if (!initialData?.prestadorOrigen?.identifier?.[0]?.value && ipsId) {
+    merged.prestadorOrigen.identifier[0].value = ipsId;
+  }
+
+  return merged;
+}
+
 function renderCatalogOptions(options: CatalogOption[]) {
   return options.map((option) => (
     <option key={option.code} value={option.code}>
@@ -182,7 +270,14 @@ function renderCatalogOptions(options: CatalogOption[]) {
   ));
 }
 
+function renderCatalogSuggestions(options: CatalogOption[]) {
+  return options.map((option) => (
+    <option key={option.code} value={option.code} label={option.display} />
+  ));
+}
+
 interface FormularioEpisodioProps {
+  initialData?: EpisodioPayload | null;
   onValidar?: (payload: EpisodioPayload) => void;
   onRegistrar?: (payload: EpisodioPayload) => void;
   actionLabel?: string;
@@ -317,6 +412,7 @@ function buildPayload(data: FormEpisodio): EpisodioPayload {
 }
 
 export function FormularioEpisodio({
+  initialData,
   onValidar,
   onRegistrar,
   actionLabel = "Registrar episodio",
@@ -329,6 +425,7 @@ export function FormularioEpisodio({
     register,
     handleSubmit,
     formState: { errors },
+    reset,
     setValue
   } = useForm<FormEpisodio>({
     defaultValues
@@ -362,6 +459,7 @@ export function FormularioEpisodio({
     triageClasificacion,
     condicionDestinoEgreso,
     tipoDiagnostico,
+    diagnosticosCie10,
     identidadGenero,
     etnia
   } = rdaCatalogos;
@@ -376,13 +474,38 @@ export function FormularioEpisodio({
     });
   };
 
+  const syncCatalogCodeAndDisplay = (
+    codePath: string,
+    displayPath: string,
+    options: CatalogOption[],
+    rawCode: string
+  ) => {
+    const normalizedCode = rawCode.trim().toUpperCase();
+    const matchedOption = options.find((option) => option.code.toUpperCase() === normalizedCode);
+
+    setValue(codePath as never, normalizedCode as never, {
+      shouldDirty: true
+    });
+    setValue(displayPath as never, (matchedOption?.display ?? "") as never, {
+      shouldDirty: true
+    });
+  };
+
   useEffect(() => {
-    if (sesion?.ipsId) {
-      setValue("prestadorOrigen.identifier.0.value", sesion.ipsId, {
-        shouldDirty: false
-      });
+    if (!initialData || !sesion?.ipsId) {
+      return;
     }
-  }, [sesion?.ipsId, setValue]);
+    reset(buildFormValues(initialData, sesion.ipsId));
+  }, [initialData, reset, sesion?.ipsId]);
+
+  useEffect(() => {
+    if (initialData || !sesion?.ipsId) {
+      return;
+    }
+    setValue("prestadorOrigen.identifier.0.value", sesion.ipsId, {
+      shouldDirty: false
+    });
+  }, [initialData, sesion?.ipsId, setValue]);
 
   const submit = (data: FormEpisodio, action: "validar" | "registrar") => {
     const payload = buildPayload(data);
@@ -1027,9 +1150,22 @@ export function FormularioEpisodio({
             <input
               id="dx-ingreso-code"
               type="text"
+              list="diagnosticos-cie10"
               className="form-input"
-              {...register("diagnosticoIngreso.code.coding.0.code", { required: true })}
+              {...register("diagnosticoIngreso.code.coding.0.code", {
+                required: true,
+                onChange: (event) =>
+                  syncCatalogCodeAndDisplay(
+                    "diagnosticoIngreso.code.coding.0.code",
+                    "diagnosticoIngreso.code.coding.0.display",
+                    diagnosticosCie10,
+                    event.target.value
+                  )
+              })}
             />
+            <datalist id="diagnosticos-cie10">
+              {renderCatalogSuggestions(diagnosticosCie10)}
+            </datalist>
           </div>
 
           <div className="form-group">
@@ -1040,6 +1176,7 @@ export function FormularioEpisodio({
               id="dx-ingreso-name"
               type="text"
               className="form-input"
+              readOnly
               {...register("diagnosticoIngreso.code.coding.0.display", { required: true })}
             />
           </div>
@@ -1075,8 +1212,18 @@ export function FormularioEpisodio({
                 <input
                   id="dx-egreso-code"
                   type="text"
+                  list="diagnosticos-cie10"
                   className="form-input"
-                  {...register("diagnosticoEgreso.code.coding.0.code", { required: true })}
+                  {...register("diagnosticoEgreso.code.coding.0.code", {
+                    required: true,
+                    onChange: (event) =>
+                      syncCatalogCodeAndDisplay(
+                        "diagnosticoEgreso.code.coding.0.code",
+                        "diagnosticoEgreso.code.coding.0.display",
+                        diagnosticosCie10,
+                        event.target.value
+                      )
+                  })}
                 />
               </div>
 
@@ -1088,6 +1235,7 @@ export function FormularioEpisodio({
                   id="dx-egreso-name"
                   type="text"
                   className="form-input"
+                  readOnly
                   {...register("diagnosticoEgreso.code.coding.0.display", { required: true })}
                 />
               </div>

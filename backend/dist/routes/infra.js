@@ -42,11 +42,3 @@ exports.infraRouter.post("/ips", (req, res) => {
         ips: (0, infraestructuraService_1.listarIpsSimuladas)()
     });
 });
-exports.infraRouter.post("/contracts/mock-deploy", (_req, res) => {
-    (0, infraestructuraService_1.activarContratosSimulados)();
-    return res.status(200).json({
-        code: "CONTRACTS_SIMULATED",
-        message: "Contratos marcados como operativos en modo simulado (HU1-E5).",
-        data: (0, infraestructuraService_1.obtenerEstadoInfraestructura)().blockchain
-    });
-});

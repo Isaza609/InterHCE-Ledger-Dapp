@@ -1,8 +1,9 @@
 import { useState, useCallback } from "react";
 import { validarEpisodio, registrarEpisodio } from "@/shared/services/api";
+import type { SesionUsuario } from "@/shared/auth/sessionStorage";
 import type { EpisodioPayload, ValidationResult } from "@/shared/types/episodio";
 
-export function useValidarEpisodio() {
+export function useValidarEpisodio(sesion?: SesionUsuario | null) {
   const [result, setResult] = useState<ValidationResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -30,7 +31,7 @@ export function useValidarEpisodio() {
     setError(null);
     setResult(null);
     try {
-      const r = await registrarEpisodio(payload);
+      const r = await registrarEpisodio(payload, sesion);
       setResult(r);
       return r;
     } catch (e) {
@@ -41,7 +42,7 @@ export function useValidarEpisodio() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [sesion]);
 
   return { result, loading, error, validar, registrar };
 }

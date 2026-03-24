@@ -8,7 +8,8 @@ const ROLES_VALIDOS = [
     "profesional_salud",
     "admin_ips",
     "paciente",
-    "auditor"
+    "auditor",
+    "super_admin"
 ];
 function obtenerActorDesdeRequest(req) {
     const token = (0, autenticacionService_1.extraerTokenBearer)(req.header("authorization"));

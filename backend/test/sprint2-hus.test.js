@@ -2,6 +2,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 
 process.env.FHIR_BASE_URL = "";
+process.env.BLOCKCHAIN_TRACE_MODE = "mock";
 
 const {
   almacenarDocumentoClinico,
@@ -13,13 +14,15 @@ const {
   obtenerRegistroLifecycleEpisodio
 } = require("../dist/hce/episodioLifecycleService");
 const {
+  registrarPropietarioEpisodio
+} = require("../dist/hce/permisosEpisodioService");
+const {
   obtenerActorDesdeRequest,
   validarAccesoOperacionClinica
 } = require("../dist/security/autorizacionService");
 const {
   configurarIpsSimuladas,
-  obtenerEstadoInfraestructura,
-  activarContratosSimulados
+  obtenerEstadoInfraestructura
 } = require("../dist/infra/infraestructuraService");
 
 function payloadBase({
@@ -91,6 +94,7 @@ test("HU0-E1 + HU4-E1: creación registra episodio, asociación a evento y metad
   const onChain = await obtenerRegistroOnChainMetadata(episodeId);
   assert.ok(onChain);
   const lifecycle = crearRegistroLifecycleEpisodio(episodeId, payload, actor, onChain);
+  registrarPropietarioEpisodio(episodeId, actor.ipsId);
 
   assert.equal(lifecycle.episodeId, episodeId);
   assert.equal(lifecycle.versionActual, 1);
@@ -107,6 +111,7 @@ test("HU1-E1: actualización crea nueva versión y conserva historial previo", a
   await almacenarDocumentoClinico(episodeId, p1);
   const m1 = await obtenerRegistroOnChainMetadata(episodeId);
   crearRegistroLifecycleEpisodio(episodeId, p1, actor, m1);
+  registrarPropietarioEpisodio(episodeId, actor.ipsId);
 
   const p2 = payloadBase({
     start: "2026-03-17T09:00:00",
@@ -131,6 +136,7 @@ test("HU4-E1: la asociación episodio-evento es inmutable durante el ciclo de vi
   await almacenarDocumentoClinico(episodeId, p1);
   const m1 = await obtenerRegistroOnChainMetadata(episodeId);
   crearRegistroLifecycleEpisodio(episodeId, p1, actor, m1);
+  registrarPropietarioEpisodio(episodeId, actor.ipsId);
 
   const pConflict = payloadBase({
     start: "2026-03-17T11:30:00",
@@ -158,7 +164,6 @@ test("HU1-E5: simulación de infraestructura permite múltiples IPS y estado ope
     { ipsId: "IPS-B", nombre: "IPS Beta", repsCodigo: "11002" }
   ]);
   assert.equal(configured.ok, true);
-  activarContratosSimulados();
   const estado = obtenerEstadoInfraestructura();
   assert.equal(estado.simulacionIps.total, 2);
   assert.equal(estado.simulacionIps.multipleIpsActivo, true);

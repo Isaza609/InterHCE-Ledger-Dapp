@@ -25,6 +25,19 @@ exports.accessRouter.get("/capabilities", (req, res) => {
         capabilities: (0, accesoUsuariosService_1.obtenerCapacidadesRol)(actor.rol)
     });
 });
+exports.accessRouter.get("/roles-creables", (req, res) => {
+    const actor = (0, autorizacionService_1.obtenerActorDesdeRequest)(req);
+    if (!actor) {
+        return res.status(403).json({
+            code: "MISSING_OR_INVALID_ROLE",
+            message: "Debe enviar actor válido."
+        });
+    }
+    return res.status(200).json({
+        code: "OK",
+        rolesCreables: (0, accesoUsuariosService_1.rolesCreablesPor)(actor)
+    });
+});
 exports.accessRouter.get("/users", (req, res) => {
     const actor = (0, autorizacionService_1.obtenerActorDesdeRequest)(req);
     if (!actor) {
@@ -40,16 +53,23 @@ exports.accessRouter.get("/users", (req, res) => {
             message: userCheck.message
         });
     }
+    if (!(0, accesoUsuariosService_1.actorPuedeGestionarUsuarios)(actor)) {
+        return res.status(403).json({
+            code: "FORBIDDEN_ROLE",
+            message: "Solo admin_ips o super_admin puede consultar y gestionar usuarios."
+        });
+    }
+    if (actor.rol === "super_admin") {
+        const ipsFilter = req.query.ipsId ? String(req.query.ipsId).trim() : null;
+        const users = ipsFilter
+            ? (0, accesoUsuariosService_1.listarUsuariosPorIps)(ipsFilter)
+            : (0, accesoUsuariosService_1.listarTodosUsuarios)();
+        return res.status(200).json({ code: "OK", users });
+    }
     if (!actor.ipsId) {
         return res.status(400).json({
             code: "MISSING_IPS",
             message: "Debe enviar x-ips-id."
-        });
-    }
-    if (!(0, accesoUsuariosService_1.actorPuedeGestionarUsuarios)(actor)) {
-        return res.status(403).json({
-            code: "FORBIDDEN_ROLE",
-            message: "Solo admin_ips puede consultar y gestionar usuarios de su IPS."
         });
     }
     return res.status(200).json({
@@ -57,6 +77,32 @@ exports.accessRouter.get("/users", (req, res) => {
         ipsId: actor.ipsId,
         users: (0, accesoUsuariosService_1.listarUsuariosPorIps)(actor.ipsId)
     });
+});
+exports.accessRouter.get("/users/:id", (req, res) => {
+    const actor = (0, autorizacionService_1.obtenerActorDesdeRequest)(req);
+    if (!actor) {
+        return res.status(403).json({
+            code: "MISSING_OR_INVALID_ROLE",
+            message: "Debe enviar actor válido."
+        });
+    }
+    if (!(0, accesoUsuariosService_1.actorPuedeGestionarUsuarios)(actor)) {
+        return res.status(403).json({
+            code: "FORBIDDEN_ROLE",
+            message: "Solo admin_ips o super_admin puede consultar usuarios."
+        });
+    }
+    const user = (0, accesoUsuariosService_1.obtenerUsuario)(req.params.id);
+    if (!user) {
+        return res.status(404).json({ code: "USER_NOT_FOUND", message: "Usuario no encontrado." });
+    }
+    if (actor.rol === "admin_ips" && user.ipsId !== actor.ipsId) {
+        return res.status(403).json({
+            code: "IPS_SCOPE_VIOLATION",
+            message: "No puede consultar usuarios de otra IPS."
+        });
+    }
+    return res.status(200).json({ code: "OK", user });
 });
 exports.accessRouter.post("/users", (req, res) => {
     const actor = (0, autorizacionService_1.obtenerActorDesdeRequest)(req);
@@ -76,23 +122,30 @@ exports.accessRouter.post("/users", (req, res) => {
     if (!(0, accesoUsuariosService_1.actorPuedeGestionarUsuarios)(actor)) {
         return res.status(403).json({
             code: "FORBIDDEN_ROLE",
-            message: "Solo admin_ips puede crear usuarios dentro de su IPS."
+            message: "Solo admin_ips o super_admin puede crear usuarios."
         });
     }
+    const targetIpsId = actor.rol === "super_admin"
+        ? String(req.body?.ipsId ?? "").trim()
+        : (actor.ipsId ?? "");
     const result = (0, accesoUsuariosService_1.crearUsuarioIps)({
         usuarioId: String(req.body?.usuarioId ?? ""),
         nombre: String(req.body?.nombre ?? ""),
+        correo: req.body?.correo,
+        password: req.body?.password,
         rol: req.body?.rol,
-        ipsId: actor.ipsId ?? ""
-    });
+        ipsId: targetIpsId,
+        documentoIdentidad: req.body?.documentoIdentidad
+    }, actor);
     if (!result.ok) {
         return res.status(400).json({
-            code: "USER_CREATE_ERROR",
+            code: result.code,
             message: result.message
         });
     }
     return res.status(201).json({
         code: "USER_CREATED",
+        message: "Usuario creado exitosamente.",
         user: result.user
     });
 });
@@ -114,7 +167,14 @@ exports.accessRouter.patch("/users/:id", (req, res) => {
     if (!(0, accesoUsuariosService_1.actorPuedeGestionarUsuarios)(actor)) {
         return res.status(403).json({
             code: "FORBIDDEN_ROLE",
-            message: "Solo admin_ips puede actualizar usuarios dentro de su IPS."
+            message: "Solo admin_ips o super_admin puede actualizar usuarios."
+        });
+    }
+    const target = (0, accesoUsuariosService_1.obtenerUsuario)(req.params.id);
+    if (target && actor.rol === "admin_ips" && target.ipsId !== actor.ipsId) {
+        return res.status(403).json({
+            code: "IPS_SCOPE_VIOLATION",
+            message: "No puede modificar usuarios de otra IPS."
         });
     }
     const result = (0, accesoUsuariosService_1.actualizarUsuarioIps)(req.params.id, {
@@ -130,6 +190,38 @@ exports.accessRouter.patch("/users/:id", (req, res) => {
     }
     return res.status(200).json({
         code: "USER_UPDATED",
+        message: "Usuario actualizado.",
         user: result.user
+    });
+});
+exports.accessRouter.post("/users/:id/reset-password", (req, res) => {
+    const actor = (0, autorizacionService_1.obtenerActorDesdeRequest)(req);
+    if (!actor) {
+        return res.status(403).json({
+            code: "MISSING_OR_INVALID_ROLE",
+            message: "Debe enviar actor válido."
+        });
+    }
+    if (!(0, accesoUsuariosService_1.actorPuedeGestionarUsuarios)(actor)) {
+        return res.status(403).json({
+            code: "FORBIDDEN_ROLE",
+            message: "Solo admin_ips o super_admin puede resetear contraseñas."
+        });
+    }
+    const target = (0, accesoUsuariosService_1.obtenerUsuario)(req.params.id);
+    if (target && actor.rol === "admin_ips" && target.ipsId !== actor.ipsId) {
+        return res.status(403).json({
+            code: "IPS_SCOPE_VIOLATION",
+            message: "No puede resetear contraseñas de usuarios de otra IPS."
+        });
+    }
+    const result = (0, accesoUsuariosService_1.resetearPassword)(req.params.id, req.body?.password);
+    if (!result.ok) {
+        return res.status(404).json({ code: result.code, message: result.message });
+    }
+    return res.status(200).json({
+        code: "PASSWORD_RESET",
+        message: "Contraseña reseteada.",
+        passwordTemporal: result.passwordTemporal
     });
 });

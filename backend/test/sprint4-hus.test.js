@@ -2,7 +2,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 
 process.env.FHIR_BASE_URL = "";
-process.env.BLOCKCHAIN_TRACE_MODE = "disabled";
+process.env.BLOCKCHAIN_TRACE_MODE = "mock";
 
 const {
   almacenarDocumentoClinico,

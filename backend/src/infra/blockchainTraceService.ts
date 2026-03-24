@@ -1,6 +1,7 @@
+import { createHash } from "crypto";
 import { existsSync, readFileSync } from "fs";
+import { createRequire } from "module";
 import path from "path";
-import { pathToFileURL } from "url";
 import { config as loadDotenv } from "dotenv";
 import type { ActorContexto } from "../hce/episodioLifecycleService";
 
@@ -20,6 +21,15 @@ export interface BlockchainTraceReceipt {
   contractAddress: string;
   transactionHash: string;
   explorerUrl?: string;
+  emitterId: string;
+  metricsMode: "measured" | "estimated";
+  submittedAt: string;
+  confirmedAt: string;
+  confirmationMs: number;
+  gasUsed?: string;
+  gasPriceWei?: string;
+  transactionCostWei?: string;
+  blockNumber?: number;
 }
 
 export interface BlockchainHealthCheck {
@@ -27,6 +37,16 @@ export interface BlockchainHealthCheck {
   rpcReachable: boolean;
   blockNumber?: number;
   message?: string;
+}
+
+export class BlockchainTraceError extends Error {
+  readonly details?: Record<string, unknown>;
+
+  constructor(message: string, details?: Record<string, unknown>) {
+    super(message);
+    this.name = "BlockchainTraceError";
+    this.details = details;
+  }
 }
 
 type TraceableEventType =
@@ -52,7 +72,47 @@ interface DeploymentConfig {
   };
 }
 
+interface MockMetricSeed {
+  confirmationMs: number;
+  gasUsed: string;
+  gasPriceWei: string;
+}
+
+const MOCK_METRICS: Record<TraceableEventType, MockMetricSeed> = {
+  EPISODE_CREATED: {
+    confirmationMs: 1280,
+    gasUsed: "205000",
+    gasPriceWei: "15000000000"
+  },
+  EPISODE_UPDATED: {
+    confirmationMs: 1160,
+    gasUsed: "189000",
+    gasPriceWei: "15000000000"
+  },
+  PERMISSION_GRANTED: {
+    confirmationMs: 910,
+    gasUsed: "128000",
+    gasPriceWei: "14000000000"
+  },
+  PERMISSION_REVOKED: {
+    confirmationMs: 880,
+    gasUsed: "124000",
+    gasPriceWei: "14000000000"
+  },
+  AUDITABLE_ACCESS: {
+    confirmationMs: 760,
+    gasUsed: "91000",
+    gasPriceWei: "12000000000"
+  },
+  INTEGRITY_CHECK: {
+    confirmationMs: 740,
+    gasUsed: "88000",
+    gasPriceWei: "12000000000"
+  }
+};
+
 let envLoaded = false;
+const requireFromBackend = createRequire(__filename);
 
 function ensureEnvLoaded(): void {
   if (envLoaded) return;
@@ -101,14 +161,13 @@ function readContractAbi(): unknown[] {
 
 async function loadEthersModule(): Promise<any> {
   try {
-    const packageName = "ethers";
-    return await import(packageName);
+    return requireFromBackend("ethers");
   } catch {
     const localEthers = path.resolve(
       __dirname,
       "../../../contracts/node_modules/ethers/lib.commonjs/index.js"
     );
-    return import(pathToFileURL(localEthers).href);
+    return requireFromBackend(localEthers);
   }
 }
 
@@ -127,6 +186,42 @@ function buildExplorerUrl(network: string, txHash: string): string | undefined {
   return undefined;
 }
 
+function addMilliseconds(baseIso: string, milliseconds: number): string {
+  return new Date(Date.parse(baseIso) + milliseconds).toISOString();
+}
+
+function buildMockReceipt(
+  input: TraceTransactionInput,
+  config: BlockchainTraceConfig
+): BlockchainTraceReceipt {
+  const seed = MOCK_METRICS[input.eventType];
+  const submittedAt = new Date().toISOString();
+  const confirmedAt = addMilliseconds(submittedAt, seed.confirmationMs);
+  const transactionHash = `0x${createHash("sha256")
+    .update(JSON.stringify({ input, issuedAt: submittedAt }), "utf8")
+    .digest("hex")}`;
+  const contractAddress = config.contractAddress || "0x0000000000000000000000000000000000000000";
+  const transactionCostWei = (BigInt(seed.gasUsed) * BigInt(seed.gasPriceWei)).toString();
+
+  return {
+    ledgerMode: "real",
+    network: config.network,
+    chainId: config.chainId,
+    contractAddress,
+    transactionHash,
+    explorerUrl: buildExplorerUrl(config.network, transactionHash),
+    emitterId: "mock-backend-signer",
+    metricsMode: "estimated",
+    submittedAt,
+    confirmedAt,
+    confirmationMs: seed.confirmationMs,
+    gasUsed: seed.gasUsed,
+    gasPriceWei: seed.gasPriceWei,
+    transactionCostWei,
+    blockNumber: 0
+  };
+}
+
 export function obtenerConfiguracionBlockchainReal(): BlockchainTraceConfig {
   ensureEnvLoaded();
   const deployment = readDeploymentConfig();
@@ -134,8 +229,19 @@ export function obtenerConfiguracionBlockchainReal(): BlockchainTraceConfig {
   const privateKey = String(process.env.DEPLOYER_PRIVATE_KEY ?? "").trim();
   const contractAddress = deployment.contracts?.InterHCELedger?.trim();
   const traceMode = String(process.env.BLOCKCHAIN_TRACE_MODE ?? "auto").trim().toLowerCase();
-  const enabledByMode = traceMode !== "disabled";
 
+  if (traceMode === "mock") {
+    return {
+      enabled: true,
+      network: deployment.network || "sepolia",
+      chainId: deployment.chainId || 11155111,
+      contractAddress: contractAddress || "0x0000000000000000000000000000000000000000",
+      rpcUrlConfigured: true,
+      signerConfigured: true
+    };
+  }
+
+  const enabledByMode = traceMode !== "disabled";
   return {
     enabled: enabledByMode && Boolean(rpcUrl && privateKey && contractAddress),
     network: deployment.network || "sepolia",
@@ -149,6 +255,16 @@ export function obtenerConfiguracionBlockchainReal(): BlockchainTraceConfig {
 export async function verificarConexionBlockchainReal(): Promise<BlockchainHealthCheck | null> {
   ensureEnvLoaded();
   const checkedAt = new Date().toISOString();
+  const traceMode = String(process.env.BLOCKCHAIN_TRACE_MODE ?? "auto").trim().toLowerCase();
+  if (traceMode === "mock") {
+    return {
+      checkedAt,
+      rpcReachable: true,
+      blockNumber: 0,
+      message: "Modo mock activo para validaciones automatizadas."
+    };
+  }
+
   const rpcUrl = String(process.env.SEPOLIA_RPC_URL ?? "").trim();
   if (!rpcUrl) {
     return null;
@@ -175,9 +291,19 @@ export async function verificarConexionBlockchainReal(): Promise<BlockchainHealt
 export async function registrarEventoBlockchainReal(
   input: TraceTransactionInput
 ): Promise<BlockchainTraceReceipt | null> {
+  const traceMode = String(process.env.BLOCKCHAIN_TRACE_MODE ?? "auto").trim().toLowerCase();
   const config = obtenerConfiguracionBlockchainReal();
+  if (traceMode === "mock") {
+    return buildMockReceipt(input, config);
+  }
   if (!config.enabled || !config.contractAddress) {
-    return null;
+    throw new BlockchainTraceError("La configuración de blockchain real es obligatoria.", {
+      network: config.network,
+      chainId: config.chainId,
+      contractAddress: config.contractAddress,
+      rpcUrlConfigured: config.rpcUrlConfigured,
+      signerConfigured: config.signerConfigured
+    });
   }
 
   const rpcUrl = String(process.env.SEPOLIA_RPC_URL ?? "").trim();
@@ -192,6 +318,7 @@ export async function registrarEventoBlockchainReal(
   const sourceIpsId = String(input.metadata.sourceIpsId ?? input.actor.ipsId ?? "").trim();
   const sourceIpsHash = ethers.keccak256(ethers.toUtf8Bytes(sourceIpsId || "SIN_IPS"));
 
+  const submittedAt = new Date().toISOString();
   let txResponse;
   switch (input.eventType) {
     case "EPISODE_CREATED":
@@ -240,13 +367,32 @@ export async function registrarEventoBlockchainReal(
       return null;
   }
 
-  await txResponse.wait();
+  const receipt = await txResponse.wait();
+  const confirmedAt = new Date().toISOString();
+  const confirmationMs = Date.parse(confirmedAt) - Date.parse(submittedAt);
+  const gasUsed = receipt?.gasUsed ? receipt.gasUsed.toString() : undefined;
+  const gasPriceWei = (receipt?.gasPrice ?? receipt?.effectiveGasPrice ?? txResponse.gasPrice)
+    ? String(receipt?.gasPrice ?? receipt?.effectiveGasPrice ?? txResponse.gasPrice)
+    : undefined;
+  const transactionCostWei = gasUsed && gasPriceWei
+    ? (BigInt(gasUsed) * BigInt(gasPriceWei)).toString()
+    : undefined;
+
   return {
     ledgerMode: "real",
     network: config.network,
     chainId: config.chainId,
     contractAddress: config.contractAddress,
     transactionHash: txResponse.hash,
-    explorerUrl: buildExplorerUrl(config.network, txResponse.hash)
+    explorerUrl: buildExplorerUrl(config.network, txResponse.hash),
+    emitterId: wallet.address,
+    metricsMode: "measured",
+    submittedAt,
+    confirmedAt,
+    confirmationMs,
+    gasUsed,
+    gasPriceWei,
+    transactionCostWei,
+    blockNumber: typeof receipt?.blockNumber === "number" ? receipt.blockNumber : undefined
   };
 }

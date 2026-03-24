@@ -334,6 +334,15 @@ export interface TraceabilityEvent {
     contractAddress?: string;
     transactionHash: string;
     explorerUrl?: string;
+    emitterId?: string;
+    metricsMode?: "measured" | "estimated";
+    submittedAt?: string;
+    confirmedAt?: string;
+    confirmationMs?: number;
+    gasUsed?: string;
+    gasPriceWei?: string;
+    transactionCostWei?: string;
+    blockNumber?: number;
   };
 }
 
@@ -345,6 +354,22 @@ export interface EstadoPermisoEpisodio {
   grantedAt?: string;
   revokedAt?: string;
   ultimoCambioEn: string;
+}
+
+
+export interface ContinuidadEpisodio {
+  ownerIpsId?: string;
+  ipsInvolucradas: string[];
+}
+
+export interface BusquedaTrazabilidad {
+  total: number;
+  events: TraceabilityEvent[];
+  filters: {
+    episodeId?: string;
+    eventType?: TraceabilityEvent["eventType"];
+    ipsId?: string;
+  };
 }
 
 export interface IntegridadEpisodio {

@@ -2,7 +2,8 @@ export type RolSesion =
   | "profesional_salud"
   | "admin_ips"
   | "paciente"
-  | "auditor";
+  | "auditor"
+  | "super_admin";
 
 export interface SesionUsuario {
   token: string;

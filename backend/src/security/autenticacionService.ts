@@ -50,7 +50,7 @@ function construirSesion(user: UsuarioIps, registro: RegistroSesion): SesionAute
 export function iniciarSesion(
   identificador: string,
   password: string
-): { ok: true; session: SesionAutenticada } | { ok: false; code: string; message: string } {
+): { ok: true; session: SesionAutenticada; requiereCambioPassword: boolean } | { ok: false; code: string; message: string } {
   limpiarSesionesExpiradas();
   const auth = autenticarUsuario(identificador, password);
   if (!auth.ok) {
@@ -68,7 +68,8 @@ export function iniciarSesion(
   sesiones.set(registro.token, registro);
   return {
     ok: true,
-    session: construirSesion(auth.user, registro)
+    session: construirSesion(auth.user, registro),
+    requiereCambioPassword: auth.user.requiereCambioPassword ?? false
   };
 }
 

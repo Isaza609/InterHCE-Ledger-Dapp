@@ -6,7 +6,16 @@ exports.actualizarRegistroLifecycleEpisodio = actualizarRegistroLifecycleEpisodi
 exports.obtenerRegistroLifecycleEpisodio = obtenerRegistroLifecycleEpisodio;
 exports.obtenerVersionesEpisodio = obtenerVersionesEpisodio;
 exports.obtenerEventoUrgenciasEpisodio = obtenerEventoUrgenciasEpisodio;
-const lifecycleStore = new Map();
+const permisosEpisodioService_1 = require("./permisosEpisodioService");
+const jsonFileStore_1 = require("../shared/jsonFileStore");
+const LIFECYCLE_STORE_FILE = "episodio-lifecycle.json";
+const lifecycleStore = new Map((0, jsonFileStore_1.loadJsonFile)(LIFECYCLE_STORE_FILE, []).map((record) => [
+    record.episodeId,
+    record
+]));
+function persistLifecycleStore() {
+    (0, jsonFileStore_1.saveJsonFile)(LIFECYCLE_STORE_FILE, [...lifecycleStore.values()]);
+}
 function construirEventoUrgencias(episodeId, documento) {
     const fechaHoraInicio = documento.encounter.period.start;
     const ipsOrigenId = documento.prestadorOrigen.identifier[0]?.value ?? "";
@@ -41,10 +50,10 @@ function prevalidarActualizacionLifecycleEpisodio(episodeId, documento, actor) {
             errorCode: "EPISODE_NOT_FOUND"
         };
     }
-    if (!actor.ipsId || actor.ipsId !== existente.eventoUrgencias.ipsOrigenId) {
+    if (!(0, permisosEpisodioService_1.actorPuedeActualizarEpisodioConContinuidad)(episodeId, actor.ipsId, actor.rol)) {
         return {
             ok: false,
-            error: "La IPS del actor no está autorizada para actualizar este episodio de urgencias.",
+            error: "La IPS del actor no tiene permisos vigentes para continuar este episodio clínico.",
             errorCode: "FORBIDDEN_IPS_UPDATE"
         };
     }
@@ -82,6 +91,7 @@ function crearRegistroLifecycleEpisodio(episodeId, documento, actor, onChain) {
         creadoPor: actor
     }, actor, onChain);
     lifecycleStore.set(episodeId, record);
+    persistLifecycleStore();
     return record;
 }
 function actualizarRegistroLifecycleEpisodio(episodeId, documento, actor, onChain) {
@@ -95,6 +105,7 @@ function actualizarRegistroLifecycleEpisodio(episodeId, documento, actor, onChai
     const existente = lifecycleStore.get(episodeId);
     const actualizado = pushVersion(existente, actor, onChain);
     lifecycleStore.set(episodeId, actualizado);
+    persistLifecycleStore();
     return { record: actualizado };
 }
 function obtenerRegistroLifecycleEpisodio(episodeId) {

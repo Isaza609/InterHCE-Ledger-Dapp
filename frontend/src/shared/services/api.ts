@@ -4,6 +4,8 @@ import {
   type SesionUsuario
 } from "@/shared/auth/sessionStorage";
 import type {
+  BusquedaTrazabilidad,
+  ContinuidadEpisodio,
   EpisodioPayload,
   EstadoPermisoEpisodio,
   EventoUrgencias,
@@ -18,11 +20,37 @@ const authBase = `${API_BASE_URL}/auth`;
 const accessBase = `${API_BASE_URL}/access`;
 const episodesBase = `${API_BASE_URL}/episodes`;
 const infraBase = `${API_BASE_URL}/infra`;
+const evaluationBase = `${API_BASE_URL}/evaluation`;
+const ipsBase = `${API_BASE_URL}/ips`;
 
 const CONNECTION_ERROR = `No se pudo conectar con el backend. Compruebe que esté en ejecución (puerto 3001) y que la URL sea correcta. URL actual: ${API_BASE_URL}`;
 
 async function parseJson<T>(res: Response): Promise<T> {
   return res.json().catch(() => ({} as T));
+}
+
+function normalizeValidationDetails(
+  details: unknown
+): Array<{ field: string; issue: string }> {
+  if (!Array.isArray(details)) {
+    return [];
+  }
+  return details
+    .filter((item): item is { field?: unknown; issue?: unknown } => Boolean(item && typeof item === "object"))
+    .map((item) => ({
+      field: typeof item.field === "string" ? item.field : "general",
+      issue: typeof item.issue === "string" ? item.issue : "Error de validación."
+    }));
+}
+
+
+function buildApiMessage(
+  data: { message?: string; code?: string; details?: unknown } | undefined,
+  fallback: string
+): string {
+  if (data?.message?.trim()) return data.message.trim();
+  if (typeof data?.details === "string" && data.details.trim()) return data.details.trim();
+  return fallback;
 }
 
 function getAlternativeApiUrl(rawUrl: string): string | null {
@@ -69,7 +97,7 @@ export async function iniciarSesionDapp(input: {
   correo: string;
   password: string;
   usuarioId?: string;
-}): Promise<{ ok: boolean; message: string; session?: SesionUsuario }> {
+}): Promise<{ ok: boolean; message: string; session?: SesionUsuario; requiereCambioPassword?: boolean }> {
   try {
     const res = await fetchApi(`${authBase}/login`, {
       method: "POST",
@@ -80,11 +108,13 @@ export async function iniciarSesionDapp(input: {
       code?: string;
       message?: string;
       session?: SesionUsuario;
+      requiereCambioPassword?: boolean;
     }>(res);
     return {
       ok: res.ok,
       message: data.message ?? (res.ok ? "Sesión iniciada." : "No fue posible iniciar sesión."),
-      session: data.session
+      session: data.session,
+      requiereCambioPassword: data.requiereCambioPassword ?? false
     };
   } catch {
     return { ok: false, message: CONNECTION_ERROR };
@@ -143,7 +173,7 @@ export async function validarEpisodio(
     return {
       valid: false,
       message: data.message ?? "Error de validación",
-      details: data.details ?? []
+      details: normalizeValidationDetails(data.details)
     };
   } catch {
     return { valid: false, message: CONNECTION_ERROR, details: [] };
@@ -190,7 +220,7 @@ export async function registrarEpisodio(
     return {
       valid: false,
       message: data.message ?? "Error al registrar",
-      details: data.details ?? []
+      details: normalizeValidationDetails(data.details)
     };
   } catch {
     return { valid: false, message: CONNECTION_ERROR, details: [] };
@@ -238,7 +268,7 @@ export async function actualizarEpisodio(
     return {
       valid: false,
       message: data.message ?? "Error al actualizar",
-      details: data.details ?? []
+      details: normalizeValidationDetails(data.details)
     };
   } catch {
     return { valid: false, message: CONNECTION_ERROR, details: [] };
@@ -254,6 +284,8 @@ export interface EpisodioResumen {
   encounterStart?: string;
   encounterStatus?: string;
   prestadorOrigenId?: string;
+  ownerIpsId?: string;
+  accessScope?: "propio" | "autorizado" | "auditoria";
 }
 
 export async function listarTodosLosEpisodios(
@@ -353,6 +385,7 @@ export async function obtenerTrazabilidadEpisodio(
   permisosActivos: string[];
   estadosPermisos: EstadoPermisoEpisodio[];
   traceEvents: TraceabilityEvent[];
+  continuidad?: ContinuidadEpisodio;
 } | null> {
   const res = await fetchApi(`${episodesBase}/${encodeURIComponent(episodeId)}/traceability`, {
     headers: buildActorHeaders(sesion)
@@ -366,6 +399,7 @@ export async function obtenerTrazabilidadEpisodio(
       permisosActivos: string[];
       estadosPermisos: EstadoPermisoEpisodio[];
       traceEvents: TraceabilityEvent[];
+      continuidad?: ContinuidadEpisodio;
     };
   }>(res);
   if (!data.data) return null;
@@ -375,7 +409,8 @@ export async function obtenerTrazabilidadEpisodio(
     versiones: data.data.versiones,
     permisosActivos: data.data.permisosActivos,
     estadosPermisos: data.data.estadosPermisos,
-    traceEvents: data.data.traceEvents
+    traceEvents: data.data.traceEvents,
+    continuidad: data.data.continuidad
   };
 }
 
@@ -406,7 +441,7 @@ export interface EstadoInfraestructura {
     red: string;
     chainId: number;
     contratosOperativos: boolean;
-    modo: "simulado" | "real";
+    modo: "no_disponible" | "real";
     contractAddress?: string;
     backendSignerConfigured: boolean;
     backendRpcConfigured: boolean;
@@ -427,6 +462,124 @@ export interface EstadoInfraestructura {
   cumpleHu1E5: boolean;
 }
 
+export interface TimingOperationSummary {
+  label: string;
+  samples: number;
+  averageMs: number;
+  minMs: number;
+  maxMs: number;
+  standardDeviationMs: number;
+  consistency: "alta" | "media" | "baja";
+}
+
+export interface DashboardEvaluacionPrototipo {
+  generatedAt: string;
+  overview: {
+    totalEpisodes: number;
+    totalTraceEvents: number;
+    totalIpsSimuladas: number;
+    blockchainMode: "real" | "mock";
+    rolesConfigurados: string[];
+  };
+  interoperability: {
+    multipleIpsReady: boolean;
+    simulatedIps: IpsSimulada[];
+    scenarios: Array<{
+      episodeId: string;
+      ownerIpsId?: string;
+      eventId?: string;
+      versionCount: number;
+      traceEventCount: number;
+      activePermissions: number;
+      ipsInvolucradas: string[];
+      hasCrossIpsContinuity: boolean;
+      hasPermissionFlow: boolean;
+      integrityStatus: "integro" | "revision_requerida" | "sin_evidencia";
+      consistencyStatus: "consistente" | "con_riesgos";
+      modelValidation: {
+        valid: boolean;
+        issues?: Array<{ field: string; issue: string }>;
+      };
+    }>;
+    summary: {
+      totalScenarios: number;
+      crossIpsScenarios: number;
+      episodesWithContinuity: number;
+      episodesWithPermissionFlow: number;
+      consistentEpisodes: number;
+    };
+    conclusion: string;
+  };
+  timings: {
+    runs: number;
+    measuredAt: string;
+    scenarios: Array<{
+      episodeId: string;
+      runs: number;
+      metadataOnChainMs: number[];
+      documentOffChainMs: number[];
+      integrityVerificationMs: number[];
+    }>;
+    operations: {
+      metadataOnChain: TimingOperationSummary;
+      documentOffChain: TimingOperationSummary;
+      integrityVerification: TimingOperationSummary;
+    };
+    conclusion: string;
+  };
+  blockchainPerformance: {
+    mode: "real" | "mock";
+    metricKind: "medido" | "estimado" | "no_disponible";
+    operations: Array<{
+      eventType: string;
+      label: string;
+      count: number;
+      metricsMode: "medido" | "estimado" | "no_disponible";
+      averageConfirmationMs?: number;
+      averageGasUsed?: number;
+      averageTransactionCostWei?: number;
+      emitters: string[];
+      roles: string[];
+    }>;
+    mostExpensiveOperation?: string;
+    conclusion: string;
+  };
+  audit: {
+    totalEvents: number;
+    eventsByType: Record<string, number>;
+    integrityValidEpisodes: number;
+    episodesWithIssues: Array<{ episodeId: string; issue: string }>;
+    versionHistoryComplete: boolean;
+    endToEndTraceability: boolean;
+    observedActors: Array<{
+      rol: string;
+      totalEventos: number;
+      ipsIds: string[];
+    }>;
+  };
+  compliance: {
+    hceModel: {
+      totalEpisodes: number;
+      validEpisodes: number;
+      invalidEpisodes: number;
+    };
+    requirements: Array<{
+      requirementId: string;
+      label: string;
+      status: "cumple" | "parcial" | "pendiente";
+      detail: string;
+    }>;
+    limitations: string[];
+  };
+  documentation: {
+    resumenEjecutivo: string[];
+    conclusiones: string[];
+    aportes: string[];
+    limitaciones: string[];
+    trabajoFuturo: string[];
+  };
+}
+
 export async function obtenerEstadoInfraestructura(
   sesion?: SesionUsuario | null
 ): Promise<EstadoInfraestructura | null> {
@@ -436,6 +589,33 @@ export async function obtenerEstadoInfraestructura(
   if (!res.ok) return null;
   const data = await parseJson<{ data?: EstadoInfraestructura }>(res);
   return data.data ?? null;
+}
+
+export async function obtenerDashboardEvaluacion(
+  sesion?: SesionUsuario | null,
+  runs = 3
+): Promise<{ ok: boolean; message: string; data?: DashboardEvaluacionPrototipo }> {
+  try {
+    const params = new URLSearchParams();
+    params.set("runs", String(runs));
+    const res = await fetchApi(`${evaluationBase}/dashboard?${params.toString()}`, {
+      headers: buildActorHeaders(sesion)
+    });
+    const data = await parseJson<{ code?: string; message?: string; details?: unknown; data?: DashboardEvaluacionPrototipo }>(res);
+    if (!res.ok || !data.data) {
+      return {
+        ok: false,
+        message: buildApiMessage(data, "No fue posible generar el dashboard de evaluación del prototipo.")
+      };
+    }
+    return {
+      ok: true,
+      message: data.message ?? "Dashboard de evaluación recuperado.",
+      data: data.data
+    };
+  } catch {
+    return { ok: false, message: CONNECTION_ERROR };
+  }
 }
 
 export async function configurarIpsInfra(
@@ -454,22 +634,6 @@ export async function configurarIpsInfra(
   return {
     ok: res.ok,
     message: data.message ?? (res.ok ? "IPS configuradas." : "No fue posible configurar IPS.")
-  };
-}
-
-export async function desplegarContratosMock(
-  sesion?: SesionUsuario | null
-): Promise<{ ok: boolean; message: string }> {
-  const res = await fetchApi(`${infraBase}/contracts/mock-deploy`, {
-    method: "POST",
-    headers: buildActorHeaders(sesion)
-  });
-  const data = await parseJson<{ message?: string }>(res);
-  return {
-    ok: res.ok,
-    message:
-      data.message ??
-      (res.ok ? "Contratos simulados operativos." : "No fue posible activar contratos simulados.")
   };
 }
 
@@ -507,6 +671,8 @@ export interface UsuarioIps {
   rol: string;
   ipsId: string;
   activo: boolean;
+  documentoIdentidad?: string;
+  requiereCambioPassword?: boolean;
 }
 
 export async function listarUsuariosIps(
@@ -521,7 +687,15 @@ export async function listarUsuariosIps(
 }
 
 export async function crearUsuarioIps(
-  input: { usuarioId: string; nombre: string; rol: string },
+  input: {
+    usuarioId: string;
+    nombre: string;
+    rol: string;
+    correo?: string;
+    password?: string;
+    documentoIdentidad?: string;
+    ipsId?: string;
+  },
   sesion?: SesionUsuario | null
 ): Promise<{ ok: boolean; message: string }> {
   const res = await fetchApi(`${accessBase}/users`, {
@@ -611,4 +785,339 @@ export async function revocarPermisoDocumento(
     message: data.message ?? (res.ok ? "Permiso revocado." : "No fue posible revocar permiso."),
     traceEvent: data.traceEvent
   };
+}
+
+
+export async function consultarDocumentoEpisodio(
+  episodeId: string,
+  sesion?: SesionUsuario | null
+): Promise<{
+  ok: boolean;
+  message: string;
+  data?: {
+    episodeId: string;
+    hash: string;
+    createdAt: string;
+    document: EpisodioPayload;
+    auditTrace?: TraceabilityEvent;
+  };
+}> {
+  try {
+    const res = await fetchApi(`${episodesBase}/${encodeURIComponent(episodeId)}/document`, {
+      headers: buildActorHeaders(sesion)
+    });
+    const data = await parseJson<{
+      code?: string;
+      message?: string;
+      details?: unknown;
+      episodeId?: string;
+      hash?: string;
+      createdAt?: string;
+      document?: EpisodioPayload;
+      auditTrace?: TraceabilityEvent;
+    }>(res);
+    if (!res.ok || !data.document || !data.episodeId || !data.hash || !data.createdAt) {
+      return {
+        ok: false,
+        message: buildApiMessage(data, "No fue posible recuperar el documento clínico.")
+      };
+    }
+    return {
+      ok: true,
+      message: data.message ?? "Documento clínico recuperado.",
+      data: {
+        episodeId: data.episodeId,
+        hash: data.hash,
+        createdAt: data.createdAt,
+        document: data.document,
+        auditTrace: data.auditTrace
+      }
+    };
+  } catch {
+    return { ok: false, message: CONNECTION_ERROR };
+  }
+}
+
+export async function consultarTrazabilidadEpisodio(
+  episodeId: string,
+  sesion?: SesionUsuario | null
+): Promise<{
+  ok: boolean;
+  message: string;
+  data?: Awaited<ReturnType<typeof obtenerTrazabilidadEpisodio>> extends infer T ? Exclude<T, null> : never;
+}> {
+  try {
+    const res = await fetchApi(`${episodesBase}/${encodeURIComponent(episodeId)}/traceability`, {
+      headers: buildActorHeaders(sesion)
+    });
+    const data = await parseJson<{
+      code?: string;
+      message?: string;
+      details?: unknown;
+      data?: {
+        episodeId: string;
+        eventoUrgencias: EventoUrgencias;
+        versiones: VersionEpisodio[];
+        permisosActivos: string[];
+        estadosPermisos: EstadoPermisoEpisodio[];
+        traceEvents: TraceabilityEvent[];
+        continuidad?: ContinuidadEpisodio;
+      };
+    }>(res);
+    if (!res.ok || !data.data) {
+      return {
+        ok: false,
+        message: buildApiMessage(data, "No fue posible recuperar la trazabilidad del episodio.")
+      };
+    }
+    return {
+      ok: true,
+      message: data.message ?? "Trazabilidad recuperada.",
+      data: {
+        episodeId: data.data.episodeId,
+        event: data.data.eventoUrgencias,
+        versiones: data.data.versiones,
+        permisosActivos: data.data.permisosActivos,
+        estadosPermisos: data.data.estadosPermisos,
+        traceEvents: data.data.traceEvents,
+        continuidad: data.data.continuidad
+      }
+    };
+  } catch {
+    return { ok: false, message: CONNECTION_ERROR };
+  }
+}
+
+export async function consultarIntegridadEpisodio(
+  episodeId: string,
+  sesion?: SesionUsuario | null
+): Promise<{ ok: boolean; message: string; data?: IntegridadEpisodio }> {
+  try {
+    const res = await fetchApi(`${episodesBase}/${encodeURIComponent(episodeId)}/integrity`, {
+      headers: buildActorHeaders(sesion)
+    });
+    const data = await parseJson<{ code?: string; message?: string; details?: unknown; data?: IntegridadEpisodio }>(res);
+    if (!res.ok || !data.data) {
+      return {
+        ok: false,
+        message: buildApiMessage(data, "No fue posible verificar la integridad del episodio.")
+      };
+    }
+    return {
+      ok: true,
+      message: data.message ?? "Integridad verificada.",
+      data: data.data
+    };
+  } catch {
+    return { ok: false, message: CONNECTION_ERROR };
+  }
+}
+
+export async function buscarEventosTrazabilidad(
+  filters: { episodeId?: string; eventType?: TraceabilityEvent["eventType"]; ipsId?: string },
+  sesion?: SesionUsuario | null
+): Promise<{ ok: boolean; message: string; data?: BusquedaTrazabilidad }> {
+  try {
+    const params = new URLSearchParams();
+    if (filters.episodeId?.trim()) params.set("episodeId", filters.episodeId.trim());
+    if (filters.eventType?.trim()) params.set("eventType", filters.eventType.trim());
+    if (filters.ipsId?.trim()) params.set("ipsId", filters.ipsId.trim());
+    const suffix = params.toString();
+    const res = await fetchApi(`${episodesBase}/traceability/search${suffix ? `?${suffix}` : ""}`, {
+      headers: buildActorHeaders(sesion)
+    });
+    const data = await parseJson<{
+      code?: string;
+      message?: string;
+      details?: unknown;
+      data?: BusquedaTrazabilidad;
+    }>(res);
+    if (!res.ok || !data.data) {
+      return {
+        ok: false,
+        message: buildApiMessage(data, "No fue posible consultar la trazabilidad.")
+      };
+    }
+    return {
+      ok: true,
+      message: data.message ?? "Trazabilidad consultada.",
+      data: data.data
+    };
+  } catch {
+    return { ok: false, message: CONNECTION_ERROR };
+  }
+}
+
+export interface IpsEntidad {
+  ipsId: string;
+  nombre: string;
+  repsCodigo: string;
+  direccion: string;
+  ciudad: string;
+  departamento: string;
+  telefono: string;
+  correoContacto: string;
+  activa: boolean;
+  creadaEn: string;
+  actualizadaEn: string;
+}
+
+export async function listarIpsEntidades(
+  sesion?: SesionUsuario | null
+): Promise<IpsEntidad[]> {
+  try {
+    const res = await fetchApi(`${ipsBase}`, {
+      headers: buildActorHeaders(sesion)
+    });
+    if (!res.ok) return [];
+    const data = await parseJson<{ ips?: IpsEntidad[] }>(res);
+    return data.ips ?? [];
+  } catch {
+    return [];
+  }
+}
+
+export async function obtenerIpsEntidad(
+  ipsId: string,
+  sesion?: SesionUsuario | null
+): Promise<IpsEntidad | null> {
+  try {
+    const res = await fetchApi(`${ipsBase}/${encodeURIComponent(ipsId)}`, {
+      headers: buildActorHeaders(sesion)
+    });
+    if (!res.ok) return null;
+    const data = await parseJson<{ ips?: IpsEntidad }>(res);
+    return data.ips ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export async function crearIpsEntidad(
+  input: Partial<IpsEntidad> & { ipsId: string; nombre: string; repsCodigo: string },
+  sesion?: SesionUsuario | null
+): Promise<{ ok: boolean; message: string; ips?: IpsEntidad }> {
+  try {
+    const res = await fetchApi(`${ipsBase}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...buildActorHeaders(sesion)
+      },
+      body: JSON.stringify(input)
+    });
+    const data = await parseJson<{ message?: string; ips?: IpsEntidad }>(res);
+    return {
+      ok: res.ok,
+      message: data.message ?? (res.ok ? "IPS creada." : "No fue posible crear la IPS."),
+      ips: data.ips
+    };
+  } catch {
+    return { ok: false, message: CONNECTION_ERROR };
+  }
+}
+
+export async function actualizarIpsEntidad(
+  ipsId: string,
+  patch: Partial<IpsEntidad>,
+  sesion?: SesionUsuario | null
+): Promise<{ ok: boolean; message: string }> {
+  try {
+    const res = await fetchApi(`${ipsBase}/${encodeURIComponent(ipsId)}`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        ...buildActorHeaders(sesion)
+      },
+      body: JSON.stringify(patch)
+    });
+    const data = await parseJson<{ message?: string }>(res);
+    return {
+      ok: res.ok,
+      message: data.message ?? (res.ok ? "IPS actualizada." : "No fue posible actualizar la IPS.")
+    };
+  } catch {
+    return { ok: false, message: CONNECTION_ERROR };
+  }
+}
+
+export async function resetearPasswordUsuario(
+  usuarioId: string,
+  password?: string,
+  sesion?: SesionUsuario | null
+): Promise<{ ok: boolean; message: string; passwordTemporal?: string }> {
+  try {
+    const res = await fetchApi(`${accessBase}/users/${encodeURIComponent(usuarioId)}/reset-password`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...buildActorHeaders(sesion)
+      },
+      body: JSON.stringify({ password })
+    });
+    const data = await parseJson<{ message?: string; passwordTemporal?: string }>(res);
+    return {
+      ok: res.ok,
+      message: data.message ?? (res.ok ? "Contraseña reseteada." : "No fue posible resetear la contraseña."),
+      passwordTemporal: data.passwordTemporal
+    };
+  } catch {
+    return { ok: false, message: CONNECTION_ERROR };
+  }
+}
+
+export async function cambiarPasswordPropia(
+  passwordActual: string,
+  passwordNueva: string,
+  sesion?: SesionUsuario | null
+): Promise<{ ok: boolean; message: string }> {
+  try {
+    const res = await fetchApi(`${authBase}/password`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        ...buildActorHeaders(sesion)
+      },
+      body: JSON.stringify({ passwordActual, passwordNueva })
+    });
+    const data = await parseJson<{ message?: string }>(res);
+    return {
+      ok: res.ok,
+      message: data.message ?? (res.ok ? "Contraseña actualizada." : "No fue posible cambiar la contraseña.")
+    };
+  } catch {
+    return { ok: false, message: CONNECTION_ERROR };
+  }
+}
+
+export async function obtenerRolesCreables(
+  sesion?: SesionUsuario | null
+): Promise<string[]> {
+  try {
+    const res = await fetchApi(`${accessBase}/roles-creables`, {
+      headers: buildActorHeaders(sesion)
+    });
+    if (!res.ok) return [];
+    const data = await parseJson<{ rolesCreables?: string[] }>(res);
+    return data.rolesCreables ?? [];
+  } catch {
+    return [];
+  }
+}
+
+export async function listarUsuariosPorIpsId(
+  ipsId: string,
+  sesion?: SesionUsuario | null
+): Promise<UsuarioIps[]> {
+  try {
+    const params = new URLSearchParams({ ipsId });
+    const res = await fetchApi(`${accessBase}/users?${params.toString()}`, {
+      headers: buildActorHeaders(sesion)
+    });
+    if (!res.ok) return [];
+    const data = await parseJson<{ users?: UsuarioIps[] }>(res);
+    return data.users ?? [];
+  } catch {
+    return [];
+  }
 }

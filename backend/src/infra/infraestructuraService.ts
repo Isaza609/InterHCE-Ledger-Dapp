@@ -13,7 +13,7 @@ export interface EstadoInfraestructura {
     red: string;
     chainId: number;
     contratosOperativos: boolean;
-    modo: "simulado" | "real";
+    modo: "no_disponible" | "real";
     contractAddress?: string;
     backendSignerConfigured: boolean;
     backendRpcConfigured: boolean;
@@ -36,8 +36,7 @@ export interface EstadoInfraestructura {
 
 const estadoInfra = {
   red: "sepolia",
-  chainId: 11155111,
-  contratosOperativos: false
+  chainId: 11155111
 };
 
 const ipsSimuladas = new Map<string, IpsSimulada>();
@@ -73,16 +72,12 @@ export function listarIpsSimuladas(): IpsSimulada[] {
   return [...ipsSimuladas.values()];
 }
 
-export function activarContratosSimulados(): void {
-  estadoInfra.contratosOperativos = true;
-}
-
 export function obtenerEstadoInfraestructura(): EstadoInfraestructura {
   const ips = listarIpsSimuladas();
   const fhirConfigurado = isFhirConfigured();
   const blockchainReal = obtenerConfiguracionBlockchainReal();
-  const blockchainMode = blockchainReal.enabled ? "real" : "simulado";
-  const contratosOperativos = estadoInfra.contratosOperativos || blockchainReal.enabled;
+  const blockchainMode = blockchainReal.enabled ? "real" : "no_disponible";
+  const contratosOperativos = blockchainReal.enabled;
   const cumpleHu1E5 = contratosOperativos && ips.length >= 2;
   return {
     backend: {

@@ -12,6 +12,9 @@ import { VerEpisodioPage } from "../pages/VerEpisodioPage";
 import { TrazabilidadEpisodioPage } from "../pages/TrazabilidadEpisodioPage";
 import { InfraestructuraPage } from "../pages/InfraestructuraPage";
 import { PortalClinicoPage } from "../pages/PortalClinicoPage";
+import { EvaluacionPrototipoPage } from "../pages/EvaluacionPrototipoPage";
+import { GestionIpsPage } from "../pages/GestionIpsPage";
+import { GestionUsuariosPage } from "../pages/GestionUsuariosPage";
 
 function RequireSession({ children }: { children: JSX.Element }) {
   const { sesion } = useSesion();
@@ -65,7 +68,14 @@ export function AppRouter() {
             </RequireCapability>
           }
         />
-        <Route path="/episodios" element={<RequireSession><EpisodiosPage /></RequireSession>} />
+        <Route
+          path="/episodios"
+          element={
+            <RequireCapability capability="episodios.consultar">
+              <EpisodiosPage />
+            </RequireCapability>
+          }
+        />
         <Route
           path="/episodios/crear"
           element={
@@ -93,9 +103,33 @@ export function AppRouter() {
         <Route
           path="/episodios/trazabilidad"
           element={
-            <RequireSession>
+            <RequireCapability capability="trazabilidad.consultar">
               <TrazabilidadEpisodioPage />
-            </RequireSession>
+            </RequireCapability>
+          }
+        />
+        <Route
+          path="/auditoria/evaluacion"
+          element={
+            <RequireCapability capability="evaluacion.consultar">
+              <EvaluacionPrototipoPage />
+            </RequireCapability>
+          }
+        />
+        <Route
+          path="/gestion/ips"
+          element={
+            <RequireCapability capability="ips.crear">
+              <GestionIpsPage />
+            </RequireCapability>
+          }
+        />
+        <Route
+          path="/gestion/usuarios"
+          element={
+            <RequireCapability capability="ips.usuarios.gestionar">
+              <GestionUsuariosPage />
+            </RequireCapability>
           }
         />
         <Route path="/infraestructura" element={<RequireSession><InfraestructuraPage /></RequireSession>} />

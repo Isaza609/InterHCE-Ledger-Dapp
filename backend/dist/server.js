@@ -13,6 +13,8 @@ const episodes_1 = require("./routes/episodes");
 const infra_1 = require("./routes/infra");
 const access_1 = require("./routes/access");
 const auth_1 = require("./routes/auth");
+const evaluation_1 = require("./routes/evaluation");
+const ips_1 = require("./routes/ips");
 const openapi_1 = require("./docs/openapi");
 const app = (0, express_1.default)();
 exports.app = app;
@@ -22,6 +24,8 @@ app.use("/episodes", episodes_1.episodesRouter);
 app.use("/infra", infra_1.infraRouter);
 app.use("/access", access_1.accessRouter);
 app.use("/auth", auth_1.authRouter);
+app.use("/evaluation", evaluation_1.evaluationRouter);
+app.use("/ips", ips_1.ipsRouter);
 app.use("/docs", swagger_ui_express_1.default.serve, swagger_ui_express_1.default.setup(openapi_1.openApiSpec));
 app.get("/", (_req, res) => {
     res.json({

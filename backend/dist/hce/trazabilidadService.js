@@ -10,7 +10,12 @@ const crypto_1 = require("crypto");
 const fs_1 = require("fs");
 const path_1 = __importDefault(require("path"));
 const blockchainTraceService_1 = require("../infra/blockchainTraceService");
-const eventosStore = [];
+const jsonFileStore_1 = require("../shared/jsonFileStore");
+const TRAZABILIDAD_STORE_FILE = "episodio-trazabilidad.json";
+const eventosStore = (0, jsonFileStore_1.loadJsonFile)(TRAZABILIDAD_STORE_FILE, []);
+function persistEventosStore() {
+    (0, jsonFileStore_1.saveJsonFile)(TRAZABILIDAD_STORE_FILE, eventosStore);
+}
 function loadDeploymentConfig() {
     const filePath = path_1.default.resolve(__dirname, "../../../shared/blockchain/contracts.sepolia.json");
     if (!(0, fs_1.existsSync)(filePath)) {
@@ -42,46 +47,23 @@ function buildExplorerUrl(network, transactionHash) {
     }
     return undefined;
 }
-function buildTransactionHash(payload) {
-    const serialized = JSON.stringify(payload);
-    return `0x${(0, crypto_1.createHash)("sha256").update(serialized, "utf8").digest("hex")}`;
-}
 async function registrarEventoTrazabilidad(input) {
-    const config = loadDeploymentConfig();
     const traceId = (0, crypto_1.randomUUID)();
     const recordedAt = new Date().toISOString();
     const metadata = { ...(input.metadata ?? {}) };
-    const txPayload = {
-        traceId,
+    const realReceipt = await (0, blockchainTraceService_1.registrarEventoBlockchainReal)({
         episodeId: input.episodeId,
         eventType: input.eventType,
         actor: input.actor,
-        metadata,
-        recordedAt
-    };
-    const fallbackTransactionHash = buildTransactionHash(txPayload);
-    const fallbackEvidence = {
-        ledgerMode: "simulado",
-        network: config.network,
-        chainId: config.chainId,
-        contractAddress: config.contracts?.InterHCELedger,
-        transactionHash: fallbackTransactionHash,
-        explorerUrl: buildExplorerUrl(config.network, fallbackTransactionHash)
-    };
-    let evidence = fallbackEvidence;
-    try {
-        const realReceipt = await (0, blockchainTraceService_1.registrarEventoBlockchainReal)({
-            episodeId: input.episodeId,
-            eventType: input.eventType,
-            actor: input.actor,
-            metadata
+        metadata
+    });
+    if (!realReceipt) {
+        const config = loadDeploymentConfig();
+        throw new blockchainTraceService_1.BlockchainTraceError("Blockchain real no disponible para registrar la trazabilidad.", {
+            network: config.network,
+            chainId: config.chainId,
+            contractAddress: config.contracts?.InterHCELedger
         });
-        if (realReceipt) {
-            evidence = realReceipt;
-        }
-    }
-    catch {
-        evidence = fallbackEvidence;
     }
     const event = {
         traceId,
@@ -90,9 +72,27 @@ async function registrarEventoTrazabilidad(input) {
         recordedAt,
         actor: { ...input.actor },
         metadata,
-        evidence
+        evidence: {
+            ledgerMode: "real",
+            network: realReceipt.network,
+            chainId: realReceipt.chainId,
+            contractAddress: realReceipt.contractAddress,
+            transactionHash: realReceipt.transactionHash,
+            explorerUrl: realReceipt.explorerUrl ??
+                buildExplorerUrl(realReceipt.network, realReceipt.transactionHash),
+            emitterId: realReceipt.emitterId,
+            metricsMode: realReceipt.metricsMode,
+            submittedAt: realReceipt.submittedAt,
+            confirmedAt: realReceipt.confirmedAt,
+            confirmationMs: realReceipt.confirmationMs,
+            gasUsed: realReceipt.gasUsed,
+            gasPriceWei: realReceipt.gasPriceWei,
+            transactionCostWei: realReceipt.transactionCostWei,
+            blockNumber: realReceipt.blockNumber
+        }
     };
     eventosStore.push(event);
+    persistEventosStore();
     return {
         ...event,
         actor: { ...event.actor },

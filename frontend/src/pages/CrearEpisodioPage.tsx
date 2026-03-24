@@ -7,34 +7,32 @@ import { useSesion } from "@/shared/auth/SessionContext";
 
 export function CrearEpisodioPage() {
   const { sesion } = useSesion();
-  const { result, loading, validar, registrar } = useValidarEpisodio();
+  const { result, loading, validar, registrar } = useValidarEpisodio(sesion);
 
   const safeValidar = (p: EpisodioPayload) => validar(buildEpisodioPayload(p));
   const safeRegistrar = (p: EpisodioPayload) => registrar(buildEpisodioPayload(p));
 
   return (
-    <div className="container">
+    <>
       <nav aria-label="Migas de pan" className="breadcrumb">
-        <Link to="/">Inicio</Link>
-        {" / "}
-        <Link to="/episodios">Episodios</Link>
-        {" / Crear"}
+        <Link to="/portal">Panel</Link>{" / "}
+        <Link to="/episodios">Episodios</Link>{" / Crear"}
       </nav>
-      <section className="page-banner page-banner--compact">
-        <div>
-          <p className="eyebrow">Nuevo episodio</p>
-          <h1 className="page-title">Registrar atención de urgencias</h1>
-          <p className="page-subtitle">
-            Complete la información clínica esencial. El sistema validará la estructura, generará
-            el documento off-chain y dejará trazabilidad verificable del registro.
-          </p>
+
+      <div className="page-header">
+        <div className="page-header__row">
+          <div>
+            <h1 className="page-title">Registrar episodio</h1>
+            <p className="page-subtitle">
+              Complete la información clínica. El sistema validará la estructura y dejará trazabilidad verificable.
+            </p>
+          </div>
+          <div className="context-note">
+            <strong>{sesion?.nombre ?? "Sin sesión"}</strong>
+            <small>{sesion?.ipsId ?? "Autentíquese para registrar"}</small>
+          </div>
         </div>
-        <div className="context-note">
-          <strong>Sesión activa</strong>
-          <span>{sesion?.nombre ?? "Sin sesión"}</span>
-          <small>{sesion?.ipsId ?? "Debe autenticarse para registrar"}</small>
-        </div>
-      </section>
+      </div>
 
       <div className="card card--elevated">
         <FormularioEpisodio
@@ -44,6 +42,6 @@ export function CrearEpisodioPage() {
           loading={loading}
         />
       </div>
-    </div>
+    </>
   );
 }

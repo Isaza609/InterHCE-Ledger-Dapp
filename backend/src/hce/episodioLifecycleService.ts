@@ -1,10 +1,13 @@
 import type { DocumentoClinicoOffChain, RegistroOnChainMetadata } from "./documentoClinicoService";
+import { actorPuedeActualizarEpisodioConContinuidad } from "./permisosEpisodioService";
+import { loadJsonFile, saveJsonFile } from "../shared/jsonFileStore";
 
 export type RolUsuario =
   | "profesional_salud"
   | "admin_ips"
   | "paciente"
-  | "auditor";
+  | "auditor"
+  | "super_admin";
 
 export interface ActorContexto {
   rol: RolUsuario;
@@ -36,7 +39,17 @@ export interface EpisodioLifecycleRecord {
   versiones: VersionEpisodio[];
 }
 
-const lifecycleStore = new Map<string, EpisodioLifecycleRecord>();
+const LIFECYCLE_STORE_FILE = "episodio-lifecycle.json";
+const lifecycleStore = new Map<string, EpisodioLifecycleRecord>(
+  loadJsonFile<EpisodioLifecycleRecord[]>(LIFECYCLE_STORE_FILE, []).map((record) => [
+    record.episodeId,
+    record
+  ])
+);
+
+function persistLifecycleStore(): void {
+  saveJsonFile(LIFECYCLE_STORE_FILE, [...lifecycleStore.values()]);
+}
 
 function construirEventoUrgencias(
   episodeId: string,
@@ -87,11 +100,11 @@ export function prevalidarActualizacionLifecycleEpisodio(
       errorCode: "EPISODE_NOT_FOUND"
     };
   }
-  if (!actor.ipsId || actor.ipsId !== existente.eventoUrgencias.ipsOrigenId) {
+  if (!actorPuedeActualizarEpisodioConContinuidad(episodeId, actor.ipsId, actor.rol)) {
     return {
       ok: false,
       error:
-        "La IPS del actor no está autorizada para actualizar este episodio de urgencias.",
+        "La IPS del actor no tiene permisos vigentes para continuar este episodio clínico.",
       errorCode: "FORBIDDEN_IPS_UPDATE"
     };
   }
@@ -147,6 +160,7 @@ export function crearRegistroLifecycleEpisodio(
     onChain
   );
   lifecycleStore.set(episodeId, record);
+  persistLifecycleStore();
   return record;
 }
 
@@ -166,6 +180,7 @@ export function actualizarRegistroLifecycleEpisodio(
   const existente = lifecycleStore.get(episodeId)!;
   const actualizado = pushVersion(existente, actor, onChain);
   lifecycleStore.set(episodeId, actualizado);
+  persistLifecycleStore();
   return { record: actualizado };
 }
 

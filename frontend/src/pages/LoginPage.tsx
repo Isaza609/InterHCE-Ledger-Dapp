@@ -1,10 +1,17 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useSesion } from "@/shared/auth/SessionContext";
-import { iniciarSesionDapp } from "@/shared/services/api";
+import { iniciarSesionDapp, cambiarPasswordPropia } from "@/shared/services/api";
+import type { SesionUsuario } from "@/shared/auth/sessionStorage";
 import heroImage from "../../images/greys Anatomy.jpg";
 
 const DEMOS = [
+  {
+    title: "Super Administrador",
+    context: "Crea IPS y administradores institucionales.",
+    correo: "superadmin@interhce.local",
+    password: "SuperAdmin001!"
+  },
   {
     title: "Profesional de salud",
     context: "Consulta, registra y actualiza episodios de su IPS.",
@@ -34,25 +41,31 @@ const DEMOS = [
 export function LoginPage() {
   const navigate = useNavigate();
   const { iniciarSesion } = useSesion();
-  const [correo, setCorreo] = useState("");
+  const [identificador, setIdentificador] = useState("");
   const [password, setPassword] = useState("");
-  const [usuarioId, setUsuarioId] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
+  const [pendienteCambio, setPendienteCambio] = useState(false);
+  const [sesionTemporal, setSesionTemporal] = useState<SesionUsuario | null>(null);
+  const [passwordUsada, setPasswordUsada] = useState("");
+  const [nuevaPassword, setNuevaPassword] = useState("");
+  const [confirmarPassword, setConfirmarPassword] = useState("");
+  const [cambiandoPassword, setCambiandoPassword] = useState(false);
+  const [exitoCambio, setExitoCambio] = useState(false);
+
   const onSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!correo.trim() || !password.trim()) {
-      setError("Ingrese correo y contraseña para continuar.");
+    if (!identificador.trim() || !password.trim()) {
+      setError("Ingrese su identificación y contraseña para continuar.");
       return;
     }
 
     setLoading(true);
     setError(null);
     const result = await iniciarSesionDapp({
-      correo: correo.trim(),
-      password,
-      usuarioId: usuarioId.trim() || undefined
+      correo: identificador.trim(),
+      password
     });
     setLoading(false);
 
@@ -61,16 +74,152 @@ export function LoginPage() {
       return;
     }
 
+    if (result.requiereCambioPassword) {
+      setSesionTemporal(result.session);
+      setPasswordUsada(password);
+      setPendienteCambio(true);
+      setError(null);
+      return;
+    }
+
     iniciarSesion(result.session);
     navigate("/portal");
   };
 
-  const aplicarDemo = (correoDemo: string, passwordDemo: string) => {
-    setCorreo(correoDemo);
-    setPassword(passwordDemo);
-    setUsuarioId("");
+  const onCambiarPassword = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!nuevaPassword.trim() || nuevaPassword.length < 6) {
+      setError("La nueva contraseña debe tener al menos 6 caracteres.");
+      return;
+    }
+    if (nuevaPassword !== confirmarPassword) {
+      setError("Las contraseñas no coinciden.");
+      return;
+    }
+    if (nuevaPassword === passwordUsada) {
+      setError("La nueva contraseña debe ser diferente a la actual.");
+      return;
+    }
+
+    setCambiandoPassword(true);
     setError(null);
+    const result = await cambiarPasswordPropia(passwordUsada, nuevaPassword, sesionTemporal);
+    setCambiandoPassword(false);
+
+    if (!result.ok) {
+      setError(result.message);
+      return;
+    }
+
+    setExitoCambio(true);
   };
+
+  const onContinuarDespuesDeCambio = () => {
+    if (sesionTemporal) {
+      iniciarSesion(sesionTemporal);
+      navigate("/portal");
+    }
+  };
+
+  const aplicarDemo = (correoDemo: string, passwordDemo: string) => {
+    setIdentificador(correoDemo);
+    setPassword(passwordDemo);
+    setError(null);
+    setPendienteCambio(false);
+    setSesionTemporal(null);
+    setExitoCambio(false);
+  };
+
+  if (pendienteCambio && !exitoCambio) {
+    return (
+      <div className="public-page public-page--narrow">
+        <section className="login-page" aria-labelledby="change-pw-title">
+          <div className="card card--elevated login-page__card" style={{ maxWidth: "520px", margin: "2rem auto" }}>
+            <div style={{ textAlign: "center", marginBottom: "1.5rem" }}>
+              <span style={{ fontSize: "2.5rem" }}>🔐</span>
+            </div>
+            <p className="eyebrow">Cambio de contraseña obligatorio</p>
+            <h2 id="change-pw-title" className="section-title section-title--large">
+              Actualice su contraseña
+            </h2>
+            <p className="section-copy">
+              Su cuenta fue creada con una contraseña temporal. Por seguridad, debe establecer
+              una nueva contraseña antes de continuar.
+            </p>
+
+            {error && <div className="alert alert--error">{error}</div>}
+
+            <form onSubmit={onCambiarPassword} className="form-section form-section--stacked" noValidate>
+              <div className="form-group">
+                <label htmlFor="nueva-pw" className="form-label form-label--required">
+                  Nueva contraseña
+                </label>
+                <input
+                  id="nueva-pw"
+                  className="form-input"
+                  type="password"
+                  value={nuevaPassword}
+                  onChange={(e) => setNuevaPassword(e.target.value)}
+                  placeholder="Mínimo 6 caracteres"
+                  autoComplete="new-password"
+                  required
+                  minLength={6}
+                />
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="confirmar-pw" className="form-label form-label--required">
+                  Confirmar contraseña
+                </label>
+                <input
+                  id="confirmar-pw"
+                  className="form-input"
+                  type="password"
+                  value={confirmarPassword}
+                  onChange={(e) => setConfirmarPassword(e.target.value)}
+                  placeholder="Repita la nueva contraseña"
+                  autoComplete="new-password"
+                  required
+                />
+              </div>
+
+              <button
+                className="btn btn--primary btn--block"
+                type="submit"
+                disabled={cambiandoPassword}
+              >
+                {cambiandoPassword ? "Actualizando..." : "Establecer nueva contraseña"}
+              </button>
+            </form>
+          </div>
+        </section>
+      </div>
+    );
+  }
+
+  if (exitoCambio) {
+    return (
+      <div className="public-page public-page--narrow">
+        <section className="login-page">
+          <div className="card card--elevated" style={{ maxWidth: "520px", margin: "2rem auto", textAlign: "center" }}>
+            <div style={{ fontSize: "3rem", marginBottom: "1rem" }}>✅</div>
+            <h2 className="section-title section-title--large">Contraseña actualizada</h2>
+            <p className="section-copy">
+              Su contraseña fue cambiada exitosamente. Ahora puede acceder a la plataforma
+              con sus nuevas credenciales.
+            </p>
+            <button
+              className="btn btn--primary btn--block"
+              onClick={onContinuarDespuesDeCambio}
+              style={{ marginTop: "1.5rem" }}
+            >
+              Continuar al portal
+            </button>
+          </div>
+        </section>
+      </div>
+    );
+  }
 
   return (
     <div className="public-page public-page--narrow">
@@ -93,8 +242,8 @@ export function LoginPage() {
             </p>
             <div className="stack-list">
               <div className="stack-item">
-                <strong>Ingreso por perfil</strong>
-                <span>La plataforma identifica permisos y capacidades después de autenticarse.</span>
+                <strong>Ingreso flexible</strong>
+                <span>Puede ingresar con su correo institucional, ID de usuario o documento de identidad.</span>
               </div>
               <div className="stack-item">
                 <strong>Acceso controlado</strong>
@@ -115,27 +264,29 @@ export function LoginPage() {
           <p className="eyebrow">Inicio de sesión</p>
           <h2 className="section-title section-title--large">Entrar a mi entorno de trabajo</h2>
           <p className="section-copy">
-            Use su correo institucional. Si su organización maneja un identificador interno, puede
-            agregarlo como apoyo.
+            Use su correo institucional, ID de usuario o documento de identidad para ingresar.
           </p>
 
           {error && <div className="alert alert--error">{error}</div>}
 
           <form onSubmit={onSubmit} className="form-section form-section--stacked" noValidate>
             <div className="form-group">
-              <label htmlFor="correo" className="form-label form-label--required">
-                Correo institucional
+              <label htmlFor="identificador" className="form-label form-label--required">
+                Correo, usuario o documento
               </label>
               <input
-                id="correo"
+                id="identificador"
                 className="form-input"
-                type="email"
-                value={correo}
-                onChange={(e) => setCorreo(e.target.value)}
-                placeholder="nombre@interhce.local"
+                type="text"
+                value={identificador}
+                onChange={(e) => setIdentificador(e.target.value)}
+                placeholder="correo@interhce.local, usuario-id o documento"
                 autoComplete="username"
                 required
               />
+              <span className="form-hint">
+                Puede usar cualquiera de sus identificadores registrados.
+              </span>
             </div>
 
             <div className="form-group">
@@ -152,23 +303,6 @@ export function LoginPage() {
                 autoComplete="current-password"
                 required
               />
-            </div>
-
-            <div className="form-group">
-              <label htmlFor="usuarioId" className="form-label">
-                Usuario interno
-              </label>
-              <input
-                id="usuarioId"
-                className="form-input"
-                type="text"
-                value={usuarioId}
-                onChange={(e) => setUsuarioId(e.target.value)}
-                placeholder="Opcional"
-              />
-              <span className="form-hint">
-                Úselo solo si su organización requiere un identificador adicional.
-              </span>
             </div>
 
             <button className="btn btn--primary btn--block" type="submit" disabled={loading}>

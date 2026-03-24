@@ -1,8 +1,12 @@
-import { createHash, randomUUID } from "crypto";
+import { randomUUID } from "crypto";
 import { existsSync, readFileSync } from "fs";
 import path from "path";
 import type { ActorContexto } from "./episodioLifecycleService";
-import { registrarEventoBlockchainReal } from "../infra/blockchainTraceService";
+import {
+  BlockchainTraceError,
+  registrarEventoBlockchainReal
+} from "../infra/blockchainTraceService";
+import { loadJsonFile, saveJsonFile } from "../shared/jsonFileStore";
 
 export type TipoEventoTrazabilidad =
   | "EPISODE_CREATED"
@@ -13,12 +17,21 @@ export type TipoEventoTrazabilidad =
   | "INTEGRITY_CHECK";
 
 export interface EvidenciaBlockchain {
-  ledgerMode: "simulado" | "real";
+  ledgerMode: "real";
   network: string;
   chainId: number;
   contractAddress?: string;
   transactionHash: string;
   explorerUrl?: string;
+  emitterId?: string;
+  metricsMode?: "measured" | "estimated";
+  submittedAt?: string;
+  confirmedAt?: string;
+  confirmationMs?: number;
+  gasUsed?: string;
+  gasPriceWei?: string;
+  transactionCostWei?: string;
+  blockNumber?: number;
 }
 
 export interface EventoTrazabilidad {
@@ -39,7 +52,15 @@ interface BlockchainDeploymentConfig {
   };
 }
 
-const eventosStore: EventoTrazabilidad[] = [];
+const TRAZABILIDAD_STORE_FILE = "episodio-trazabilidad.json";
+const eventosStore: EventoTrazabilidad[] = loadJsonFile<EventoTrazabilidad[]>(
+  TRAZABILIDAD_STORE_FILE,
+  []
+);
+
+function persistEventosStore(): void {
+  saveJsonFile(TRAZABILIDAD_STORE_FILE, eventosStore);
+}
 
 function loadDeploymentConfig(): BlockchainDeploymentConfig {
   const filePath = path.resolve(
@@ -75,52 +96,31 @@ function buildExplorerUrl(network: string, transactionHash: string): string | un
   return undefined;
 }
 
-function buildTransactionHash(payload: unknown): string {
-  const serialized = JSON.stringify(payload);
-  return `0x${createHash("sha256").update(serialized, "utf8").digest("hex")}`;
-}
-
 export async function registrarEventoTrazabilidad(input: {
   episodeId: string;
   eventType: TipoEventoTrazabilidad;
   actor: ActorContexto;
   metadata?: Record<string, string | number | boolean | null | undefined>;
 }): Promise<EventoTrazabilidad> {
-  const config = loadDeploymentConfig();
   const traceId = randomUUID();
   const recordedAt = new Date().toISOString();
   const metadata = { ...(input.metadata ?? {}) };
-  const txPayload = {
-    traceId,
+  const realReceipt = await registrarEventoBlockchainReal({
     episodeId: input.episodeId,
     eventType: input.eventType,
     actor: input.actor,
-    metadata,
-    recordedAt
-  };
-  const fallbackTransactionHash = buildTransactionHash(txPayload);
-  const fallbackEvidence: EvidenciaBlockchain = {
-    ledgerMode: "simulado",
-    network: config.network,
-    chainId: config.chainId,
-    contractAddress: config.contracts?.InterHCELedger,
-    transactionHash: fallbackTransactionHash,
-    explorerUrl: buildExplorerUrl(config.network, fallbackTransactionHash)
-  };
-
-  let evidence = fallbackEvidence;
-  try {
-    const realReceipt = await registrarEventoBlockchainReal({
-      episodeId: input.episodeId,
-      eventType: input.eventType,
-      actor: input.actor,
-      metadata
-    });
-    if (realReceipt) {
-      evidence = realReceipt;
-    }
-  } catch {
-    evidence = fallbackEvidence;
+    metadata
+  });
+  if (!realReceipt) {
+    const config = loadDeploymentConfig();
+    throw new BlockchainTraceError(
+      "Blockchain real no disponible para registrar la trazabilidad.",
+      {
+        network: config.network,
+        chainId: config.chainId,
+        contractAddress: config.contracts?.InterHCELedger
+      }
+    );
   }
   const event: EventoTrazabilidad = {
     traceId,
@@ -129,9 +129,28 @@ export async function registrarEventoTrazabilidad(input: {
     recordedAt,
     actor: { ...input.actor },
     metadata,
-    evidence
+    evidence: {
+      ledgerMode: "real",
+      network: realReceipt.network,
+      chainId: realReceipt.chainId,
+      contractAddress: realReceipt.contractAddress,
+      transactionHash: realReceipt.transactionHash,
+      explorerUrl:
+        realReceipt.explorerUrl ??
+        buildExplorerUrl(realReceipt.network, realReceipt.transactionHash),
+      emitterId: realReceipt.emitterId,
+      metricsMode: realReceipt.metricsMode,
+      submittedAt: realReceipt.submittedAt,
+      confirmedAt: realReceipt.confirmedAt,
+      confirmationMs: realReceipt.confirmationMs,
+      gasUsed: realReceipt.gasUsed,
+      gasPriceWei: realReceipt.gasPriceWei,
+      transactionCostWei: realReceipt.transactionCostWei,
+      blockNumber: realReceipt.blockNumber
+    }
   };
   eventosStore.push(event);
+  persistEventosStore();
   return {
     ...event,
     actor: { ...event.actor },

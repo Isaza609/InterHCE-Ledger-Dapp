@@ -1,11 +1,23 @@
 import type { RolSesion, SesionUsuario } from "./sessionStorage";
 
 const CAPABILIDADES_POR_ROL: Record<RolSesion, string[]> = {
+  super_admin: [
+    "ips.crear",
+    "ips.actualizar",
+    "ips.listar",
+    "ips.usuarios.gestionar",
+    "ips.permisos.gestionar",
+    "episodios.consultar",
+    "episodios.documento.ver",
+    "sistema.configurar",
+    "trazabilidad.consultar"
+  ],
   profesional_salud: [
     "episodios.crear",
     "episodios.actualizar",
     "episodios.consultar",
-    "episodios.documento.ver"
+    "episodios.documento.ver",
+    "trazabilidad.consultar"
   ],
   admin_ips: [
     "episodios.crear",
@@ -13,10 +25,11 @@ const CAPABILIDADES_POR_ROL: Record<RolSesion, string[]> = {
     "episodios.consultar",
     "episodios.documento.ver",
     "ips.usuarios.gestionar",
-    "ips.permisos.gestionar"
+    "ips.permisos.gestionar",
+    "trazabilidad.consultar"
   ],
   paciente: ["episodios.consultar"],
-  auditor: ["trazabilidad.consultar", "episodios.documento.ver"]
+  auditor: ["trazabilidad.consultar", "evaluacion.consultar"]
 };
 
 export function obtenerCapacidadesSesion(
