@@ -510,13 +510,18 @@ export function PortalClinicoPage() {
           <section className="card card--elevated">
             <div className="section-head section-head--tight">
               <div>
-                <h2 className="section-title">Evaluación</h2>
-                <p className="section-copy">Dashboard de interoperabilidad, integridad y documentación.</p>
+                <h2 className="section-title">Evaluación y auditoría</h2>
+                <p className="section-copy">Dashboard de interoperabilidad, integridad y métricas de desempeño blockchain (RF10).</p>
               </div>
             </div>
-            <Link to="/auditoria/evaluacion" className="btn btn--primary">
-              Abrir evaluación
-            </Link>
+            <div className="btn-group">
+              <Link to="/auditoria/metricas" className="btn btn--primary">
+                Métricas de desempeño (RF10)
+              </Link>
+              <Link to="/auditoria/evaluacion" className="btn btn--secondary">
+                Evaluación HU0-HU5
+              </Link>
+            </div>
           </section>
         )}
 

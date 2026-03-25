@@ -15,15 +15,23 @@ exports.buscarUsuarioPorDocumento = buscarUsuarioPorDocumento;
 exports.buscarUsuarioPorIdentificador = buscarUsuarioPorIdentificador;
 exports.autenticarUsuario = autenticarUsuario;
 exports.validarActorContraUsuarios = validarActorContraUsuarios;
+exports.extraerDocumentoIdentidadDesdeDocumentoClinico = extraerDocumentoIdentidadDesdeDocumentoClinico;
+exports.nombrePacienteDesdeDocumentoClinico = nombrePacienteDesdeDocumentoClinico;
+exports.crearUsuarioPacienteSiNoExiste = crearUsuarioPacienteSiNoExiste;
+exports.sincronizarUsuariosPacienteDesdeEpisodiosExistentes = sincronizarUsuariosPacienteDesdeEpisodiosExistentes;
 exports.actorPuedeGestionarUsuarios = actorPuedeGestionarUsuarios;
 const crypto_1 = require("crypto");
 const ipsService_1 = require("../ips/ipsService");
+const documentoClinicoService_1 = require("../hce/documentoClinicoService");
 const CAPABILIDADES_POR_ROL = {
     super_admin: [
         "ips.crear",
         "ips.actualizar",
         "ips.listar",
         "ips.usuarios.gestionar",
+        "ips.permisos.gestionar",
+        "episodios.consultar",
+        "episodios.documento.ver",
         "sistema.configurar",
         "trazabilidad.consultar"
     ],
@@ -358,6 +366,123 @@ function validarActorContraUsuarios(actor) {
         };
     }
     return { ok: true };
+}
+function extraerDocumentoIdentidadDesdeDocumentoClinico(documento) {
+    const patientIdRaw = documento.patient?.identifier
+        ?.map((item) => item?.value?.trim())
+        .find((item) => Boolean(item));
+    return (patientIdRaw ?? "").replace(/\s+/g, "");
+}
+function nombrePacienteDesdeDocumentoClinico(documento) {
+    const docId = extraerDocumentoIdentidadDesdeDocumentoClinico(documento);
+    const nombre = [
+        documento.patient?.name?.[0]?.given?.join(" "),
+        documento.patient?.name?.[0]?.family
+    ]
+        .filter(Boolean)
+        .join(" ");
+    return nombre.trim() || (docId ? `Paciente ${docId}` : "Paciente");
+}
+/**
+ * Crea usuario rol paciente si no hay uno con el mismo documento (p. ej. tras crear episodio o sync).
+ */
+function crearUsuarioPacienteSiNoExiste(input) {
+    const patientId = input.documentoIdentidad.trim().replace(/\s+/g, "");
+    if (!patientId) {
+        return {
+            ok: false,
+            code: "MISSING_PATIENT_ID",
+            message: "Sin documento de identidad del paciente."
+        };
+    }
+    if (buscarUsuarioPorDocumento(patientId)) {
+        return { ok: true, creado: false };
+    }
+    const nombre = input.nombre.trim() || `Paciente ${patientId}`;
+    const ipsId = input.ipsId.trim();
+    if (!ipsId) {
+        return { ok: false, code: "MISSING_IPS", message: "Sin IPS de origen del episodio." };
+    }
+    const baseUsuario = patientId.toLowerCase().replace(/[^a-z0-9_-]/g, "");
+    const usuarioIdBase = `paciente-${baseUsuario || "auto"}`;
+    let createResult = crearUsuarioIps({
+        usuarioId: usuarioIdBase,
+        nombre,
+        password: `Paciente-${patientId}!`,
+        rol: "paciente",
+        ipsId,
+        documentoIdentidad: patientId
+    });
+    if (!createResult.ok && createResult.code === "USER_EXISTS") {
+        createResult = crearUsuarioIps({
+            usuarioId: `${usuarioIdBase}-${(0, crypto_1.randomUUID)().slice(0, 8)}`,
+            nombre,
+            password: `Paciente-${patientId}!`,
+            rol: "paciente",
+            ipsId,
+            documentoIdentidad: patientId
+        });
+    }
+    if (createResult.ok) {
+        return { ok: true, creado: true, usuarioId: createResult.user.usuarioId };
+    }
+    return { ok: false, code: createResult.code, message: createResult.message };
+}
+async function sincronizarUsuariosPacienteDesdeEpisodiosExistentes(filtroIpsId) {
+    let usuariosCreados = 0;
+    let yaTenianUsuario = 0;
+    let sinDocumentoPaciente = 0;
+    const detallesCreados = [];
+    const errores = [];
+    let episodiosRevisados = 0;
+    const resumenes = await (0, documentoClinicoService_1.listarTodosLosEpisodios)();
+    const filtro = filtroIpsId?.trim();
+    for (const res of resumenes) {
+        const stored = await (0, documentoClinicoService_1.recuperarDocumentoClinico)(res.episodeId);
+        if (!stored)
+            continue;
+        const ipsOrigen = stored.document.prestadorOrigen?.identifier?.[0]?.value?.trim() ||
+            res.prestadorOrigenId?.trim() ||
+            "";
+        if (filtro && ipsOrigen !== filtro) {
+            continue;
+        }
+        episodiosRevisados += 1;
+        const patientId = extraerDocumentoIdentidadDesdeDocumentoClinico(stored.document);
+        if (!patientId) {
+            sinDocumentoPaciente += 1;
+            continue;
+        }
+        if (buscarUsuarioPorDocumento(patientId)) {
+            yaTenianUsuario += 1;
+            continue;
+        }
+        const nombre = nombrePacienteDesdeDocumentoClinico(stored.document);
+        const r = crearUsuarioPacienteSiNoExiste({
+            documentoIdentidad: patientId,
+            nombre,
+            ipsId: ipsOrigen
+        });
+        if (r.ok && r.creado) {
+            usuariosCreados += 1;
+            detallesCreados.push({
+                episodeId: res.episodeId,
+                usuarioId: r.usuarioId,
+                documento: patientId
+            });
+        }
+        else if (!r.ok) {
+            errores.push({ episodeId: res.episodeId, code: r.code, message: r.message });
+        }
+    }
+    return {
+        episodiosRevisados,
+        usuariosCreados,
+        yaTenianUsuario,
+        sinDocumentoPaciente,
+        detallesCreados,
+        errores
+    };
 }
 function actorPuedeGestionarUsuarios(actor) {
     return actor.rol === "admin_ips" || actor.rol === "super_admin";

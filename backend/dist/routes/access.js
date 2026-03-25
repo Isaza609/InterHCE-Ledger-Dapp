@@ -225,3 +225,57 @@ exports.accessRouter.post("/users/:id/reset-password", (req, res) => {
         passwordTemporal: result.passwordTemporal
     });
 });
+/**
+ * Crea usuarios rol paciente faltantes a partir de episodios ya guardados (retrocompatibilidad).
+ * - admin_ips: solo episodios cuya IPS origen es la suya.
+ * - super_admin: todos los episodios, o filtrar con body.ipsId opcional.
+ */
+exports.accessRouter.post("/patients/sync-from-episodes", async (req, res) => {
+    const actor = (0, autorizacionService_1.obtenerActorDesdeRequest)(req);
+    if (!actor) {
+        return res.status(403).json({
+            code: "MISSING_OR_INVALID_ROLE",
+            message: "Debe enviar actor válido."
+        });
+    }
+    const userCheck = (0, accesoUsuariosService_1.validarActorContraUsuarios)(actor);
+    if (!userCheck.ok) {
+        return res.status(403).json({ code: userCheck.code, message: userCheck.message });
+    }
+    if (!(0, accesoUsuariosService_1.actorPuedeGestionarUsuarios)(actor)) {
+        return res.status(403).json({
+            code: "FORBIDDEN_ROLE",
+            message: "Solo admin_ips o super_admin puede ejecutar la sincronización."
+        });
+    }
+    let filtroIps;
+    if (actor.rol === "admin_ips") {
+        filtroIps = actor.ipsId?.trim();
+        if (!filtroIps) {
+            return res.status(400).json({
+                code: "MISSING_IPS",
+                message: "El administrador IPS debe tener x-ips-id para sincronizar sus episodios."
+            });
+        }
+    }
+    else {
+        const raw = req.body?.ipsId;
+        filtroIps = typeof raw === "string" && raw.trim() ? raw.trim() : undefined;
+    }
+    try {
+        const data = await (0, accesoUsuariosService_1.sincronizarUsuariosPacienteDesdeEpisodiosExistentes)(filtroIps);
+        return res.status(200).json({
+            code: "PATIENT_USERS_SYNCED",
+            message: `Revisados ${data.episodiosRevisados} episodios: ${data.usuariosCreados} usuarios paciente creados, ` +
+                `${data.yaTenianUsuario} ya existían, ${data.sinDocumentoPaciente} sin documento en el episodio.`,
+            data
+        });
+    }
+    catch (err) {
+        const message = err instanceof Error ? err.message : "Error al sincronizar.";
+        return res.status(500).json({
+            code: "SYNC_ERROR",
+            message
+        });
+    }
+});

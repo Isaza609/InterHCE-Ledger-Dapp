@@ -39,8 +39,9 @@ import {
 } from "../security/autorizacionService";
 import {
   validarActorContraUsuarios,
-  buscarUsuarioPorDocumento,
-  crearUsuarioIps
+  crearUsuarioPacienteSiNoExiste,
+  extraerDocumentoIdentidadDesdeDocumentoClinico,
+  nombrePacienteDesdeDocumentoClinico
 } from "../access/accesoUsuariosService";
 import { validateEpisodioClinico } from "../hce/validationService";
 import {
@@ -390,7 +391,7 @@ episodesRouter.post("/", async (req, res) => {
     });
   }
   try {
-    await almacenarDocumentoClinico(episodeId, documento);
+    const { fhirPersistWarning } = await almacenarDocumentoClinico(episodeId, documento);
     const onChain = generarRegistroOnChainMetadataDesdeDocumento(episodeId, documento);
     const lifecycle = crearRegistroLifecycleEpisodio(
       episodeId,
@@ -410,22 +411,26 @@ episodesRouter.post("/", async (req, res) => {
         sourceIpsId: lifecycle.eventoUrgencias.ipsOrigenId
       }
     });
-    const patientId = validation.data?.patient?.identifier?.[0]?.value?.trim();
+    const documentoPayload = validation.data!;
+    const patientId = extraerDocumentoIdentidadDesdeDocumentoClinico(documentoPayload);
     let pacienteAutoCreado = false;
-    if (patientId && !buscarUsuarioPorDocumento(patientId)) {
-      const nombre = [
-        validation.data?.patient?.name?.[0]?.given?.join(" "),
-        validation.data?.patient?.name?.[0]?.family
-      ].filter(Boolean).join(" ") || `Paciente ${patientId}`;
-      const createResult = crearUsuarioIps({
-        usuarioId: `paciente-${patientId}`,
-        nombre,
-        password: `Paciente-${patientId}!`,
-        rol: "paciente",
-        ipsId: actorSeguro.ipsId ?? "",
-        documentoIdentidad: patientId
+    let pacienteUsuarioId: string | undefined;
+    let pacienteAutoCreacionError: string | undefined;
+    if (patientId) {
+      const r = crearUsuarioPacienteSiNoExiste({
+        documentoIdentidad: patientId,
+        nombre: nombrePacienteDesdeDocumentoClinico(documentoPayload),
+        ipsId: actorSeguro.ipsId ?? ""
       });
-      pacienteAutoCreado = createResult.ok;
+      if (r.ok && r.creado) {
+        pacienteAutoCreado = true;
+        pacienteUsuarioId = r.usuarioId;
+      } else if (!r.ok) {
+        pacienteAutoCreacionError = `${r.code}: ${r.message}`;
+      }
+    } else {
+      pacienteAutoCreacionError =
+        "No se encontró patient.identifier con valor en el payload del episodio.";
     }
 
     return res.status(201).json({
@@ -439,16 +444,19 @@ episodesRouter.post("/", async (req, res) => {
       onChainMetadata: onChain,
       traceEvent,
       data: validation.data,
-      pacienteAutoCreado
+      pacienteAutoCreado,
+      pacienteUsuarioId,
+      pacienteAutoCreacionError,
+      ...(fhirPersistWarning ? { fhirPersistWarning } : {})
     });
   } catch (err) {
     if (responderErrorBlockchain(res, err)) {
       return;
     }
-    const message = err instanceof Error ? err.message : "Error al persistir en HAPI FHIR";
+    const message = err instanceof Error ? err.message : "Error al persistir el episodio";
     return res.status(502).json({
-      code: "FHIR_STORAGE_ERROR",
-      message: "No se pudo almacenar el documento en el servidor FHIR.",
+      code: "EPISODE_PERSIST_ERROR",
+      message: "No se pudo completar el registro del episodio.",
       details: message
     });
   }
@@ -508,7 +516,7 @@ episodesRouter.put("/:id", async (req, res) => {
 
   const previewOnChain = generarRegistroOnChainMetadataDesdeDocumento(episodeId, documento);
   try {
-    await almacenarDocumentoClinico(episodeId, documento);
+    const { fhirPersistWarning } = await almacenarDocumentoClinico(episodeId, documento);
     const lifecycleUpdated = actualizarRegistroLifecycleEpisodio(
       episodeId,
       documento,
@@ -548,16 +556,17 @@ episodesRouter.put("/:id", async (req, res) => {
       event: lifecycle.eventoUrgencias,
       onChainMetadata: previewOnChain,
       traceEvent,
-      data: validation.data
+      data: validation.data,
+      ...(fhirPersistWarning ? { fhirPersistWarning } : {})
     });
   } catch (err) {
     if (responderErrorBlockchain(res, err)) {
       return;
     }
-    const message = err instanceof Error ? err.message : "Error al actualizar en HAPI FHIR";
+    const message = err instanceof Error ? err.message : "Error al actualizar el episodio";
     return res.status(502).json({
-      code: "FHIR_STORAGE_ERROR",
-      message: "No se pudo actualizar el documento en el servidor FHIR.",
+      code: "EPISODE_UPDATE_PERSIST_ERROR",
+      message: "No se pudo completar la actualización del episodio.",
       details: message
     });
   }

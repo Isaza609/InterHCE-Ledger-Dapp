@@ -8,6 +8,7 @@ import {
   resetearPasswordUsuario,
   listarIpsEntidades,
   obtenerRolesCreables,
+  sincronizarPacientesDesdeEpisodios,
   type UsuarioIps,
   type IpsEntidad
 } from "@/shared/services/api";
@@ -53,6 +54,7 @@ export function GestionUsuariosPage() {
   const [mensaje, setMensaje] = useState<{ tipo: "ok" | "error"; texto: string } | null>(null);
   const [passwordTemporal, setPasswordTemporal] = useState<string | null>(null);
   const [filtroIps, setFiltroIps] = useState<string>(esSuperAdmin ? "" : (sesion?.ipsId ?? ""));
+  const [sincronizandoPacientes, setSincronizandoPacientes] = useState(false);
 
   const cargarUsuarios = async () => {
     setLoading(true);
@@ -126,6 +128,22 @@ export function GestionUsuariosPage() {
     await cargarUsuarios();
   };
 
+  const onSincronizarPacientesDesdeEpisodios = async () => {
+    setSincronizandoPacientes(true);
+    setMensaje(null);
+    setPasswordTemporal(null);
+    const body =
+      esSuperAdmin && filtroIps.trim()
+        ? { ipsId: filtroIps.trim() }
+        : undefined;
+    const result = await sincronizarPacientesDesdeEpisodios(sesion, body);
+    setSincronizandoPacientes(false);
+    setMensaje({ tipo: result.ok ? "ok" : "error", texto: result.message });
+    if (result.ok) {
+      await cargarUsuarios();
+    }
+  };
+
   const onResetPassword = async (user: UsuarioIps) => {
     const result = await resetearPasswordUsuario(user.usuarioId, undefined, sesion);
     if (result.ok && result.passwordTemporal) {
@@ -149,17 +167,31 @@ export function GestionUsuariosPage() {
           <h1 className="page-title">Gestión de usuarios</h1>
           <p className="page-subtitle">
             {esSuperAdmin
-              ? "Administre usuarios de todas las IPS del sistema. Los pacientes se crean automáticamente al registrar episodios."
-              : "Administre los usuarios de su institución."}
+              ? "Administre usuarios de todas las IPS del sistema. Los pacientes nuevos se crean al registrar episodios; use «Sincronizar pacientes» para episodios antiguos sin usuario."
+              : "Administre los usuarios de su institución. Puede sincronizar pacientes desde episodios ya creados en su IPS."}
           </p>
         </div>
         <div style={{ display: "flex", gap: "0.75rem" }}>
           <button
+            type="button"
             className="btn btn--secondary"
             onClick={() => { setMensaje(null); cargarUsuarios(); }}
             disabled={loading}
           >
             {loading ? "Cargando..." : "↻ Actualizar"}
+          </button>
+          <button
+            type="button"
+            className="btn btn--secondary"
+            title={
+              esSuperAdmin && !filtroIps.trim()
+                ? "Sincroniza todos los episodios del sistema"
+                : "Sincroniza episodios de la IPS seleccionada o de la suya"
+            }
+            onClick={onSincronizarPacientesDesdeEpisodios}
+            disabled={loading || sincronizandoPacientes}
+          >
+            {sincronizandoPacientes ? "Sincronizando…" : "Sincronizar pacientes (episodios)"}
           </button>
           {!mostrarForm && rolesCreables.length > 0 && (
             <button

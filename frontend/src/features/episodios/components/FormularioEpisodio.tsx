@@ -6,7 +6,7 @@ import {
   rdaCatalogos,
   type CatalogOption
 } from "@/shared/catalogos/rdaCatalogos";
-import type { EpisodioPayload } from "@/shared/types/episodio";
+import type { EpisodioPayload, ValidationResult } from "@/shared/types/episodio";
 import { toDateTimeLocal } from "@/shared/utils/episodioPayload";
 import { ErroresValidacion } from "./ErroresValidacion";
 
@@ -281,18 +281,7 @@ interface FormularioEpisodioProps {
   onValidar?: (payload: EpisodioPayload) => void;
   onRegistrar?: (payload: EpisodioPayload) => void;
   actionLabel?: string;
-  result?: {
-    valid: boolean;
-    message?: string;
-    details?: { field: string; issue: string }[];
-    episodeId?: string;
-    documentHash?: string;
-    traceEvent?: {
-      evidence?: {
-        transactionHash?: string;
-      };
-    };
-  } | null;
+  result?: ValidationResult | null;
   loading?: boolean;
 }
 
@@ -1361,6 +1350,21 @@ export function FormularioEpisodio({
           style={{ marginTop: "1.5rem" }}
         >
           <p style={{ margin: 0 }}>{result.message}</p>
+          {result.valid &&
+            (result.fhirPersistWarning || result.pacienteAutoCreacionError) && (
+              <div
+                className="alert alert--warning"
+                style={{ marginTop: "0.75rem", marginBottom: 0 }}
+                role="status"
+              >
+                {result.fhirPersistWarning && <p style={{ margin: "0 0 0.5rem" }}>{result.fhirPersistWarning}</p>}
+                {result.pacienteAutoCreacionError && (
+                  <p style={{ margin: 0 }}>
+                    <strong>Usuario paciente:</strong> {result.pacienteAutoCreacionError}
+                  </p>
+                )}
+              </div>
+            )}
           {result.valid && result.episodeId && (
             <div className="result-panel">
               <div>

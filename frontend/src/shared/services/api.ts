@@ -195,7 +195,7 @@ export async function registrarEpisodio(
     });
     const data = await parseJson<{
       message?: string;
-      details?: { field: string; issue: string }[];
+      details?: { field: string; issue: string }[] | string;
       data?: EpisodioPayload;
       episodeId?: string;
       documentHash?: string;
@@ -203,6 +203,8 @@ export async function registrarEpisodio(
       event?: EventoUrgencias;
       onChainMetadata?: OnChainMetadata;
       traceEvent?: TraceabilityEvent;
+      fhirPersistWarning?: string;
+      pacienteAutoCreacionError?: string;
     }>(res);
     if (res.ok) {
       return {
@@ -214,12 +216,18 @@ export async function registrarEpisodio(
         version: data.version,
         event: data.event,
         onChainMetadata: data.onChainMetadata,
-        traceEvent: data.traceEvent
+        traceEvent: data.traceEvent,
+        fhirPersistWarning:
+          typeof data.fhirPersistWarning === "string" ? data.fhirPersistWarning : undefined,
+        pacienteAutoCreacionError:
+          typeof data.pacienteAutoCreacionError === "string"
+            ? data.pacienteAutoCreacionError
+            : undefined
       };
     }
     return {
       valid: false,
-      message: data.message ?? "Error al registrar",
+      message: buildApiMessage(data, "Error al registrar"),
       details: normalizeValidationDetails(data.details)
     };
   } catch {
@@ -243,7 +251,7 @@ export async function actualizarEpisodio(
     });
     const data = await parseJson<{
       message?: string;
-      details?: { field: string; issue: string }[];
+      details?: { field: string; issue: string }[] | string;
       data?: EpisodioPayload;
       episodeId?: string;
       documentHash?: string;
@@ -251,6 +259,7 @@ export async function actualizarEpisodio(
       event?: EventoUrgencias;
       onChainMetadata?: OnChainMetadata;
       traceEvent?: TraceabilityEvent;
+      fhirPersistWarning?: string;
     }>(res);
     if (res.ok) {
       return {
@@ -262,12 +271,14 @@ export async function actualizarEpisodio(
         version: data.version,
         event: data.event,
         onChainMetadata: data.onChainMetadata,
-        traceEvent: data.traceEvent
+        traceEvent: data.traceEvent,
+        fhirPersistWarning:
+          typeof data.fhirPersistWarning === "string" ? data.fhirPersistWarning : undefined
       };
     }
     return {
       valid: false,
-      message: data.message ?? "Error al actualizar",
+      message: buildApiMessage(data, "Error al actualizar"),
       details: normalizeValidationDetails(data.details)
     };
   } catch {
@@ -733,6 +744,61 @@ export async function actualizarUsuarioIps(
   };
 }
 
+export interface ResultadoSyncPacientes {
+  episodiosRevisados: number;
+  usuariosCreados: number;
+  yaTenianUsuario: number;
+  sinDocumentoPaciente: number;
+  detallesCreados: Array<{ episodeId: string; usuarioId: string; documento: string }>;
+  errores: Array<{ episodeId: string; code: string; message: string }>;
+}
+
+/**
+ * Crea usuarios paciente que falten, leyendo episodios ya guardados (no hace falta recrear episodios).
+ */
+export async function sincronizarPacientesDesdeEpisodios(
+  sesion?: SesionUsuario | null,
+  body?: { ipsId?: string }
+): Promise<{ ok: boolean; message: string; data?: ResultadoSyncPacientes }> {
+  try {
+    const res = await fetchApi(`${accessBase}/patients/sync-from-episodes`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...buildActorHeaders(sesion)
+      },
+      body: JSON.stringify(body ?? {})
+    });
+    const data = await parseJson<{
+      message?: string;
+      code?: string;
+      details?: unknown;
+      data?: ResultadoSyncPacientes;
+    }>(res);
+
+    if (res.status === 404) {
+      return {
+        ok: false,
+        message:
+          "El backend no reconoce la ruta de sincronización (404). Si usa `npm run start`, ejecute antes `npm run build` en la carpeta `backend/` y reinicie el servidor; con `npm run dev` en backend basta con reiniciar tras actualizar el código."
+      };
+    }
+
+    const texto = buildApiMessage(
+      data,
+      res.ok ? "Sincronización completada." : `Error al sincronizar (HTTP ${res.status}).`
+    );
+
+    return {
+      ok: res.ok,
+      message: texto,
+      data: data.data
+    };
+  } catch {
+    return { ok: false, message: CONNECTION_ERROR };
+  }
+}
+
 export async function listarPermisosDocumento(
   episodeId: string,
   sesion?: SesionUsuario | null
@@ -1119,5 +1185,154 @@ export async function listarUsuariosPorIpsId(
     return data.users ?? [];
   } catch {
     return [];
+  }
+}
+
+// ─── RF10: Auditoría de desempeño ─────────────────────────────────────────────
+
+const auditBase = `${API_BASE_URL}/audit`;
+
+export type ModoPrueba = "EOA" | "ERC20" | "ERC721";
+export type SemaforoColor = "verde" | "amarillo" | "rojo";
+
+export interface BlockSampleFrontend {
+  block_number: number;
+  timestamp: string;
+  tx_count: number;
+  gas_used: number;
+  gas_limit: number;
+  block_time_seconds: number;
+  tps: number;
+}
+
+export interface AuditMetricResumen {
+  id: string;
+  timestamp: string;
+  modo: ModoPrueba;
+  rpcUrl: string;
+  chainId: number;
+  contractAddress?: string;
+  tpsPico: number;
+  tpsPromedio: number;
+  totalTransacciones: number;
+  transaccionesExitosas: number;
+  transaccionesFallidas: number;
+  tasaExito: number;
+  latenciaPromedioMs: number;
+  latenciaMinMs: number;
+  latenciaMaxMs: number;
+  latenciaP95Ms: number;
+  blockTimePromedioSeg: number;
+  bloquesObservados: number;
+  gasUsadoPromedio: number;
+  gasUsadoMax: number;
+  gasLimit: number;
+  gasUtilizacionPct: number;
+  transaccionesRevertidas: number;
+  transaccionesOutOfGas: number;
+  tiempoRespuestaNodoMs: number;
+  deployExitoso: boolean;
+  llamadasERCExitosas: number;
+  llamadasERCTotal: number;
+  semaforoEficiencia: SemaforoColor;
+  semaforoLatencia: SemaforoColor;
+  semaforoSeguridad: SemaforoColor;
+  semaforoInteroperabilidad: SemaforoColor;
+  fuente: "pandoras-box" | "simulacion";
+}
+
+export interface AuditMetricDetalle extends AuditMetricResumen {
+  blockSamples: BlockSampleFrontend[];
+  rawOutput: Record<string, unknown>;
+}
+
+export interface AuditRunConfigFrontend {
+  rpcUrl: string;
+  modo: ModoPrueba;
+  totalTransacciones: number;
+  numSubcuentas: number;
+  contractAddress?: string;
+  /** Mnemonic BIP-39 (12 palabras) para pandoras-box. Sin él se usa simulación. */
+  mnemonic?: string;
+  /** Tamaño de lote JSON-RPC (default 20) */
+  batchSize?: number;
+  umbralTpsVerde?: number;
+  umbralTpsAmarillo?: number;
+  umbralLatenciaVerdeMs?: number;
+  umbralLatenciaAmarilloMs?: number;
+  umbralTasaExitoVerde?: number;
+}
+
+export async function listarAuditMetricas(
+  sesion?: SesionUsuario | null
+): Promise<{ ok: boolean; message: string; data?: AuditMetricResumen[] }> {
+  try {
+    const res = await fetchApi(`${auditBase}/metrics`, {
+      headers: buildActorHeaders(sesion)
+    });
+    const data = await parseJson<{ code?: string; message?: string; data?: AuditMetricResumen[] }>(res);
+    if (!res.ok) {
+      return { ok: false, message: buildApiMessage(data, "Error al listar métricas de auditoría.") };
+    }
+    return { ok: true, message: data.message ?? "Métricas obtenidas.", data: data.data ?? [] };
+  } catch {
+    return { ok: false, message: CONNECTION_ERROR };
+  }
+}
+
+export async function obtenerAuditMetrica(
+  id: string,
+  sesion?: SesionUsuario | null
+): Promise<{ ok: boolean; message: string; data?: AuditMetricDetalle }> {
+  try {
+    const res = await fetchApi(`${auditBase}/metrics/${encodeURIComponent(id)}`, {
+      headers: buildActorHeaders(sesion)
+    });
+    const data = await parseJson<{ code?: string; message?: string; data?: AuditMetricDetalle }>(res);
+    if (!res.ok || !data.data) {
+      return { ok: false, message: buildApiMessage(data, "No se encontró la evaluación.") };
+    }
+    return { ok: true, message: data.message ?? "Evaluación obtenida.", data: data.data };
+  } catch {
+    return { ok: false, message: CONNECTION_ERROR };
+  }
+}
+
+export async function ejecutarAuditRun(
+  config: AuditRunConfigFrontend,
+  sesion?: SesionUsuario | null
+): Promise<{ ok: boolean; message: string; data?: AuditMetricDetalle; fuente?: string; advertencia?: string }> {
+  try {
+    const res = await fetchApi(`${auditBase}/run`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...buildActorHeaders(sesion)
+      },
+      body: JSON.stringify(config)
+    });
+    const data = await parseJson<{
+      code?: string;
+      message?: string;
+      details?: unknown;
+      data?: AuditMetricDetalle;
+      fuente?: string;
+      advertencia?: string | null;
+    }>(res);
+    if (!res.ok || !data.data) {
+      return {
+        ok: false,
+        message: buildApiMessage(data, "Error al ejecutar la prueba de estrés.")
+      };
+    }
+    return {
+      ok: true,
+      message: data.message ?? "Evaluación completada.",
+      data: data.data,
+      fuente: data.fuente,
+      advertencia: data.advertencia ?? undefined
+    };
+  } catch {
+    return { ok: false, message: CONNECTION_ERROR };
   }
 }

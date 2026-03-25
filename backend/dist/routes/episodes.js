@@ -308,7 +308,7 @@ exports.episodesRouter.post("/", async (req, res) => {
         });
     }
     try {
-        await (0, documentoClinicoService_1.almacenarDocumentoClinico)(episodeId, documento);
+        const { fhirPersistWarning } = await (0, documentoClinicoService_1.almacenarDocumentoClinico)(episodeId, documento);
         const onChain = (0, documentoClinicoService_1.generarRegistroOnChainMetadataDesdeDocumento)(episodeId, documento);
         const lifecycle = (0, episodioLifecycleService_1.crearRegistroLifecycleEpisodio)(episodeId, documento, actorSeguro, onChain);
         (0, permisosEpisodioService_1.registrarPropietarioEpisodio)(episodeId, actorSeguro.ipsId ?? "");
@@ -323,22 +323,28 @@ exports.episodesRouter.post("/", async (req, res) => {
                 sourceIpsId: lifecycle.eventoUrgencias.ipsOrigenId
             }
         });
-        const patientId = validation.data?.patient?.identifier?.[0]?.value?.trim();
+        const documentoPayload = validation.data;
+        const patientId = (0, accesoUsuariosService_1.extraerDocumentoIdentidadDesdeDocumentoClinico)(documentoPayload);
         let pacienteAutoCreado = false;
-        if (patientId && !(0, accesoUsuariosService_1.buscarUsuarioPorDocumento)(patientId)) {
-            const nombre = [
-                validation.data?.patient?.name?.[0]?.given?.join(" "),
-                validation.data?.patient?.name?.[0]?.family
-            ].filter(Boolean).join(" ") || `Paciente ${patientId}`;
-            const createResult = (0, accesoUsuariosService_1.crearUsuarioIps)({
-                usuarioId: `paciente-${patientId}`,
-                nombre,
-                password: `Paciente-${patientId}!`,
-                rol: "paciente",
-                ipsId: actorSeguro.ipsId ?? "",
-                documentoIdentidad: patientId
+        let pacienteUsuarioId;
+        let pacienteAutoCreacionError;
+        if (patientId) {
+            const r = (0, accesoUsuariosService_1.crearUsuarioPacienteSiNoExiste)({
+                documentoIdentidad: patientId,
+                nombre: (0, accesoUsuariosService_1.nombrePacienteDesdeDocumentoClinico)(documentoPayload),
+                ipsId: actorSeguro.ipsId ?? ""
             });
-            pacienteAutoCreado = createResult.ok;
+            if (r.ok && r.creado) {
+                pacienteAutoCreado = true;
+                pacienteUsuarioId = r.usuarioId;
+            }
+            else if (!r.ok) {
+                pacienteAutoCreacionError = `${r.code}: ${r.message}`;
+            }
+        }
+        else {
+            pacienteAutoCreacionError =
+                "No se encontró patient.identifier con valor en el payload del episodio.";
         }
         return res.status(201).json({
             code: "EPISODE_REGISTERED",
@@ -350,17 +356,20 @@ exports.episodesRouter.post("/", async (req, res) => {
             onChainMetadata: onChain,
             traceEvent,
             data: validation.data,
-            pacienteAutoCreado
+            pacienteAutoCreado,
+            pacienteUsuarioId,
+            pacienteAutoCreacionError,
+            ...(fhirPersistWarning ? { fhirPersistWarning } : {})
         });
     }
     catch (err) {
         if (responderErrorBlockchain(res, err)) {
             return;
         }
-        const message = err instanceof Error ? err.message : "Error al persistir en HAPI FHIR";
+        const message = err instanceof Error ? err.message : "Error al persistir el episodio";
         return res.status(502).json({
-            code: "FHIR_STORAGE_ERROR",
-            message: "No se pudo almacenar el documento en el servidor FHIR.",
+            code: "EPISODE_PERSIST_ERROR",
+            message: "No se pudo completar el registro del episodio.",
             details: message
         });
     }
@@ -410,7 +419,7 @@ exports.episodesRouter.put("/:id", async (req, res) => {
     }
     const previewOnChain = (0, documentoClinicoService_1.generarRegistroOnChainMetadataDesdeDocumento)(episodeId, documento);
     try {
-        await (0, documentoClinicoService_1.almacenarDocumentoClinico)(episodeId, documento);
+        const { fhirPersistWarning } = await (0, documentoClinicoService_1.almacenarDocumentoClinico)(episodeId, documento);
         const lifecycleUpdated = (0, episodioLifecycleService_1.actualizarRegistroLifecycleEpisodio)(episodeId, documento, actorSeguro, previewOnChain);
         if (lifecycleUpdated.error) {
             const status = lifecycleUpdated.errorCode === "EPISODE_NOT_FOUND"
@@ -444,17 +453,18 @@ exports.episodesRouter.put("/:id", async (req, res) => {
             event: lifecycle.eventoUrgencias,
             onChainMetadata: previewOnChain,
             traceEvent,
-            data: validation.data
+            data: validation.data,
+            ...(fhirPersistWarning ? { fhirPersistWarning } : {})
         });
     }
     catch (err) {
         if (responderErrorBlockchain(res, err)) {
             return;
         }
-        const message = err instanceof Error ? err.message : "Error al actualizar en HAPI FHIR";
+        const message = err instanceof Error ? err.message : "Error al actualizar el episodio";
         return res.status(502).json({
-            code: "FHIR_STORAGE_ERROR",
-            message: "No se pudo actualizar el documento en el servidor FHIR.",
+            code: "EPISODE_UPDATE_PERSIST_ERROR",
+            message: "No se pudo completar la actualización del episodio.",
             details: message
         });
     }
@@ -559,10 +569,10 @@ exports.episodesRouter.post("/:id/permissions/grant", async (req, res) => {
             message: userCheck.message
         });
     }
-    if (actor.rol !== "admin_ips") {
+    if (actor.rol !== "admin_ips" && actor.rol !== "super_admin") {
         return res.status(403).json({
             code: "FORBIDDEN_ROLE",
-            message: "Solo admin_ips puede otorgar permisos sobre documentos."
+            message: "Solo el administrador IPS de la institución propietaria o el super administrador pueden otorgar permisos."
         });
     }
     const targetIps = String(req.body?.targetIpsId ?? "").trim();
@@ -577,7 +587,21 @@ exports.episodesRouter.post("/:id/permissions/grant", async (req, res) => {
         return res.status(blockchainError.status).json(blockchainError.body);
     }
     await asegurarPropietarioEpisodio(req.params.id);
-    const result = (0, permisosEpisodioService_1.otorgarPermisoEpisodio)(req.params.id, actor.ipsId ?? "", targetIps);
+    const ownerIps = (0, permisosEpisodioService_1.obtenerPropietarioEpisodio)(req.params.id);
+    if (!ownerIps) {
+        return res.status(404).json({
+            code: "EPISODE_OWNER_NOT_FOUND",
+            message: "No hay propietario IPS registrado para este episodio. Verifique el ID o consulte el episodio primero."
+        });
+    }
+    const ipsActorParaPermiso = actor.rol === "super_admin" ? ownerIps : (actor.ipsId ?? "");
+    if (actor.rol === "admin_ips" && actor.ipsId !== ownerIps) {
+        return res.status(403).json({
+            code: "FORBIDDEN_IPS",
+            message: "Solo el administrador de la IPS propietaria del episodio puede otorgar permisos a otras IPS."
+        });
+    }
+    const result = (0, permisosEpisodioService_1.otorgarPermisoEpisodio)(req.params.id, ipsActorParaPermiso, targetIps);
     if (!result.ok) {
         const status = result.code === "PERMISSION_ALREADY_ACTIVE"
             ? 409
@@ -632,10 +656,10 @@ exports.episodesRouter.post("/:id/permissions/revoke", async (req, res) => {
             message: userCheck.message
         });
     }
-    if (actor.rol !== "admin_ips") {
+    if (actor.rol !== "admin_ips" && actor.rol !== "super_admin") {
         return res.status(403).json({
             code: "FORBIDDEN_ROLE",
-            message: "Solo admin_ips puede revocar permisos sobre documentos."
+            message: "Solo el administrador IPS de la institución propietaria o el super administrador pueden revocar permisos."
         });
     }
     const targetIps = String(req.body?.targetIpsId ?? "").trim();
@@ -650,7 +674,21 @@ exports.episodesRouter.post("/:id/permissions/revoke", async (req, res) => {
         return res.status(blockchainError.status).json(blockchainError.body);
     }
     await asegurarPropietarioEpisodio(req.params.id);
-    const result = (0, permisosEpisodioService_1.revocarPermisoEpisodio)(req.params.id, actor.ipsId ?? "", targetIps);
+    const ownerIpsRev = (0, permisosEpisodioService_1.obtenerPropietarioEpisodio)(req.params.id);
+    if (!ownerIpsRev) {
+        return res.status(404).json({
+            code: "EPISODE_OWNER_NOT_FOUND",
+            message: "No hay propietario IPS registrado para este episodio. Verifique el ID o consulte el episodio primero."
+        });
+    }
+    const ipsActorParaRevoke = actor.rol === "super_admin" ? ownerIpsRev : (actor.ipsId ?? "");
+    if (actor.rol === "admin_ips" && actor.ipsId !== ownerIpsRev) {
+        return res.status(403).json({
+            code: "FORBIDDEN_IPS",
+            message: "Solo el administrador de la IPS propietaria del episodio puede revocar permisos."
+        });
+    }
+    const result = (0, permisosEpisodioService_1.revocarPermisoEpisodio)(req.params.id, ipsActorParaRevoke, targetIps);
     if (!result.ok) {
         const status = result.code === "PERMISSION_NOT_ACTIVE"
             ? 409

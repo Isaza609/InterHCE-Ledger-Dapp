@@ -13,6 +13,7 @@ import { TrazabilidadEpisodioPage } from "../pages/TrazabilidadEpisodioPage";
 import { InfraestructuraPage } from "../pages/InfraestructuraPage";
 import { PortalClinicoPage } from "../pages/PortalClinicoPage";
 import { EvaluacionPrototipoPage } from "../pages/EvaluacionPrototipoPage";
+import { AuditoriaDashboardPage } from "../pages/AuditoriaDashboardPage";
 import { GestionIpsPage } from "../pages/GestionIpsPage";
 import { GestionUsuariosPage } from "../pages/GestionUsuariosPage";
 
@@ -113,6 +114,14 @@ export function AppRouter() {
           element={
             <RequireCapability capability="evaluacion.consultar">
               <EvaluacionPrototipoPage />
+            </RequireCapability>
+          }
+        />
+        <Route
+          path="/auditoria/metricas"
+          element={
+            <RequireCapability capability="evaluacion.consultar">
+              <AuditoriaDashboardPage />
             </RequireCapability>
           }
         />

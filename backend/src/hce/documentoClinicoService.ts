@@ -98,12 +98,13 @@ const almacenOffChain = new Map<string, DocumentoAlmacenado>();
 
 /**
  * Almacena el documento clínico asociado a un episodio y devuelve su hash.
- * Si FHIR_BASE_URL está definido, persiste en HAPI FHIR; si no, en memoria.
+ * Si FHIR_BASE_URL está definido, intenta persistir en HAPI FHIR; si falla,
+ * el documento sigue disponible en el almacén en memoria y se devuelve `fhirPersistWarning`.
  */
 export async function almacenarDocumentoClinico(
   episodeId: string,
   documento: DocumentoClinicoOffChain
-): Promise<{ hash: string }> {
+): Promise<{ hash: string; fhirPersistWarning?: string }> {
   const hash = calcularHashDocumento(documento);
   almacenOffChain.set(episodeId, {
     episodeId,
@@ -112,8 +113,16 @@ export async function almacenarDocumentoClinico(
     createdAt: new Date().toISOString()
   });
   if (isFhirConfigured()) {
-    await persistEpisodeToFhir(episodeId, documento);
-    return { hash };
+    try {
+      await persistEpisodeToFhir(episodeId, documento);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return {
+        hash,
+        fhirPersistWarning:
+          `No se pudo replicar en el servidor FHIR (el episodio quedó guardado en el backend). Detalle: ${msg}`
+      };
+    }
   }
   return { hash };
 }

@@ -8,6 +8,7 @@ import { infraRouter } from "./routes/infra";
 import { accessRouter } from "./routes/access";
 import { authRouter } from "./routes/auth";
 import { evaluationRouter } from "./routes/evaluation";
+import { auditRouter } from "./routes/audit";
 import { ipsRouter } from "./routes/ips";
 import { openApiSpec } from "./docs/openapi";
 
@@ -21,6 +22,7 @@ app.use("/infra", infraRouter);
 app.use("/access", accessRouter);
 app.use("/auth", authRouter);
 app.use("/evaluation", evaluationRouter);
+app.use("/audit", auditRouter);
 app.use("/ips", ipsRouter);
 
 app.use("/docs", swaggerUi.serve, swaggerUi.setup(openApiSpec));

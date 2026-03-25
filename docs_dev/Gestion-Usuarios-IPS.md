@@ -144,6 +144,17 @@ Cuando un profesional de salud crea un episodio clínico (`POST /episodes`), el 
 
 El paciente puede entonces iniciar sesión usando su **documento de identidad** como identificador y la contraseña generada.
 
+### 6.2 Episodios creados antes de esta lógica (retrocompatibilidad)
+
+**No hace falta borrar ni volver a crear los episodios.** El paciente ya está en el documento clínico; solo faltaba el usuario de acceso.
+
+- **API:** `POST /access/patients/sync-from-episodes` (mismo actor que gestiona usuarios: `admin_ips` o `super_admin`).
+  - `admin_ips`: solo episodios cuya IPS origen coincide con la suya.
+  - `super_admin`: todos los episodios visibles en el almacén; opcionalmente enviar `{ "ipsId": "IPS-001" }` en el body para limitar a una IPS.
+- **Frontend:** en **Gestión de usuarios**, botón **«Sincronizar pacientes (episodios)»**. Si es super admin y eligió un filtro IPS en el desplegable, la sync queda acotada a esa IPS; si el filtro es «Todas», recorre todo el sistema.
+
+**Si aparece error genérico o 404 al sincronizar:** el proceso del backend debe incluir la ruta `POST /access/patients/sync-from-episodes`. Con **`npm run start`** hay que ejecutar **`npm run build`** en `backend/` después de actualizar el código y volver a arrancar. Con **`npm run dev`** en `backend/`, reiniciar el proceso si hacía falta.
+
 ### 6.1 Flujo de cambio de contraseña obligatorio
 
 Cuando un usuario con `requiereCambioPassword: true` inicia sesión:

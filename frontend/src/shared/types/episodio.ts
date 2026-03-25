@@ -403,4 +403,8 @@ export interface ValidationResult {
   version?: number;
   onChainMetadata?: OnChainMetadata;
   traceEvent?: TraceabilityEvent;
+  /** Aviso: episodio guardado pero falló la réplica en FHIR */
+  fhirPersistWarning?: string;
+  /** Aviso: no se pudo crear/vincular usuario paciente automáticamente */
+  pacienteAutoCreacionError?: string;
 }
