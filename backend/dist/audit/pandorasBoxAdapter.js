@@ -65,9 +65,6 @@ function parsearSalidaReal(raw, config, chainId) {
     // Las no confirmadas son las enviadas menos las que llegaron a bloque
     const transaccionesExitosas = txEnBloques;
     const transaccionesFallidas = Math.max(0, config.totalTransacciones - txEnBloques);
-    const tasaExito = config.totalTransacciones > 0
-        ? (transaccionesExitosas / config.totalTransacciones) * 100
-        : 100;
     // TPS pico: bloque con mayor tx/blocktime
     let tpsPico = averageTPS;
     for (let i = 1; i < sorted.length; i++) {
@@ -227,17 +224,47 @@ async function tryRunPandorasBox(config, chainId) {
             args.push("-b", String(config.batchSize));
         }
         // Timeout generoso: 10 min para pruebas grandes en Sepolia
-        await execFileAsync(binario, args, {
+        const { stdout, stderr } = await execFileAsync(binario, args, {
             timeout: 600000,
             // Heredar el PATH del proceso para que nvm funcione correctamente
             env: { ...process.env }
         });
-        if (!(0, fs_1.existsSync)(outFile)) {
-            // pandoras-box terminó sin error pero no escribió el archivo de salida
-            // (puede pasar si 0 transacciones fueron procesadas)
-            return { error: "pandoras-box ejecutó pero no generó archivo de salida. Verifica que el mnemonic tenga fondos suficientes en la red objetivo." };
+        // Buscar el archivo de salida. En modo EOA pandoras-box a veces ignora el flag -o
+        // y escribe en el directorio de trabajo actual o dentro de tmpDir con otro nombre.
+        let archivoSalida = null;
+        if ((0, fs_1.existsSync)(outFile)) {
+            archivoSalida = outFile;
         }
-        const rawText = (0, fs_1.readFileSync)(outFile, "utf8");
+        else {
+            // Búsqueda de rutas alternativas (diferencia de comportamiento por modo)
+            const candidatos = [
+                path_1.default.join(process.cwd(), "result.json"),
+                path_1.default.join(process.cwd(), "pandoras-result.json"),
+                ...(0, fs_1.readdirSync)(tmpDir)
+                    .filter((f) => f.endsWith(".json"))
+                    .map((f) => path_1.default.join(tmpDir, f))
+            ];
+            for (const candidato of candidatos) {
+                if ((0, fs_1.existsSync)(candidato)) {
+                    archivoSalida = candidato;
+                    break;
+                }
+            }
+        }
+        if (!archivoSalida) {
+            // pandoras-box terminó sin error pero no generó ningún archivo JSON.
+            // Incluir stdout/stderr para facilitar el diagnóstico (no el mensaje genérico).
+            const salidaRaw = [
+                stderr?.trim() ? `stderr: ${stderr.trim()}` : "",
+                stdout?.trim() ? `stdout: ${stdout.trim()}` : ""
+            ].filter(Boolean).join(" | ");
+            return {
+                error: salidaRaw
+                    ? `pandoras-box ejecutó sin generar archivo de salida. Detalle: ${salidaRaw}`
+                    : `pandoras-box ejecutó pero no generó archivo de salida en ${outFile} ni en el directorio de trabajo. Verifica que el mnemonic tenga fondos suficientes.`
+            };
+        }
+        const rawText = (0, fs_1.readFileSync)(archivoSalida, "utf8");
         let raw;
         try {
             raw = JSON.parse(rawText);
@@ -266,11 +293,14 @@ async function tryRunPandorasBox(config, chainId) {
         return { error: `pandoras-box falló: ${detalle}` };
     }
     finally {
-        try {
-            if ((0, fs_1.existsSync)(outFile))
-                (0, fs_1.unlinkSync)(outFile);
+        // Limpiar el archivo temporal (puede estar en outFile u otra ruta alternativa encontrada)
+        for (const f of [outFile, path_1.default.join(process.cwd(), "result.json"), path_1.default.join(process.cwd(), "pandoras-result.json")]) {
+            try {
+                if ((0, fs_1.existsSync)(f))
+                    (0, fs_1.unlinkSync)(f);
+            }
+            catch { /* noop */ }
         }
-        catch { /* noop */ }
     }
 }
 // ─── Utilidades JSON-RPC ──────────────────────────────────────────────────────

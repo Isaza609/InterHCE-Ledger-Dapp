@@ -671,7 +671,7 @@ console.log('Dirección principal:', w.address);
 | Archivo | Responsabilidad |
 |---|---|
 | `backend/src/audit/auditMetricModel.ts` | Tipos TypeScript: `PandorasBoxOutput`, `AuditMetricRecord` (incl. `sesionId`, `interoperabilityDetails`), `AuditRunConfig`, `UMBRALES_DEFAULT` |
-| `backend/src/audit/pandorasBoxAdapter.ts` | Ejecución real de pandoras-box + fallback simulación; función `ejecutarPrueba(config)` |
+| `backend/src/audit/pandorasBoxAdapter.ts` | Ejecución real de pandoras-box + fallback simulación; búsqueda de archivo de salida en rutas alternativas (bug EOA); captura de stdout/stderr en errores |
 | `backend/src/audit/auditMetricsService.ts` | Capa de servicio: `listarMetricas(opciones?)`, `obtenerMetricaPorId(id)`, `ejecutarEvaluacion(config)`, `buildInteroperabilityDetails()`, cálculo de semáforo de interoperabilidad con 5 parámetros |
 | `backend/src/audit/evaluacionSesionService.ts` | Gestión de sesiones de evaluación: `iniciarNuevaSesion()`, `obtenerSesionActual()`, `listarSesiones()`, `obtenerSesionPorId()` |
 | `backend/src/routes/audit.ts` | Router Express: 3 endpoints de métricas + 3 de sesión (reset/current/list) |
@@ -734,7 +734,122 @@ El informe no requiere conexión al backend; toda la información proviene del o
 
 ---
 
-## 17. Estado de cumplimiento del RF10
+## 17. Sección B — Tiempos medidos (interoperabilidad clínica)
+
+La Sección B del dashboard de auditoría (`GET /evaluation/dashboard`) mide tres operaciones técnicas clave sobre los episodios existentes en el sistema, ejecutándolas 3–5 veces por episodio para calcular estadísticas de consistencia.
+
+### Operaciones medidas
+
+| Operación | Qué mide | Implementación |
+|---|---|---|
+| **Consulta de metadatos on-chain** | Tiempo de `obtenerRegistroOnChainMetadata(episodeId)` — lee el store de trazabilidad o llama al contrato (modo real) | `prototipoEvaluationService.ts` |
+| **Acceso a documento off-chain** | Tiempo de `recuperarDocumentoClinico(episodeId)` — lectura desde HAPI FHIR o almacén en memoria | `documentoClinicoService.ts` |
+| **Verificación de integridad** | Tiempo de calcular `SHA-256(documento_actual)` y comparar contra el hash registrado en la última traza blockchain | `prototipoEvaluationService.ts` |
+
+### Cómo se calcula la consistencia
+
+```
+consistencia = clasificar(desviación_estándar(muestras_ms))
+```
+
+| Nivel | Condición | Significado |
+|---|---|---|
+| 🟢 Alta | `stdDev < 20 ms` | Respuesta estable; variación imperceptible para el usuario |
+| 🟡 Media | `stdDev < 40 ms` | Variación tolerable; normal en operaciones de red local |
+| 🔴 Baja | `stdDev ≥ 40 ms` | Alta variabilidad; revisar conectividad FHIR o nodo RPC |
+
+> **Nota de diseño:** los umbrales son absolutos (ms), no coeficientes de variación. Un CoV haría que operaciones de 1–5 ms aparecieran siempre como "baja" (1 ms de variación sobre 2 ms de media = 50 % CoV) aunque sean perfectamente aceptables. Con umbrales absolutos, lecturas de memoria (<1 ms de stdDev) son automáticamente "alta".
+
+### Por qué algunos episodios muestran integridad roja
+
+La verificación de integridad compara:
+```
+hash_off_chain = SHA-256(documento_actual_recuperado)
+hash_on_chain  = documentHash del último evento EPISODE_CREATED o EPISODE_UPDATED en trazabilidad
+```
+
+La integridad aparece en rojo (`revision_requerida` o `sin_evidencia`) cuando:
+
+| Causa | Por qué ocurre | Solución |
+|---|---|---|
+| **FHIR caído al consultar** | `recuperarDocumentoClinico` no puede recuperar el documento → `hash_off_chain = undefined` | `docker compose up -d`, esperar 45 s, recargar dashboard |
+| **FHIR caído durante el seed** | El seed guardó el hash updated en trazabilidad pero FHIR no persistió el documento actualizado → mismatch | Limpiar FHIR, volver a ejecutar seed con FHIR activo |
+| **Sin datos de seed** | No hay episodios → `sin_evidencia` para todos | Ejecutar `npm run seed:eval-demo` |
+| **Backend reiniciado sin FHIR** | Documentos solo en memoria (proceso seed) → perdidos al reiniciar | Configurar `FHIR_BASE_URL` para persistencia real |
+
+### Caché de documentos en memoria
+
+A partir del sprint 5, `recuperarDocumentoClinico` **guarda en caché** los documentos obtenidos de FHIR:
+
+```
+1ª llamada → almacenOffChain (vacío) → FHIR HTTP (~30-80 ms) → guarda en caché
+2ª-5ª llamada → almacenOffChain (hit) → <1 ms
+```
+
+Esto garantiza que las 3–5 corridas de medición por episodio usen el mismo documento y tengan latencia estable → `stdDev` baja → consistencia "alta".
+
+### Health-check de FHIR en el dashboard
+
+El endpoint `GET /evaluation/dashboard` incluye ahora en `overview.fhir`:
+
+```jsonc
+"fhir": {
+  "configurado": true,        // FHIR_BASE_URL está definida en .env
+  "disponible": true,         // respondió /metadata en ≤ 5 s
+  "almacenamiento": "hapi-fhir"  // o "memoria" si no está configurado
+}
+```
+
+Cuando `configurado: true` pero `disponible: false`, el campo `limitations` del dashboard incluye una advertencia explicativa y el procedimiento de recuperación.
+
+---
+
+## 18. pandoras-box — corrección del bug en modo EOA
+
+### Síntoma
+
+Con mnemonic válido y fondos, en modo **EOA** las transacciones se ejecutan y descuentan fondos reales en Sepolia, pero el sistema reporta `fuente: "simulacion"` y no guarda los resultados reales. El error mostrado era:
+
+> "pandoras-box ejecutó pero no generó archivo de salida. Verifica que el mnemonic tenga fondos suficientes en la red objetivo."
+
+### Causa raíz
+
+El adaptador pasa a pandoras-box `-o /tmp/pandoras-xxx/result-yyyy.json` (ruta absoluta en tmpdir). En modos ERC20/ERC721 pandoras-box respeta el flag `-o` y escribe en esa ruta. En modo **EOA**, pandoras-box puede ignorar `-o` y escribir `result.json` en el directorio de trabajo actual (`process.cwd()`). El adaptador solo verificaba la ruta de tmpdir → `existsSync(outFile) === false` → caía a simulación.
+
+El mensaje de error era genérico (mencionaba "fondos") y no incluía stdout/stderr real, dificultando el diagnóstico.
+
+### Corrección aplicada (`pandorasBoxAdapter.ts`)
+
+1. Se captura `{stdout, stderr}` del proceso exitoso (antes se ignoraban).
+2. Si el archivo no está en `outFile`, se busca en rutas alternativas:
+   - Cualquier `.json` en `tmpDir`
+   - `process.cwd()/result.json`
+   - `process.cwd()/pandoras-result.json`
+3. Si se encuentra en ruta alternativa → se parsea y se retorna como `fuente: "pandoras-box"`.
+4. Si no se encuentra → el error incluye `stdout`/`stderr` real del proceso.
+
+### Flujo corregido
+
+```
+execFileAsync(pandoras-box, [..., "--mode", "EOA", "-o", outFile])
+    │
+    ▼ exit 0 (éxito)
+    │
+    ├── existsSync(outFile) → true   → parsear, retornar fuente: pandoras-box ✅
+    │
+    ├── existsSync(outFile) → false
+    │     │
+    │     ├── buscar en tmpDir/*.json      → encontrado → parsear, retornar pandoras-box ✅
+    │     ├── buscar en cwd/result.json    → encontrado → parsear, retornar pandoras-box ✅
+    │     └── no encontrado en ningún lugar
+    │           └── retornar error con stdout/stderr real del proceso
+    │
+    └── exit ≠ 0 (error) → capturar stderr + stdout → retornar error → caer a simulación
+```
+
+---
+
+## 19. Estado de cumplimiento del RF10
 
 | Entregable | Estado |
 |---|---|
@@ -751,5 +866,9 @@ El informe no requiere conexión al backend; toda la información proviene del o
 | Script de datos demo: género alternado, 7 EPS colombianas, signos vitales por CIE-10 | ✅ Sprint 5 |
 | Vista del auditor: tabla + semáforos + detalle expandible + gráficas SVG | ✅ Implementado |
 | Sección B — interoperabilidad clínica (HU0-HU5) embebida en misma página | ✅ Implementado |
+| Sección B — umbrales absolutos de consistencia (stdDev < 20/40 ms) | ✅ Sprint 5 |
+| Sección B — caché de documentos FHIR en memoria (evita CoV alto en mediciones) | ✅ Sprint 5 |
+| Sección B — health-check FHIR en `overview.fhir` del dashboard | ✅ Sprint 5 |
+| Bug pandoras-box modo EOA: búsqueda de archivo en rutas alternativas + stderr real | ✅ Sprint 5 |
 | Diagramas de arquitectura (`docs/arquitectura/`) | ✅ Sprint 5 |
 | Build sin errores (`npm run build` en backend y frontend) | ✅ Confirmado |

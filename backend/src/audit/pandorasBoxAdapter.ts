@@ -18,7 +18,7 @@
 import { execFile } from "child_process";
 import { promisify } from "util";
 import { randomBytes } from "crypto";
-import { mkdtempSync, readFileSync, unlinkSync, existsSync } from "fs";
+import { mkdtempSync, readFileSync, readdirSync, unlinkSync, existsSync } from "fs";
 import { tmpdir } from "os";
 import path from "path";
 import https from "https";
@@ -26,7 +26,6 @@ import http from "http";
 import type {
   AuditRunConfig,
   BlockSample,
-  ModoPrueba,
   PandorasBoxOutput
 } from "./auditMetricModel";
 
@@ -93,10 +92,6 @@ function parsearSalidaReal(
   // Las no confirmadas son las enviadas menos las que llegaron a bloque
   const transaccionesExitosas = txEnBloques;
   const transaccionesFallidas = Math.max(0, config.totalTransacciones - txEnBloques);
-  const tasaExito =
-    config.totalTransacciones > 0
-      ? (transaccionesExitosas / config.totalTransacciones) * 100
-      : 100;
 
   // TPS pico: bloque con mayor tx/blocktime
   let tpsPico = averageTPS;
@@ -288,19 +283,49 @@ async function tryRunPandorasBox(
     }
 
     // Timeout generoso: 10 min para pruebas grandes en Sepolia
-    await execFileAsync(binario, args, {
+    const { stdout, stderr } = await execFileAsync(binario, args, {
       timeout: 600_000,
       // Heredar el PATH del proceso para que nvm funcione correctamente
       env: { ...process.env }
     });
 
-    if (!existsSync(outFile)) {
-      // pandoras-box terminó sin error pero no escribió el archivo de salida
-      // (puede pasar si 0 transacciones fueron procesadas)
-      return { error: "pandoras-box ejecutó pero no generó archivo de salida. Verifica que el mnemonic tenga fondos suficientes en la red objetivo." };
+    // Buscar el archivo de salida. En modo EOA pandoras-box a veces ignora el flag -o
+    // y escribe en el directorio de trabajo actual o dentro de tmpDir con otro nombre.
+    let archivoSalida: string | null = null;
+    if (existsSync(outFile)) {
+      archivoSalida = outFile;
+    } else {
+      // Búsqueda de rutas alternativas (diferencia de comportamiento por modo)
+      const candidatos = [
+        path.join(process.cwd(), "result.json"),
+        path.join(process.cwd(), "pandoras-result.json"),
+        ...readdirSync(tmpDir)
+          .filter((f) => f.endsWith(".json"))
+          .map((f) => path.join(tmpDir, f))
+      ];
+      for (const candidato of candidatos) {
+        if (existsSync(candidato)) {
+          archivoSalida = candidato;
+          break;
+        }
+      }
     }
 
-    const rawText = readFileSync(outFile, "utf8");
+    if (!archivoSalida) {
+      // pandoras-box terminó sin error pero no generó ningún archivo JSON.
+      // Incluir stdout/stderr para facilitar el diagnóstico (no el mensaje genérico).
+      const salidaRaw = [
+        stderr?.trim() ? `stderr: ${stderr.trim()}` : "",
+        stdout?.trim() ? `stdout: ${stdout.trim()}` : ""
+      ].filter(Boolean).join(" | ");
+      return {
+        error: salidaRaw
+          ? `pandoras-box ejecutó sin generar archivo de salida. Detalle: ${salidaRaw}`
+          : `pandoras-box ejecutó pero no generó archivo de salida en ${outFile} ni en el directorio de trabajo. Verifica que el mnemonic tenga fondos suficientes.`
+      };
+    }
+
+    const rawText = readFileSync(archivoSalida, "utf8");
 
     let raw: PandorasRawOutput;
     try {
@@ -333,7 +358,10 @@ async function tryRunPandorasBox(
     return { error: `pandoras-box falló: ${detalle}` };
 
   } finally {
-    try { if (existsSync(outFile)) unlinkSync(outFile); } catch { /* noop */ }
+    // Limpiar el archivo temporal (puede estar en outFile u otra ruta alternativa encontrada)
+    for (const f of [outFile, path.join(process.cwd(), "result.json"), path.join(process.cwd(), "pandoras-result.json")]) {
+      try { if (existsSync(f)) unlinkSync(f); } catch { /* noop */ }
+    }
   }
 }
 

@@ -7,12 +7,32 @@ import {
   obtenerRegistroOnChainMetadata,
   recuperarDocumentoClinico
 } from "../hce/documentoClinicoService";
+import { isFhirConfigured } from "../hce/fhirClient";
 import { obtenerRegistroLifecycleEpisodio } from "../hce/episodioLifecycleService";
 import { obtenerEstadosPermisosEpisodio, obtenerPropietarioEpisodio } from "../hce/permisosEpisodioService";
 import { obtenerUltimoHashRegistradoOnChain, listarEventosTrazabilidad } from "../hce/trazabilidadService";
 import { validateEpisodioClinico } from "../hce/validationService";
 import { obtenerConfiguracionBlockchainReal } from "../infra/blockchainTraceService";
 import { obtenerEstadoInfraestructura } from "../infra/infraestructuraService";
+
+/**
+ * Verifica si el servidor HAPI FHIR responde consultando /metadata.
+ * Retorna true si responde con HTTP 200 en ≤ 5 s; false en cualquier otro caso.
+ */
+async function checkFhirDisponible(): Promise<boolean> {
+  if (!isFhirConfigured()) return false;
+  const fhirUrl = (process.env.FHIR_BASE_URL ?? "").replace(/\/$/, "");
+  try {
+    const resp = await fetch(`${fhirUrl}/metadata`, {
+      method: "GET",
+      headers: { Accept: "application/fhir+json" },
+      signal: AbortSignal.timeout(5000)
+    });
+    return resp.ok;
+  } catch {
+    return false;
+  }
+}
 
 type RequirementStatus = "cumple" | "parcial" | "pendiente";
 
@@ -57,13 +77,23 @@ function standardDeviation(values: number[]): number {
   return Math.sqrt(variance);
 }
 
+/**
+ * Clasifica la consistencia de un conjunto de mediciones de tiempo (ms) según
+ * la desviación estándar absoluta — no el coeficiente de variación.
+ *
+ * Usar el coeficiente de variación (stdDev/mean) penalizaba operaciones muy
+ * rápidas (< 5 ms) donde incluso 0.5 ms de variación daba CoV > 0.1 → "baja".
+ * Los umbrales absolutos son más representativos para tiempos de sistema:
+ *
+ *   < 20 ms de desviación → Alta    — respuesta estable; variación imperceptible
+ *   < 40 ms de desviación → Media   — variación tolerable para operaciones de red
+ *   ≥ 40 ms de desviación → Baja    — alta variabilidad; revisar conectividad FHIR/RPC
+ */
 function buildConsistency(values: number[]): "alta" | "media" | "baja" {
   if (!values.length) return "baja";
-  const avg = average(values);
-  if (avg === 0) return "alta";
-  const variation = standardDeviation(values) / avg;
-  if (variation <= 0.1) return "alta";
-  if (variation <= 0.25) return "media";
+  const stdDev = standardDeviation(values);
+  if (stdDev < 20) return "alta";
+  if (stdDev < 40) return "media";
   return "baja";
 }
 
@@ -184,6 +214,7 @@ export async function generarDashboardEvaluacionPrototipo(input?: { runs?: numbe
   const runs = Math.max(1, Math.min(Number(input?.runs ?? 3), 5));
   const infraestructura = obtenerEstadoInfraestructura();
   const blockchainConfig = obtenerConfiguracionBlockchainReal();
+  const fhirDisponible = await checkFhirDisponible();
   const episodios = await listarTodosLosEpisodios();
   const traceEvents = listarEventosTrazabilidad();
   const roles = listarRolesSistema();
@@ -333,6 +364,13 @@ export async function generarDashboardEvaluacionPrototipo(input?: { runs?: numbe
       "El almacenamiento clínico actual usa memoria local; los tiempos medidos representan el prototipo y no una instalación productiva de HAPI FHIR."
     );
   }
+  if (infraestructura.offChain.fhirConfigurado && !fhirDisponible) {
+    limitations.push(
+      "HAPI FHIR está configurado (FHIR_BASE_URL definida) pero no responde en este momento. " +
+      "Los episodios cargados en sesiones anteriores pueden no estar accesibles → integridad aparecerá como 'sin_evidencia'. " +
+      "Solución: docker compose up -d y esperar ~45 s a que FHIR esté listo."
+    );
+  }
   if (!scenarioSummaries.length) {
     limitations.push(
       "No existen episodios registrados suficientes para evaluar interoperabilidad, integridad y continuidad de extremo a extremo."
@@ -396,7 +434,18 @@ export async function generarDashboardEvaluacionPrototipo(input?: { runs?: numbe
       totalTraceEvents: traceEvents.length,
       totalIpsSimuladas: infraestructura.simulacionIps.total,
       blockchainMode: blockchainConfig.enabled ? "real" : "mock",
-      rolesConfigurados: roles.map((item) => item.rol)
+      rolesConfigurados: roles.map((item) => item.rol),
+      fhir: {
+        configurado: infraestructura.offChain.fhirConfigurado,
+        disponible: fhirDisponible,
+        // Impacto en el dashboard:
+        // - disponible=false + configurado=true → FHIR caído; documentos solo en memoria
+        //   Los episodios del seed pueden aparecer "sin_evidencia" si el backend reinició.
+        // - disponible=false + configurado=false → modo prototipo; todo en memoria.
+        //   Integridad solo funciona en el mismo proceso/sesión que creó los episodios.
+        // - disponible=true → los documentos sobreviven reinicios del backend.
+        almacenamiento: infraestructura.offChain.almacenamiento
+      }
     },
     interoperability: {
       multipleIpsReady: infraestructura.simulacionIps.multipleIpsActivo,
