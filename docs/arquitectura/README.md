@@ -262,7 +262,16 @@ sequenceDiagram
 
 La decisión más importante del producto es que **la blockchain no funciona como base de datos clínica**, sino como **capa de evidencia y confianza**. El servidor y FHIR siguen siendo el núcleo operativo del dato clínico; la cadena solo certifica eventos, versiones y hashes.
 
-## 10. Archivos base para profundizar
+## 10. Documentos de arquitectura detallada
+
+| Documento | Qué cubre |
+|---|---|
+| [hce-arquitectura.md](hce-arquitectura.md) | Ciclo de vida de una HCE: creación, hash, almacenamiento on/off-chain, acceso por rol, verificación de integridad |
+| [pruebas-arquitectura.md](pruebas-arquitectura.md) | Módulo de evaluación: pandoras-box, semáforos, sesiones, script de datos demo, dashboard del auditor |
+| [blockchain-funcionamiento.md](blockchain-funcionamiento.md) | Qué va on-chain, eventos del contrato, modos de operación |
+| [off-chain-funcionamiento.md](off-chain-funcionamiento.md) | HAPI FHIR, JSON file store, flujos de escritura y lectura |
+
+## 11. Archivos base para profundizar
 
 - `frontend/src/app/router.tsx`
 - `frontend/src/shared/services/api.ts`

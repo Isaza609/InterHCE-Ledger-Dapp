@@ -12,6 +12,7 @@ import type {
   PandorasBoxOutput
 } from "./auditMetricModel";
 import { UMBRALES_DEFAULT } from "./auditMetricModel";
+import { obtenerSesionActual } from "./evaluacionSesionService";
 
 const STORE_FILE = "audit-metrics.json";
 
@@ -60,15 +61,27 @@ function calcSemaforoSeguridad(
   return "rojo";
 }
 
+/**
+ * Calcula el semáforo de interoperabilidad EVM/HCE.
+ *
+ * Criterios (más informativos que "EOA siempre verde"):
+ * - Verde   : nodo accesible + contrato accesible + lecturas y escrituras OK.
+ * - Amarillo: nodo accesible pero contrato sin confirmar (EOA sin contrato o
+ *             deploy fallido) O llamadas ERC con tasa < 95 %.
+ * - Rojo    : nodo no accesible O deploy explícitamente fallido.
+ */
 function calcSemaforoInteroperabilidad(
   modo: string,
   deployExitoso: boolean,
   llamadasERCExitosas: number,
-  llamadasERCTotal: number
+  llamadasERCTotal: number,
+  nodoAccesible: boolean
 ): "verde" | "amarillo" | "rojo" {
+  if (!nodoAccesible) return "rojo";
+
   if (modo === "EOA") {
-    // Para EOA no hay deploy ni ERC, se evalúa solo disponibilidad
-    return "verde";
+    // EOA: no hay contrato; el nodo respondió → amarillo (accesible pero sin contrato)
+    return "amarillo";
   }
   if (!deployExitoso) return "rojo";
   if (!llamadasERCTotal) return "amarillo";
@@ -76,6 +89,54 @@ function calcSemaforoInteroperabilidad(
   if (tasa >= 95) return "verde";
   if (tasa >= 80) return "amarillo";
   return "rojo";
+}
+
+function buildInteroperabilityDetails(
+  output: PandorasBoxOutput,
+  config: AuditRunConfig,
+  chainId: number
+): AuditMetricRecord["interoperabilityDetails"] {
+  const nodoAccesible = chainId > 0; // Si pudimos leer chainId, el nodo respondió
+  const deployExitoso = output.deploy_successful ?? config.modo === "EOA";
+  const llamadasERCTotal = output.erc_function_calls ?? 0;
+  const llamadasERCExitosas = output.erc_function_success ?? 0;
+  const writeCallsOk = output.successful_transactions > 0;
+  const readCallsOk = nodoAccesible; // Siempre consultamos eth_chainId + eth_blockNumber
+
+  let compatibilidadERC = config.modo as string;
+  if (config.contractAddress) {
+    compatibilidadERC = `${config.modo} (contrato: ${config.contractAddress.slice(0, 10)}…)`;
+  }
+
+  let nota: string;
+  if (!nodoAccesible) {
+    nota = "El nodo RPC no respondió; no fue posible verificar interoperabilidad.";
+  } else if (config.modo === "EOA") {
+    nota =
+      "Modo EOA: se verificó que el nodo EVM responde (eth_chainId, eth_blockNumber) y que " +
+      "las transferencias de valor se confirmaron. No se despliega contrato en este modo. " +
+      "Para evaluar compatibilidad con InterHCELedger use modo ERC20/ERC721 con la dirección del contrato.";
+  } else if (!deployExitoso) {
+    nota = `Deploy del contrato ${config.modo} falló. Verificar fondos y configuración del mnemonic.`;
+  } else {
+    const tasa = llamadasERCTotal > 0
+      ? `${((llamadasERCExitosas / llamadasERCTotal) * 100).toFixed(1)} %`
+      : "sin llamadas ERC registradas";
+    nota =
+      `Compatibilidad ${config.modo}: deploy exitoso, llamadas ERC con tasa ${tasa}. ` +
+      `Red: chain ${chainId} · RPC: ${config.rpcUrl.slice(0, 40)}…`;
+  }
+
+  return {
+    chainId,
+    rpcUrl: config.rpcUrl,
+    nodoAccesible,
+    contratoAccesible: config.modo !== "EOA" ? deployExitoso : false,
+    readCallsOk,
+    writeCallsOk,
+    compatibilidadERC,
+    nota
+  };
 }
 
 // ─── Conversión PandorasBoxOutput → AuditMetricRecord ─────────────────────────
@@ -93,10 +154,14 @@ function convertirASalida(
   const deployExitoso = output.deploy_successful ?? config.modo === "EOA";
   const llamadasERCTotal = output.erc_function_calls ?? 0;
   const llamadasERCExitosas = output.erc_function_success ?? 0;
+  const interopDetails = buildInteroperabilityDetails(output, config, output.chain_id);
+
+  const sesionActual = obtenerSesionActual();
 
   return {
     id: randomUUID(),
     timestamp: new Date().toISOString(),
+    sesionId: sesionActual?.id,
     modo: output.mode,
     rpcUrl: output.rpc_url,
     chainId: output.chain_id,
@@ -129,6 +194,7 @@ function convertirASalida(
     deployExitoso,
     llamadasERCExitosas,
     llamadasERCTotal,
+    interoperabilityDetails: interopDetails,
 
     semaforoEficiencia: calcSemaforoEficiencia(output.tps_average, config),
     semaforoLatencia: calcSemaforoLatencia(output.latency_avg_ms, config),
@@ -137,7 +203,8 @@ function convertirASalida(
       output.mode,
       deployExitoso,
       llamadasERCExitosas,
-      llamadasERCTotal
+      llamadasERCTotal,
+      interopDetails.nodoAccesible
     ),
 
     blockSamples: output.block_samples,
@@ -148,8 +215,25 @@ function convertirASalida(
 
 // ─── API pública del servicio ─────────────────────────────────────────────────
 
-export function listarMetricas(): AuditMetricRecord[] {
-  return cargarRegistros().sort(
+/**
+ * Lista métricas de auditoría.
+ *
+ * @param opciones.sesionId — si se pasa, solo devuelve registros de esa sesión.
+ * @param opciones.desde    — si se pasa, solo devuelve registros con timestamp >= este ISO string.
+ */
+export function listarMetricas(opciones?: {
+  sesionId?: string;
+  desde?: string;
+}): AuditMetricRecord[] {
+  let registros = cargarRegistros();
+  if (opciones?.sesionId) {
+    registros = registros.filter((r) => r.sesionId === opciones.sesionId);
+  }
+  if (opciones?.desde) {
+    const desdeMs = new Date(opciones.desde).getTime();
+    registros = registros.filter((r) => new Date(r.timestamp).getTime() >= desdeMs);
+  }
+  return registros.sort(
     (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
   );
 }

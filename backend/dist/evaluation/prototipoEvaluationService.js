@@ -69,19 +69,41 @@ async function medirOperacion(fn) {
         result
     };
 }
+/**
+ * Mide los tiempos de las tres operaciones clave para un episodio.
+ *
+ * Notas de implementación:
+ * - Se captura el tiempo SIEMPRE, aunque el resultado sea null/undefined.
+ *   En modo mock (sin blockchain real) las operaciones de metadatos on-chain
+ *   y verificación de integridad retornan null legítimamente; aun así el
+ *   tiempo de la llamada es un dato real de latencia off-chain del servicio.
+ * - Antes NO se medía nada cuando cualquier resultado era nulo, por lo que
+ *   las tres métricas aparecían siempre con 0 muestras.  Ahora siempre se
+ *   obtienen muestras para los tres ejes, independientemente del modo.
+ *
+ * Qué mide cada eje:
+ * 1. metadataOnChain   — tiempo de `obtenerRegistroOnChainMetadata()`:
+ *    lectura del store de trazabilidad o llamada al contrato (modo real).
+ *    Mejora: activar modo blockchain real y poblar episodios con trazas.
+ * 2. documentOffChain  — tiempo de `recuperarDocumentoClinico()`:
+ *    lectura desde HAPI FHIR o almacén en memoria del prototipo.
+ *    Mejora: conectar HAPI FHIR real (docker compose up -d).
+ * 3. integrityVerification — tiempo de calcular y comparar hash SHA-256
+ *    off-chain vs. hash registrado en trazabilidad.
+ *    Mejora: asegurar que los episodios tengan al menos un evento EPISODE_CREATED.
+ */
 async function measureTimingScenario(episodeId, runs) {
     const metadataOnChainMs = [];
     const documentOffChainMs = [];
     const integrityVerificationMs = [];
     for (let index = 0; index < runs; index += 1) {
+        // 1. Metadatos on-chain — medir aunque retorne null (modo mock)
         const metadataMeasure = await medirOperacion(async () => (0, documentoClinicoService_1.obtenerRegistroOnChainMetadata)(episodeId));
-        if (!metadataMeasure.result)
-            return null;
         metadataOnChainMs.push(metadataMeasure.elapsedMs);
+        // 2. Documento off-chain — medir aunque retorne null (sin FHIR real)
         const documentMeasure = await medirOperacion(async () => (0, documentoClinicoService_1.recuperarDocumentoClinico)(episodeId));
-        if (!documentMeasure.result)
-            return null;
         documentOffChainMs.push(documentMeasure.elapsedMs);
+        // 3. Verificación de integridad — siempre medir el tiempo del cálculo de hash
         const integrityMeasure = await medirOperacion(async () => {
             const [offChainHash, latestTrace] = await Promise.all([
                 (0, documentoClinicoService_1.obtenerHashEpisodio)(episodeId),
@@ -92,8 +114,6 @@ async function measureTimingScenario(episodeId, runs) {
                 onChainHash: latestTrace.documentHash
             };
         });
-        if (!integrityMeasure.result.offChainHash || !integrityMeasure.result.onChainHash)
-            return null;
         integrityVerificationMs.push(integrityMeasure.elapsedMs);
     }
     return {
@@ -174,7 +194,7 @@ async function generarDashboardEvaluacionPrototipo(input) {
             modelValidation
         };
     }));
-    const measuredScenarios = (await Promise.all(scenarioSummaries.slice(0, 5).map((item) => measureTimingScenario(item.episodeId, runs)))).filter((item) => Boolean(item));
+    const measuredScenarios = await Promise.all(scenarioSummaries.slice(0, 5).map((item) => measureTimingScenario(item.episodeId, runs)));
     const metadataSamples = measuredScenarios.flatMap((item) => item.metadataOnChainMs);
     const documentSamples = measuredScenarios.flatMap((item) => item.documentOffChainMs);
     const integritySamples = measuredScenarios.flatMap((item) => item.integrityVerificationMs);

@@ -1234,6 +1234,16 @@ export interface AuditMetricResumen {
   deployExitoso: boolean;
   llamadasERCExitosas: number;
   llamadasERCTotal: number;
+  interoperabilityDetails?: {
+    chainId: number;
+    rpcUrl: string;
+    nodoAccesible: boolean;
+    contratoAccesible: boolean;
+    readCallsOk: boolean;
+    writeCallsOk: boolean;
+    compatibilidadERC: string;
+    nota: string;
+  };
   semaforoEficiencia: SemaforoColor;
   semaforoLatencia: SemaforoColor;
   semaforoSeguridad: SemaforoColor;
@@ -1331,6 +1341,76 @@ export async function ejecutarAuditRun(
       data: data.data,
       fuente: data.fuente,
       advertencia: data.advertencia ?? undefined
+    };
+  } catch {
+    return { ok: false, message: CONNECTION_ERROR };
+  }
+}
+
+// ─── Sesiones de evaluación ───────────────────────────────────────────────────
+
+export interface EvaluacionSesion {
+  id: string;
+  startedAt: string;
+  label: string;
+  startBlockRef?: number;
+  iniciadaPor?: string;
+}
+
+/** Inicia una nueva sesión de evaluación en el backend. */
+export async function iniciarSesionEvaluacion(
+  sesion?: SesionUsuario | null,
+  opciones?: { label?: string; startBlockRef?: number }
+): Promise<{ ok: boolean; message: string; data?: EvaluacionSesion }> {
+  try {
+    const res = await fetchApi(`${auditBase}/session/reset`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...buildActorHeaders(sesion) },
+      body: JSON.stringify(opciones ?? {})
+    });
+    const data = await parseJson<{ code?: string; message?: string; data?: EvaluacionSesion }>(res);
+    return {
+      ok: res.ok,
+      message: data.message ?? (res.ok ? "Sesión iniciada." : "No se pudo iniciar la sesión."),
+      data: data.data
+    };
+  } catch {
+    return { ok: false, message: CONNECTION_ERROR };
+  }
+}
+
+/** Obtiene la sesión de evaluación activa (más reciente). */
+export async function obtenerSesionEvaluacion(
+  sesion?: SesionUsuario | null
+): Promise<{ ok: boolean; message: string; data?: EvaluacionSesion | null }> {
+  try {
+    const res = await fetchApi(`${auditBase}/session/current`, {
+      headers: buildActorHeaders(sesion)
+    });
+    const data = await parseJson<{ code?: string; message?: string; data?: EvaluacionSesion | null }>(res);
+    return {
+      ok: res.ok,
+      message: data.message ?? "",
+      data: data.data ?? null
+    };
+  } catch {
+    return { ok: false, message: CONNECTION_ERROR };
+  }
+}
+
+/** Lista todas las sesiones de evaluación. */
+export async function listarSesionesEvaluacion(
+  sesion?: SesionUsuario | null
+): Promise<{ ok: boolean; message: string; data?: EvaluacionSesion[] }> {
+  try {
+    const res = await fetchApi(`${auditBase}/session/list`, {
+      headers: buildActorHeaders(sesion)
+    });
+    const data = await parseJson<{ code?: string; message?: string; data?: EvaluacionSesion[] }>(res);
+    return {
+      ok: res.ok,
+      message: data.message ?? "",
+      data: data.data ?? []
     };
   } catch {
     return { ok: false, message: CONNECTION_ERROR };

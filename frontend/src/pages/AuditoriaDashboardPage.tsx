@@ -16,12 +16,15 @@ import {
   obtenerAuditMetrica,
   ejecutarAuditRun,
   obtenerDashboardEvaluacion,
+  iniciarSesionEvaluacion,
+  obtenerSesionEvaluacion,
   type AuditMetricResumen,
   type AuditMetricDetalle,
   type AuditRunConfigFrontend,
   type ModoPrueba,
   type BlockSampleFrontend,
-  type DashboardEvaluacionPrototipo
+  type DashboardEvaluacionPrototipo,
+  type EvaluacionSesion
 } from "@/shared/services/api";
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -57,6 +60,157 @@ function fChainId(id: number): string {
 }
 
 type Color = "verde" | "amarillo" | "rojo";
+
+// ═════════════════════════════════════════════════════════════════════════════
+// GENERACIÓN DE INFORME PDF
+// ═════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Genera un informe HTML completo y lo abre en una ventana nueva para imprimir
+ * (Ctrl+P → "Guardar como PDF" en el diálogo de impresión del navegador).
+ * No requiere librerías externas.
+ */
+function descargarInformePDF(r: AuditMetricDetalle): void {
+  const fN = (v?: number, d = 2) =>
+    typeof v === "number" && !isNaN(v) ? v.toFixed(d) : "—";
+  const fP = (v?: number) => (typeof v === "number" && !isNaN(v) ? `${v.toFixed(1)} %` : "—");
+  const fMsR = (v?: number) => {
+    if (typeof v !== "number" || isNaN(v) || v === 0) return "—";
+    return v >= 1000 ? `${(v / 1000).toFixed(2)} s` : `${v.toFixed(0)} ms`;
+  };
+  const fDateR = (iso?: string) =>
+    iso ? new Date(iso).toLocaleString("es-CO") : "—";
+  const chainName: Record<number, string> = {
+    1: "Ethereum", 11155111: "Sepolia", 137: "Polygon", 56: "BSC", 42161: "Arbitrum", 0: "Local"
+  };
+  const semColor = (s: Color) =>
+    s === "verde" ? "#27ae60" : s === "amarillo" ? "#e67e22" : "#c0392b";
+  const semLabel = (s: Color) =>
+    s === "verde" ? "Óptimo" : s === "amarillo" ? "Aceptable" : "Crítico";
+
+  const row = (k: string, v: string) =>
+    `<tr><td style="color:#555;padding:3px 8px 3px 0">${k}</td><td style="font-weight:500;padding:3px 0">${v}</td></tr>`;
+  const sec = (title: string, rows: string) =>
+    `<div style="margin-bottom:20px"><h3 style="font-size:13px;border-bottom:1px solid #ddd;padding-bottom:4px;margin-bottom:8px">${title}</h3><table style="width:100%;border-collapse:collapse;font-size:12px">${rows}</table></div>`;
+  const badge = (s: Color, label: string, val: string) =>
+    `<div style="display:inline-block;margin-right:16px;text-align:center"><div style="background:${semColor(s)};color:#fff;border-radius:12px;padding:2px 10px;font-size:11px">${semLabel(s)}</div><div style="font-size:13px;font-weight:600;margin-top:3px">${val}</div><div style="font-size:11px;color:#888">${label}</div></div>`;
+
+  const interop = r.interoperabilityDetails;
+  const umbral = `Verde ≤ 15 s · Amarillo ≤ 30 s · Rojo > 30 s (1 bloque EVM ≈ 12–15 s)`;
+
+  const html = `<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8"/>
+  <title>Informe de Evaluación — ${r.id.slice(0, 8)}</title>
+  <style>
+    body{font-family:Arial,sans-serif;font-size:13px;color:#222;margin:32px;line-height:1.5}
+    h1{font-size:18px;margin-bottom:4px}
+    h2{font-size:15px;margin:24px 0 8px;border-bottom:2px solid #4f8ef7;padding-bottom:4px;color:#4f8ef7}
+    @media print{body{margin:20px}.no-print{display:none}}
+  </style>
+</head>
+<body>
+  <div class="no-print" style="background:#eef4ff;padding:10px 16px;border-radius:8px;margin-bottom:20px;font-size:12px">
+    <strong>Imprimir como PDF:</strong> Usa Ctrl+P (o Cmd+P) → selecciona "Guardar como PDF" → Guardar.
+  </div>
+
+  <h1>Informe de Evaluación de Desempeño Blockchain</h1>
+  <p style="color:#666;font-size:12px;margin-top:0">
+    InterHCE Ledger · Generado el ${new Date().toLocaleString("es-CO")} · ID: ${r.id}
+  </p>
+
+  <h2>1. Resumen</h2>
+  ${sec("Identificación", [
+    row("ID evaluación", r.id),
+    row("Fecha y hora", fDateR(r.timestamp)),
+    row("Modo de prueba", r.modo),
+    row("Red (chainId)", `${chainName[r.chainId] ?? `Chain ${r.chainId}`} (${r.chainId})`),
+    row("Nodo RPC", r.rpcUrl),
+    row("Fuente", r.fuente === "pandoras-box" ? "Ejecución real con pandoras-box" : "Simulación con datos del nodo RPC"),
+    row("Contrato", r.contractAddress ?? "N/A"),
+  ].join(""))}
+
+  <div style="margin-bottom:20px">
+    <h3 style="font-size:13px;border-bottom:1px solid #ddd;padding-bottom:4px;margin-bottom:12px">Semáforos de evaluación</h3>
+    ${badge(r.semaforoEficiencia, "Eficiencia", `${fN(r.tpsPromedio)} TPS`)}
+    ${badge(r.semaforoLatencia, "Latencia", fMsR(r.latenciaPromedioMs))}
+    ${badge(r.semaforoSeguridad, "Seguridad", fP(r.tasaExito))}
+    ${badge(r.semaforoInteroperabilidad, "Interop. EVM", interop?.nodoAccesible ? "Nodo OK" : "Sin acceso")}
+  </div>
+
+  <h2>2. Métricas de eficiencia (TPS)</h2>
+  ${sec("Throughput", [
+    row("TPS promedio", fN(r.tpsPromedio)),
+    row("TPS pico", fN(r.tpsPico)),
+    row("Total transacciones", fN(r.totalTransacciones, 0)),
+    row("Transacciones exitosas", fN(r.transaccionesExitosas, 0)),
+    row("Transacciones fallidas", fN(r.transaccionesFallidas, 0)),
+    row("Umbral verde ≥", "10 TPS · Amarillo ≥ 5 TPS"),
+  ].join(""))}
+
+  <h2>3. Latencia de confirmación</h2>
+  ${sec("Tiempos de confirmación en bloque", [
+    row("Latencia promedio", fMsR(r.latenciaPromedioMs)),
+    row("Latencia mínima", fMsR(r.latenciaMinMs)),
+    row("Latencia máxima", fMsR(r.latenciaMaxMs)),
+    row("Latencia P95", fMsR(r.latenciaP95Ms)),
+    row("Block time promedio", `${r.blockTimePromedioSeg?.toFixed(2)} s`),
+    row("Bloques observados", String(r.bloquesObservados)),
+    row("Umbrales aplicados", umbral),
+  ].join(""))}
+
+  <h2>4. Gas</h2>
+  ${sec("Consumo de gas", [
+    row("Gas promedio / tx", fN(r.gasUsadoPromedio, 0)),
+    row("Gas máximo / tx", fN(r.gasUsadoMax, 0)),
+    row("Gas limit del bloque", fN(r.gasLimit, 0)),
+    row("Utilización de bloque", fP(r.gasUtilizacionPct)),
+  ].join(""))}
+
+  <h2>5. Seguridad y tasa de éxito</h2>
+  ${sec("Resultados de transacciones", [
+    row("Tasa de éxito", fP(r.tasaExito)),
+    row("Transacciones revertidas", fN(r.transaccionesRevertidas, 0)),
+    row("Out-of-gas", fN(r.transaccionesOutOfGas, 0)),
+    row("Tiempo respuesta nodo bajo carga", fMsR(r.tiempoRespuestaNodoMs)),
+    row("Umbral verde ≥ 95 % · Amarillo ≥ 80 %", ""),
+  ].join(""))}
+
+  <h2>6. Interoperabilidad EVM / HCE</h2>
+  ${sec("Verificación de compatibilidad", [
+    row("Nodo EVM accesible", interop?.nodoAccesible ? "✓ Sí" : "✗ No"),
+    row("Contrato accesible", interop?.contratoAccesible ? "✓ Sí" : r.modo === "EOA" ? "N/A (sin contrato)" : "✗ No"),
+    row("Llamadas read/view OK", interop?.readCallsOk ? "✓ OK" : "✗ Error"),
+    row("Escrituras OK", interop?.writeCallsOk ? "✓ OK" : "✗ Sin confirmar"),
+    row("Compatibilidad ERC declarada", interop?.compatibilidadERC ?? r.modo),
+    row("ChainId verificado", String(interop?.chainId ?? r.chainId)),
+    ...(r.modo !== "EOA" ? [
+      row("Deploy exitoso", r.deployExitoso ? "✓ Sí" : "✗ No"),
+      row("Llamadas ERC exitosas", fN(r.llamadasERCExitosas, 0)),
+      row("Total llamadas ERC", fN(r.llamadasERCTotal, 0)),
+      row("Tasa ERC", r.llamadasERCTotal > 0 ? fP((r.llamadasERCExitosas / r.llamadasERCTotal) * 100) : "—"),
+    ] : []),
+  ].join(""))}
+  ${interop?.nota ? `<p style="font-size:11px;color:#555;background:#f5f5f5;padding:8px;border-radius:4px">${interop.nota}</p>` : ""}
+
+  <div style="margin-top:32px;border-top:1px solid #ddd;padding-top:12px;font-size:11px;color:#aaa">
+    Generado por InterHCE Ledger — Sistema de interoperabilidad de HCE sobre blockchain EVM.<br/>
+    Este informe corresponde a la evaluación ID <strong>${r.id}</strong> ejecutada el ${fDateR(r.timestamp)}.
+  </div>
+</body>
+</html>`;
+
+  const win = window.open("", "_blank", "width=900,height=700");
+  if (!win) {
+    alert("No se pudo abrir la ventana del informe. Desbloquea las ventanas emergentes para este sitio.");
+    return;
+  }
+  win.document.write(html);
+  win.document.close();
+  // Pequeño delay para que el navegador termine de renderizar antes del diálogo de impresión
+  setTimeout(() => win.print(), 500);
+}
 
 // ═════════════════════════════════════════════════════════════════════════════
 // COMPONENTES BASE
@@ -148,6 +302,14 @@ function PanelDetalle({ r }: { r: AuditMetricDetalle }) {
         <SemaforoBadge color={r.semaforoLatencia}     label="Latencia"        valor={fMs(r.latenciaPromedioMs)} />
         <SemaforoBadge color={r.semaforoSeguridad}    label="Seguridad"       valor={fPct(r.tasaExito)} />
         <SemaforoBadge color={r.semaforoInteroperabilidad} label="Interop. ERC" valor={r.modo === "EOA" ? "N/A" : r.deployExitoso ? "Deploy OK" : "Deploy ✗"} />
+        <button
+          type="button"
+          className="btn btn--ghost"
+          style={{ fontSize: "0.78rem", padding: "4px 12px", alignSelf: "center", whiteSpace: "nowrap" }}
+          onClick={() => descargarInformePDF(r)}
+        >
+          ⬇ Descargar informe PDF
+        </button>
       </div>
 
       {/* Tarjetas de métricas agrupadas por eje */}
@@ -189,18 +351,31 @@ function PanelDetalle({ r }: { r: AuditMetricDetalle }) {
           ["Nodo RPC",           r.rpcUrl.length > 35 ? r.rpcUrl.slice(0, 35) + "…" : r.rpcUrl],
         ]} />
 
-        {r.modo !== "EOA" && (
-          <MetricCard title="⑥ Interoperabilidad ERC" rows={[
+        {/* Interoperabilidad — visible para todos los modos */}
+        <MetricCard
+          title="⑥ Interoperabilidad EVM / HCE"
+          rows={[
             ["Modo",                r.modo],
-            ["Deploy exitoso",      r.deployExitoso ? "✓ Sí" : "✗ No"],
-            ["Llamadas exitosas",   fNum(r.llamadasERCExitosas, 0)],
-            ["Total llamadas",      fNum(r.llamadasERCTotal, 0)],
-            ["Tasa ERC",            r.llamadasERCTotal > 0
-              ? fPct((r.llamadasERCExitosas / r.llamadasERCTotal) * 100) : "—"],
-            ["Contrato",            r.contractAddress
-              ? r.contractAddress.slice(0, 14) + "…" : "Desplegado por pandoras-box"],
-          ]} />
-        )}
+            ["Nodo accesible",      r.interoperabilityDetails?.nodoAccesible ? "✓ Sí" : "✗ No"],
+            ["Contrato accesible",  r.interoperabilityDetails?.contratoAccesible ? "✓ Sí"
+              : r.modo === "EOA" ? "N/A (sin contrato)" : "✗ No"],
+            ["Lecturas (read/view)", r.interoperabilityDetails?.readCallsOk ? "✓ OK" : "✗ Error"],
+            ["Escrituras (write)",  r.interoperabilityDetails?.writeCallsOk ? "✓ OK" : "✗ Sin confirmar"],
+            ...(r.modo !== "EOA" ? ([
+              ["Deploy exitoso",    r.deployExitoso ? "✓ Sí" : "✗ No"] as [string, string],
+              ["Llamadas ERC OK",   fNum(r.llamadasERCExitosas, 0)] as [string, string],
+              ["Total llamadas ERC",fNum(r.llamadasERCTotal, 0)] as [string, string],
+              ["Tasa ERC",          r.llamadasERCTotal > 0
+                ? fPct((r.llamadasERCExitosas / r.llamadasERCTotal) * 100) : "—"] as [string, string],
+            ] as [string, string][]) : []),
+            ["Compatibilidad",      r.interoperabilityDetails?.compatibilidadERC ?? r.modo],
+          ]}
+          note={r.interoperabilityDetails?.nota ?? (
+            r.modo === "EOA"
+              ? "EOA: solo transferencias ETH. Para evaluar compatibilidad con InterHCELedger use modo ERC20/ERC721."
+              : undefined
+          )}
+        />
       </div>
 
       {/* Gráficas por bloque */}
@@ -225,11 +400,13 @@ function PanelDetalle({ r }: { r: AuditMetricDetalle }) {
 // FORMULARIO DE NUEVA EVALUACIÓN
 // ═════════════════════════════════════════════════════════════════════════════
 
+// Umbrales de latencia realistas para redes EVM (PoA/PoS ≈ 12 s por bloque):
+//   Verde ≤ 15 000 ms (1 bloque típico), Amarillo ≤ 30 000 ms (≤ 2 bloques).
 const CONFIG_DEFAULT: AuditRunConfigFrontend = {
   rpcUrl: "", modo: "EOA", totalTransacciones: 100, numSubcuentas: 5,
   contractAddress: "", mnemonic: "", batchSize: 20,
   umbralTpsVerde: 10, umbralTpsAmarillo: 5,
-  umbralLatenciaVerdeMs: 3000, umbralLatenciaAmarilloMs: 8000,
+  umbralLatenciaVerdeMs: 15_000, umbralLatenciaAmarilloMs: 30_000,
   umbralTasaExitoVerde: 95
 };
 
@@ -360,15 +537,15 @@ function FormularioEvaluacion({
                 onChange={(e) => set("umbralTpsAmarillo", Number(e.target.value))} />
             </label>
             <label className="form-field">
-              <span className="form-label">Latencia verde ≤ (ms)</span>
+              <span className="form-label">Latencia verde ≤ (ms) <span style={{color:"#888",fontSize:"0.7rem"}}>— 1 bloque EVM ≈ 15 000</span></span>
               <input className="form-input" type="number" min={0}
-                value={cfg.umbralLatenciaVerdeMs ?? 3000}
+                value={cfg.umbralLatenciaVerdeMs ?? 15_000}
                 onChange={(e) => set("umbralLatenciaVerdeMs", Number(e.target.value))} />
             </label>
             <label className="form-field">
-              <span className="form-label">Latencia amarillo ≤ (ms)</span>
+              <span className="form-label">Latencia amarillo ≤ (ms) <span style={{color:"#888",fontSize:"0.7rem"}}>— 2 bloques ≈ 30 000</span></span>
               <input className="form-input" type="number" min={0}
-                value={cfg.umbralLatenciaAmarilloMs ?? 8000}
+                value={cfg.umbralLatenciaAmarilloMs ?? 30_000}
                 onChange={(e) => set("umbralLatenciaAmarilloMs", Number(e.target.value))} />
             </label>
             <label className="form-field">
@@ -394,6 +571,58 @@ function FormularioEvaluacion({
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
+// PANEL DE SESIÓN DE EVALUACIÓN
+// ═════════════════════════════════════════════════════════════════════════════
+
+function PanelSesion({
+  sesionActual,
+  onNuevaSesion,
+  iniciando
+}: {
+  sesionActual: EvaluacionSesion | null;
+  onNuevaSesion: () => void;
+  iniciando: boolean;
+}) {
+  return (
+    <div style={{
+      background: "#f0f4ff", borderRadius: 8, padding: "10px 16px",
+      marginBottom: 14, display: "flex", alignItems: "center",
+      gap: 16, flexWrap: "wrap", fontSize: "0.82rem"
+    }}>
+      <div style={{ flex: 1 }}>
+        <strong>Sesión de evaluación activa: </strong>
+        {sesionActual ? (
+          <span>
+            <code style={{ background: "#e8eeff", padding: "1px 6px", borderRadius: 4 }}>
+              {sesionActual.label}
+            </code>
+            {" "}— iniciada el {fDate(sesionActual.startedAt)}
+            <span style={{ color: "#aaa", fontSize: "0.72rem", marginLeft: 8 }}>
+              (ID: {sesionActual.id.slice(0, 8)}…)
+            </span>
+          </span>
+        ) : (
+          <span style={{ color: "#999" }}>Sin sesión activa — se muestran todas las métricas.</span>
+        )}
+      </div>
+      <button
+        type="button"
+        className="btn btn--secondary"
+        style={{ fontSize: "0.78rem", padding: "4px 12px" }}
+        onClick={onNuevaSesion}
+        disabled={iniciando}
+        title="Marca el momento actual como inicio de nueva sesión. Las pruebas ejecutadas a partir de ahora quedarán asociadas a esta sesión."
+      >
+        {iniciando ? "Iniciando…" : "Iniciar nueva sesión"}
+      </button>
+      <span style={{ color: "#888", fontSize: "0.7rem", maxWidth: 260 }}>
+        ℹ️ Inicia un punto de partida sin borrar el historial. Filtra las métricas por sesión con el selector de abajo.
+      </span>
+    </div>
+  );
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
 // SECCIÓN A — PRUEBAS DE ESTRÉS DE RED (RF10)
 // ═════════════════════════════════════════════════════════════════════════════
 
@@ -410,6 +639,10 @@ function SeccionRedBlockchain() {
   const [runMsg, setRunMsg] = useState<string | null>(null);
   const [runError, setRunError] = useState<string | null>(null);
   const resultRef = useRef<HTMLDivElement>(null);
+  // Sesión de evaluación
+  const [sesionActual, setSesionActual] = useState<EvaluacionSesion | null>(null);
+  const [iniciandoSesion, setIniciandoSesion] = useState(false);
+  const [filtroSesion, setFiltroSesion] = useState<"todas" | "actual">("todas");
 
   async function cargar() {
     setLoading(true);
@@ -417,6 +650,21 @@ function SeccionRedBlockchain() {
     setLista(r.data ?? []);
     if (!r.ok) setError(r.message);
     setLoading(false);
+  }
+
+  async function cargarSesion() {
+    const r = await obtenerSesionEvaluacion(sesion);
+    if (r.ok) setSesionActual(r.data ?? null);
+  }
+
+  async function handleNuevaSesion() {
+    setIniciandoSesion(true);
+    const r = await iniciarSesionEvaluacion(sesion);
+    setIniciandoSesion(false);
+    if (r.ok && r.data) {
+      setSesionActual(r.data);
+      setFiltroSesion("actual");
+    }
   }
 
   async function toggleDetalle(id: string) {
@@ -453,9 +701,17 @@ function SeccionRedBlockchain() {
     }
   }
 
-  useEffect(() => { void cargar(); }, [sesion]);
+  useEffect(() => { void cargar(); void cargarSesion(); }, [sesion]);
 
-  const optimos = lista.filter((r) =>
+  // Aplicar filtro de sesión sobre la lista cargada
+  const listaFiltrada = filtroSesion === "actual" && sesionActual
+    ? lista.filter((r) =>
+        (r as AuditMetricResumen & { sesionId?: string }).sesionId === sesionActual.id ||
+        new Date(r.timestamp) >= new Date(sesionActual.startedAt)
+      )
+    : lista;
+
+  const optimos = listaFiltrada.filter((r) =>
     r.semaforoEficiencia === "verde" && r.semaforoSeguridad === "verde").length;
 
   return (
@@ -476,7 +732,7 @@ function SeccionRedBlockchain() {
         <div style={{ display: "flex", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
           {lista.length > 0 && (
             <div className="context-note" style={{ fontSize: "0.8rem" }}>
-              <span>{lista.length} prueba(s)</span>
+              <span>{listaFiltrada.length} prueba(s)</span>
               {optimos > 0 && <span style={{ color: "var(--color-success, #27ae60)" }}>🟢 {optimos} óptima(s)</span>}
             </div>
           )}
@@ -495,6 +751,36 @@ function SeccionRedBlockchain() {
 
       <hr style={{ border: "none", borderTop: "1px solid #eee", margin: "14px 0" }} />
 
+      {/* Panel de sesión */}
+      <PanelSesion
+        sesionActual={sesionActual}
+        onNuevaSesion={() => void handleNuevaSesion()}
+        iniciando={iniciandoSesion}
+      />
+
+      {/* Filtro por sesión */}
+      {sesionActual && lista.length > 0 && (
+        <div style={{ display: "flex", gap: 8, alignItems: "center",
+          marginBottom: 10, fontSize: "0.82rem" }}>
+          <span style={{ color: "#666" }}>Mostrar:</span>
+          <button type="button"
+            className={filtroSesion === "todas" ? "btn btn--secondary" : "btn btn--ghost"}
+            style={{ padding: "2px 10px", fontSize: "0.78rem" }}
+            onClick={() => setFiltroSesion("todas")}>
+            Todas ({lista.length})
+          </button>
+          <button type="button"
+            className={filtroSesion === "actual" ? "btn btn--secondary" : "btn btn--ghost"}
+            style={{ padding: "2px 10px", fontSize: "0.78rem" }}
+            onClick={() => setFiltroSesion("actual")}>
+            Sesión actual ({lista.filter((r) =>
+              (r as AuditMetricResumen & { sesionId?: string }).sesionId === sesionActual.id ||
+              new Date(r.timestamp) >= new Date(sesionActual.startedAt)
+            ).length})
+          </button>
+        </div>
+      )}
+
       {/* Formulario */}
       {mostrarForm && (
         <FormularioEvaluacion
@@ -511,9 +797,11 @@ function SeccionRedBlockchain() {
       {/* Historial */}
       {loading && !lista.length ? (
         <div style={{ color: "#888", fontSize: "0.85rem" }}>Cargando historial…</div>
-      ) : !lista.length ? (
+      ) : !listaFiltrada.length ? (
         <div style={{ color: "#aaa", fontSize: "0.85rem", padding: "12px 0" }}>
-          No hay pruebas registradas. Usa el botón <strong>Nueva prueba</strong> para ejecutar la primera.
+          {lista.length > 0
+            ? "No hay pruebas en la sesión actual. Ejecuta una nueva prueba o cambia el filtro a 'Todas'."
+            : <>No hay pruebas registradas. Usa el botón <strong>Nueva prueba</strong> para ejecutar la primera.</>}
         </div>
       ) : (
         <div ref={resultRef}>
@@ -539,7 +827,7 @@ function SeccionRedBlockchain() {
                 </tr>
               </thead>
               <tbody>
-                {lista.map((r) => (
+                {listaFiltrada.map((r) => (
                   <>
                     <tr key={r.id}>
                       <td style={{ whiteSpace: "nowrap" }}>{fDate(r.timestamp)}</td>
@@ -588,9 +876,9 @@ function SeccionRedBlockchain() {
         </summary>
         <div style={{ fontSize: "0.78rem", color: "#666", marginTop: 8, display: "flex", gap: 20, flexWrap: "wrap" }}>
           <div><b>Eficiencia</b> 🟢 TPS ≥ 10 · 🟡 ≥ 5 · 🔴 {"< 5"}</div>
-          <div><b>Latencia</b> 🟢 ≤ 3 s · 🟡 ≤ 8 s · 🔴 {"> 8 s"}</div>
+          <div><b>Latencia</b> 🟢 ≤ 15 s · 🟡 ≤ 30 s · 🔴 {"> 30 s"} <span style={{color:"#aaa"}}>(1 bloque EVM ≈ 12–15 s)</span></div>
           <div><b>Seguridad</b> 🟢 tasa ≥ 95 % · 🟡 ≥ 80 % · 🔴 {"< 80 %"}</div>
-          <div><b>Interop.</b> 🟢 deploy OK + llamadas ≥ 95 % · 🔴 deploy fallido · (EOA: N/A)</div>
+          <div><b>Interop.</b> 🟢 nodo responde + contrato activo · 🟡 solo nodo · 🔴 sin respuesta / deploy fallido</div>
         </div>
       </details>
     </section>

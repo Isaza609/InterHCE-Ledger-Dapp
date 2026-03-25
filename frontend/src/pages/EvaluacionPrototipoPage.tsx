@@ -92,16 +92,41 @@ function buildDocumentation(dashboard: DashboardEvaluacionPrototipo | null) {
   };
 }
 
+/** Notas explicativas por métrica de timing — qué mide y cómo mejorarla */
+const TIMING_NOTES: Record<string, string> = {
+  "Consulta de metadatos on-chain":
+    "Tiempo de leer el registro de trazabilidad (hash, eventId, versión) para el episodio. " +
+    "En modo mock es una lectura de archivo local; en blockchain real incluye latencia RPC (~13 s/bloque). " +
+    "Mejora: activar modo blockchain real y sembrar episodios con trazas (seed:eval-demo).",
+  "Acceso a documento off-chain":
+    "Tiempo de recuperar el documento clínico desde HAPI FHIR o el almacén en memoria del prototipo. " +
+    "Sin FHIR real (docker compose up -d) los tiempos son sub-milisegundo pues se usa memoria. " +
+    "Mejora: conectar HAPI FHIR y sembrar episodios con documentos reales.",
+  "Verificación de integridad":
+    "Tiempo de calcular el hash SHA-256 del documento off-chain y compararlo con el hash registrado en trazabilidad. " +
+    "Siempre produce muestras porque el cálculo ocurre localmente. Si aparecen 0 muestras, " +
+    "el episodio no tiene trazas; ejecute seed:eval-demo con SEED_ALL_TRACE_EVENTS=1."
+};
+
 function TimingCard({ title, summary }: { title: string; summary: TimingOperationSummary }) {
+  const note = TIMING_NOTES[title];
   return (
     <article className="metric-card">
       <strong>{title}</strong>
+      <span style={{ fontSize: "0.75rem", color: summary.samples > 0 ? "#555" : "#c00" }}>
+        Muestras: {summary.samples > 0 ? summary.samples : "0 — sin datos (poblar episodios)"}
+      </span>
       <span>Promedio: {formatMs(summary.averageMs)}</span>
       <span>Mín/Máx: {formatMs(summary.minMs)} / {formatMs(summary.maxMs)}</span>
       <span>Desviación: {formatMs(summary.standardDeviationMs)}</span>
       <div className={statusChipClass(summary.consistency === "alta" ? "cumple" : summary.consistency === "media" ? "parcial" : "pendiente")}>
         Consistencia {summary.consistency}
       </div>
+      {note && (
+        <p style={{ fontSize: "0.7rem", color: "#888", marginTop: 6, lineHeight: 1.5 }}>
+          ℹ️ {note}
+        </p>
+      )}
     </article>
   );
 }

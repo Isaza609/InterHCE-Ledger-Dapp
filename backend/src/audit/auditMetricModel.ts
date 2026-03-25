@@ -71,6 +71,8 @@ export interface BlockSample {
 export interface AuditMetricRecord {
   id: string;
   timestamp: string;
+  /** ID de la sesión de evaluación a la que pertenece este registro (si se inició una) */
+  sesionId?: string;
   modo: ModoPrueba;
   rpcUrl: string;
   chainId: number;
@@ -109,6 +111,25 @@ export interface AuditMetricRecord {
   deployExitoso: boolean;
   llamadasERCExitosas: number;
   llamadasERCTotal: number;
+  /**
+   * Detalles de interoperabilidad HCE.
+   *
+   * "Interoperabilidad" en este contexto no es solo ERC20/ERC721 — significa que
+   * el nodo EVM responde correctamente a llamadas de lectura (view) y escritura,
+   * y que el contrato InterHCELedger o el contrato de prueba es accesible desde
+   * distintos actores/IPS.  Se registra también chainId y rpcUrl para confirmar
+   * que la prueba se realizó contra la red esperada.
+   */
+  interoperabilityDetails: {
+    chainId: number;
+    rpcUrl: string;
+    nodoAccesible: boolean;       // El nodo respondió eth_chainId correctamente
+    contratoAccesible: boolean;   // Se pudo consultar el contrato (deploy OK o ABI)
+    readCallsOk: boolean;         // Llamadas view/read respondieron sin error
+    writeCallsOk: boolean;        // Transacciones de escritura se confirmaron
+    compatibilidadERC: string;    // "EOA", "ERC20", "ERC721" o "InterHCELedger"
+    nota: string;                 // Descripción legible del resultado
+  };
 
   // Semáforos calculados
   semaforoEficiencia: "verde" | "amarillo" | "rojo";
@@ -145,12 +166,23 @@ export interface AuditRunConfig {
   umbralTasaExitoVerde?: number;
 }
 
-/** Umbrales por defecto para semáforos */
+/**
+ * Umbrales por defecto para semáforos.
+ *
+ * LATENCIA — Criterios realistas para redes EVM (PoA/PoS):
+ *   Ethereum/Sepolia tiene block time ≈ 12 s; una transacción tarda al menos
+ *   un bloque en confirmarse (~13–15 s bajo carga normal).  Por eso los
+ *   umbrales de "verde" y "amarillo" se sitúan en 15 000 ms y 30 000 ms
+ *   respectivamente, en lugar de los 3 s/8 s propios de sistemas REST.
+ *   - Verde  (óptimo)   : latencia promedio ≤ 15 s  — 1 bloque típico
+ *   - Amarillo (aceptable): ≤ 30 s                   — hasta ~2 bloques
+ *   - Rojo   (crítico)  :  > 30 s                   — retrasos o congestión
+ */
 export const UMBRALES_DEFAULT = {
   tpsVerde: 10,
   tpsAmarillo: 5,
-  latenciaVerdeMs: 3000,
-  latenciaAmarilloMs: 8000,
+  latenciaVerdeMs: 15_000,   // ≤ 15 s → 1 bloque normal (PoA/PoS ~12 s)
+  latenciaAmarilloMs: 30_000, // ≤ 30 s → hasta 2 bloques bajo carga
   tasaExitoVerde: 95,
   tasaExitoAmarillo: 80
 } as const;

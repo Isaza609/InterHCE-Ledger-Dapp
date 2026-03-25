@@ -62,6 +62,7 @@ Las acciones del backend que hoy disparan registro de trazabilidad son:
 - `EPISODE_UPDATED`: actualizar episodio.
 - `PERMISSION_GRANTED`: otorgar permiso entre IPS.
 - `PERMISSION_REVOKED`: revocar permiso entre IPS.
+
 - `AUDITABLE_ACCESS`: consultar documento clinico.
 - `INTEGRITY_CHECK`: verificar integridad del episodio.
 

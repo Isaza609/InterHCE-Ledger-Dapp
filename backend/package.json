@@ -7,6 +7,8 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
+    "seed:eval-demo": "ts-node --transpile-only scripts/seed-evaluacion-demo.ts",
+    "reset:demo-data": "ts-node --transpile-only scripts/reset-demo-data.ts",
     "test": "npm run build && node --test test/*.test.js"
   },
   "keywords": [

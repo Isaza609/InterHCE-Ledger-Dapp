@@ -386,11 +386,13 @@ Cada evaluación calcula cuatro semáforos automáticamente. Los umbrales son co
 
 | Estado | Condición (defaults) | Significado |
 |---|---|---|
-| 🟢 Verde | `latenciaPromedioMs ≤ 3 000` | Confirmación rápida |
-| 🟡 Amarillo | `latenciaPromedioMs ≤ 8 000` | Latencia tolerable para procesos no interactivos |
-| 🔴 Rojo | `latenciaPromedioMs > 8 000` | Demasiado lenta para urgencias |
+| 🟢 Verde | `latenciaPromedioMs ≤ 15 000` | ≤ 1 bloque normal (PoA/PoS ~12 s) |
+| 🟡 Amarillo | `latenciaPromedioMs ≤ 30 000` | ≤ 2 bloques bajo carga |
+| 🔴 Rojo | `latenciaPromedioMs > 30 000` | Más de 2 bloques; red congestionada |
 
-> En Sepolia (~12 s/bloque) la latencia estimada es ~13 800 ms → **siempre rojo** por diseño de la red, no por defecto de la DApp.
+> **Fundamento del cambio (sprint 5):** los umbrales anteriores (3 s / 8 s) eran umbrales REST-HTTP, inalcanzables en cualquier red EVM pública. Ethereum/Sepolia tiene un blocktime de ~12 s (PoS post-merge), por lo que la latencia mínima para una confirmación es ≈ 12–15 s. Los nuevos umbrales reflejan la realidad de blockchain: una transacción que confirma en 1 bloque (≤ 15 s) es normal; en 2 bloques (≤ 30 s) es aceptable; más de 2 bloques indica congestión.
+
+Los umbrales son configurables por prueba desde "Opciones avanzadas" del formulario (`umbralLatenciaVerdeMs`, `umbralLatenciaAmarilloMs`).
 
 ### 8.3 Seguridad (tasa de éxito)
 
@@ -400,13 +402,36 @@ Cada evaluación calcula cuatro semáforos automáticamente. Los umbrales son co
 | 🟡 Amarillo | `tasaExito ≥ 80 %` | Nivel de fallos aceptable en estrés |
 | 🔴 Rojo | `tasaExito < 80 %` | Alta tasa de reverts o out-of-gas |
 
-### 8.4 Interoperabilidad ERC
+### 8.4 Interoperabilidad EVM / HCE
+
+El semáforo ahora evalúa cuatro condiciones concretas en lugar del criterio binario anterior:
 
 | Estado | Condición | Significado |
 |---|---|---|
-| 🟢 Verde | Deploy OK + llamadas ≥ 95 % | Contrato operable de forma confiable |
-| 🟡 Amarillo | Deploy OK sin llamadas medidas, o modo EOA | Parcialmente verificado |
-| 🔴 Rojo | Deploy fallido | El contrato no puede ejecutarse en esta red |
+| 🟢 Verde | Nodo accesible + deploy OK + llamadas ERC ≥ 95 % | Contrato operable de forma confiable |
+| 🟡 Amarillo | Nodo accesible pero sin contrato verificado (modo EOA, o ERC con 0 llamadas registradas) | Parcialmente verificado |
+| 🔴 Rojo | Nodo no accesible, **o** deploy explícitamente fallido | Interoperabilidad bloqueada |
+
+**Detalle por modo:**
+- **EOA:** siempre 🟡 Amarillo. El nodo respondió, pero no hay contrato que evaluar. Se verifica que `eth_chainId` y `eth_blockNumber` respondan, y que las transferencias de valor se confirmen.
+- **ERC20 / ERC721:** 🟢 si deploy exitoso + `llamadasERCExitosas / llamadasERCTotal ≥ 95 %`; 🟡 si deploy OK pero sin llamadas medidas o tasa 80–95 %; 🔴 si deploy falló o nodo no responde.
+
+> **Cambio respecto al sprint anterior:** el modo EOA retornaba "verde" incondicionalmente (el nodo respondió = verdad trivial), lo que no aportaba información de evaluación. Ahora "amarillo" en EOA comunica explícitamente que la verificación de interoperabilidad con contratos ERC no fue realizada.
+
+Cada registro también guarda el objeto `interoperabilityDetails`:
+
+```jsonc
+"interoperabilityDetails": {
+  "chainId": 11155111,
+  "rpcUrl": "https://rpc.sepolia.org",
+  "nodoAccesible": true,
+  "contratoAccesible": true,        // false en modo EOA
+  "readCallsOk": true,
+  "writeCallsOk": true,
+  "compatibilidadERC": "ERC20 (contrato: 0x1234abcd…)",
+  "nota": "Compatibilidad ERC20: deploy exitoso, llamadas ERC con tasa 97.0 %. Red: chain 11155111 · RPC: https://rpc.sepolia.org…"
+}
+```
 
 ---
 
@@ -480,11 +505,22 @@ Cada evaluación se guarda en `backend/data/audit-metrics.json`:
   "transaccionesRevertidas": 4,
   "transaccionesOutOfGas": 2,
   "tiempoRespuestaNodoMs": 130,
+  "sesionId": "sesion-uuid-v4",       // id de la sesión activa al momento de la prueba (nullable)
   "deployExitoso": true,
   "llamadasERCExitosas": 194,
   "llamadasERCTotal": 200,
+  "interoperabilityDetails": {
+    "chainId": 11155111,
+    "rpcUrl": "https://rpc.sepolia.org",
+    "nodoAccesible": true,
+    "contratoAccesible": true,
+    "readCallsOk": true,
+    "writeCallsOk": true,
+    "compatibilidadERC": "ERC20 (contrato: 0x1234abcd…)",
+    "nota": "Compatibilidad ERC20: deploy exitoso, llamadas ERC con tasa 97.0 %..."
+  },
   "semaforoEficiencia": "amarillo",
-  "semaforoLatencia": "rojo",
+  "semaforoLatencia": "verde",       // ahora verde porque 13 800 ms ≤ 15 000 ms
   "semaforoSeguridad": "verde",
   "semaforoInteroperabilidad": "verde",
   "blockSamples": [ /* serie por bloque */ ],
@@ -500,9 +536,13 @@ Cada evaluación se guarda en `backend/data/audit-metrics.json`:
 **Requiere:** rol `auditor` o `super_admin`.
 Lista histórica sin series de bloque (para reducir tamaño de respuesta).
 
+**Query params opcionales:**
+- `?sesionId=<id>` — filtra por sesión de evaluación.
+- `?desde=<ISO>` — filtra registros con `timestamp >= desde`.
+
 ### GET /audit/metrics/:id
 **Requiere:** rol `auditor` o `super_admin`.
-Detalle completo incluyendo `blockSamples` y `rawOutput`.
+Detalle completo incluyendo `blockSamples`, `rawOutput` e `interoperabilityDetails`.
 
 ### POST /audit/run
 **Requiere:** rol `auditor` o `super_admin`.
@@ -518,8 +558,8 @@ Detalle completo incluyendo `blockSamples` y `rawOutput`.
   "contractAddress": "0x...",    // opcional, solo ERC20/ERC721
   "umbralTpsVerde": 10,          // opcionales: umbrales de semáforos
   "umbralTpsAmarillo": 5,
-  "umbralLatenciaVerdeMs": 3000,
-  "umbralLatenciaAmarilloMs": 8000,
+  "umbralLatenciaVerdeMs": 15000,    // default: ≤ 15 s → 1 bloque normal EVM PoS
+  "umbralLatenciaAmarilloMs": 30000, // default: ≤ 30 s → hasta 2 bloques bajo carga
   "umbralTasaExitoVerde": 95
 }
 ```
@@ -542,6 +582,45 @@ Cuando pandoras-box falla pero se usa simulación:
   "advertencia": "pandoras-box falló: Command failed | stderr: Error: insufficient funds for gas"
 }
 ```
+
+---
+
+### POST /audit/session/reset
+**Requiere:** rol `auditor` o `super_admin`.
+Inicia una nueva sesión de evaluación. Las métricas registradas a partir de este punto quedan asociadas al `sesionId` devuelto.
+
+```jsonc
+// Body (todos opcionales)
+{
+  "label": "Prueba carga alta — 500 tx",  // etiqueta libre
+  "startBlockRef": 7924130                 // bloque de referencia inicial
+}
+```
+
+**Respuesta (HTTP 201):**
+```json
+{
+  "code": "OK",
+  "message": "Nueva sesión de evaluación iniciada. Las métricas registradas a partir de ahora quedarán asociadas al ID 'sesion-uuid'.",
+  "data": {
+    "id": "sesion-uuid",
+    "label": "Prueba carga alta — 500 tx",
+    "startedAt": "2026-03-24T10:00:00.000Z",
+    "startBlockRef": 7924130,
+    "iniciadaPor": "usuario-uuid"
+  }
+}
+```
+
+### GET /audit/session/current
+**Requiere:** rol `auditor` o `super_admin`.
+Devuelve la sesión activa o `data: null` si no hay ninguna.
+
+### GET /audit/session/list
+**Requiere:** rol `auditor` o `super_admin`.
+Lista todas las sesiones en orden cronológico.
+
+**Persistencia:** `backend/data/evaluacion-sesion.json`.
 
 ---
 
@@ -591,24 +670,71 @@ console.log('Dirección principal:', w.address);
 
 | Archivo | Responsabilidad |
 |---|---|
-| `backend/src/audit/auditMetricModel.ts` | Tipos TypeScript: `PandorasBoxOutput`, `AuditMetricRecord`, `AuditRunConfig`, `UMBRALES_DEFAULT` |
+| `backend/src/audit/auditMetricModel.ts` | Tipos TypeScript: `PandorasBoxOutput`, `AuditMetricRecord` (incl. `sesionId`, `interoperabilityDetails`), `AuditRunConfig`, `UMBRALES_DEFAULT` |
 | `backend/src/audit/pandorasBoxAdapter.ts` | Ejecución real de pandoras-box + fallback simulación; función `ejecutarPrueba(config)` |
-| `backend/src/audit/auditMetricsService.ts` | Capa de servicio: `listarMetricas()`, `obtenerMetricaPorId(id)`, `ejecutarEvaluacion(config)` |
-| `backend/src/routes/audit.ts` | Router Express con los tres endpoints REST |
+| `backend/src/audit/auditMetricsService.ts` | Capa de servicio: `listarMetricas(opciones?)`, `obtenerMetricaPorId(id)`, `ejecutarEvaluacion(config)`, `buildInteroperabilityDetails()`, cálculo de semáforo de interoperabilidad con 5 parámetros |
+| `backend/src/audit/evaluacionSesionService.ts` | Gestión de sesiones de evaluación: `iniciarNuevaSesion()`, `obtenerSesionActual()`, `listarSesiones()`, `obtenerSesionPorId()` |
+| `backend/src/routes/audit.ts` | Router Express: 3 endpoints de métricas + 3 de sesión (reset/current/list) |
 | `backend/src/server.ts` | Registro del router en `app.use("/audit", auditRouter)` |
-| `backend/data/audit-metrics.json` | Persistencia JSON (generado en runtime) |
+| `backend/data/audit-metrics.json` | Persistencia de registros de evaluación (generado en runtime) |
+| `backend/data/evaluacion-sesion.json` | Persistencia de sesiones de evaluación (generado en runtime) |
+| `backend/scripts/seed-evaluacion-demo.ts` | Script de datos demo: pacientes con género alternado (M/F), 7 EPS colombianas, signos vitales por diagnóstico CIE-10 |
 
 ### Frontend
 
 | Archivo | Responsabilidad |
 |---|---|
-| `frontend/src/pages/AuditoriaDashboardPage.tsx` | Página principal RF10: Sección A (estrés de red) + Sección B (interoperabilidad clínica HU0-HU5) |
-| `frontend/src/shared/services/api.ts` | Tipos `AuditMetricResumen`, `AuditMetricDetalle`, `AuditRunConfigFrontend`; funciones `listarAuditMetricas()`, `obtenerAuditMetrica()`, `ejecutarAuditRun()` |
+| `frontend/src/pages/AuditoriaDashboardPage.tsx` | Página RF10: Sección A (estrés de red) + Sección B (interop. clínica); incluye `PanelSesion`, filtro por sesión, botón "Descargar informe PDF" en cada detalle expandido |
+| `frontend/src/shared/services/api.ts` | Tipos e interfaces incl. `EvaluacionSesion`, `interoperabilityDetails?` en `AuditMetricResumen`; funciones `iniciarSesionEvaluacion()`, `obtenerSesionEvaluacion()`, `listarSesionesEvaluacion()` |
 | `frontend/src/app/router.tsx` | Ruta `/auditoria/metricas` con guard `evaluacion.consultar` |
 
 ---
 
-## 15. Estado de cumplimiento del RF10
+## 15. Sesiones de evaluación
+
+Las sesiones permiten agrupar varias ejecuciones de prueba bajo un mismo contexto sin necesidad de borrar el historial de la blockchain (los registros son inmutables en `audit-metrics.json`).
+
+### Concepto
+Cuando el auditor pulsa **"Iniciar nueva sesión"**, el backend genera un `EvaluacionSesion` con un UUID y un `startedAt`. Toda métrica registrada a partir de ese momento recibe el campo `sesionId` apuntando a esa sesión.
+
+### Filtrado en la UI
+El componente `PanelSesion` muestra la sesión activa y ofrece dos modos de vista:
+- **Todas:** muestra todo el historial.
+- **Sesión actual:** filtra `lista` a registros con `sesionId === sesionActual.id`.
+
+### Cuándo usar sesiones
+- Antes de una demostración: iniciar sesión nueva para tener un historial limpio de esa jornada.
+- Después de un cambio de configuración (nueva URL RPC, nuevo modo): separar resultados del experimento anterior.
+- Para comparar dos configuraciones: una sesión por configuración.
+
+---
+
+## 16. Descarga de informe PDF
+
+Desde el panel de detalle de cualquier evaluación (fila expandida en la tabla), el botón **"⬇ Descargar informe PDF"** genera un informe completo sin dependencias externas.
+
+### Funcionamiento técnico
+La función `descargarInformePDF(r: AuditMetricDetalle)`:
+1. Construye un documento HTML completo en memoria con todos los ejes de evaluación.
+2. Lo abre en una ventana nueva (`window.open("", "_blank")`).
+3. Escribe el HTML y llama a `setTimeout(() => win.print(), 500)` para que el navegador renderice antes de mostrar el diálogo de impresión.
+4. El usuario selecciona "Guardar como PDF" en el diálogo de impresión del navegador (estándar en Chrome, Firefox, Edge).
+
+### Contenido del informe
+| Sección | Métricas incluidas |
+|---|---|
+| **① Identificación** | Modo, red (chainId), URL RPC, fecha/hora, fuente (pandoras-box / simulación) |
+| **② Eficiencia (TPS)** | TPS promedio y pico, total transacciones, exitosas, fallidas, blocktime, bloques observados |
+| **③ Latencia** | Promedio, mínima, máxima, P95, clasificación semáforo con umbral |
+| **④ Gas** | Gas promedio/máx por tx, gas limit, utilización % |
+| **⑤ Seguridad** | Tasa de éxito, transacciones revertidas, out-of-gas, tiempo respuesta nodo |
+| **⑥ Interoperabilidad EVM/HCE** | Nodo accesible, contrato accesible, deploy, llamadas ERC exitosas/total, compatibilidad, nota explicativa |
+
+El informe no requiere conexión al backend; toda la información proviene del objeto `AuditMetricDetalle` ya cargado en el frontend.
+
+---
+
+## 17. Estado de cumplimiento del RF10
 
 | Entregable | Estado |
 |---|---|
@@ -617,7 +743,13 @@ console.log('Dirección principal:', w.address);
 | Diagnóstico de error cuando pandoras-box falla (campo `advertencia`) | ✅ Implementado |
 | Simulación realista con datos del nodo RPC como fallback | ✅ Implementado |
 | Métricas de seguridad (reverts, out-of-gas, respuesta del nodo) | ✅ Implementado |
-| Módulo de interoperabilidad (chainId, rpcUrl, deploy ERC, llamadas ERC) | ✅ Implementado |
+| Interoperabilidad: semáforo con 4 condiciones + objeto `interoperabilityDetails` | ✅ Sprint 5 |
+| Umbrales de latencia realistas para EVM PoS (15 s / 30 s) | ✅ Sprint 5 |
+| Corrección de métricas de timing siempre vacías en Sección B | ✅ Sprint 5 |
+| Sesiones de evaluación: endpoints REST + UI con filtro por sesión | ✅ Sprint 5 |
+| Descarga de informe PDF desde el panel de detalle | ✅ Sprint 5 |
+| Script de datos demo: género alternado, 7 EPS colombianas, signos vitales por CIE-10 | ✅ Sprint 5 |
 | Vista del auditor: tabla + semáforos + detalle expandible + gráficas SVG | ✅ Implementado |
 | Sección B — interoperabilidad clínica (HU0-HU5) embebida en misma página | ✅ Implementado |
+| Diagramas de arquitectura (`docs/arquitectura/`) | ✅ Sprint 5 |
 | Build sin errores (`npm run build` en backend y frontend) | ✅ Confirmado |
