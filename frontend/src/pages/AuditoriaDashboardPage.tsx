@@ -976,6 +976,42 @@ function SeccionInteroperabilidadClinica() {
               <span>{dash.compliance.hceModel.validEpisodes} episodio(s) válidos</span>
               <span>{dash.compliance.hceModel.invalidEpisodes} con observaciones</span>
             </article>
+
+            <article className="metric-card">
+              <strong>Estado del entorno</strong>
+              {/* FHIR */}
+              {dash.overview.fhir ? (
+                <div className={
+                  dash.overview.fhir.disponible
+                    ? "status-chip status-chip--ready"
+                    : dash.overview.fhir.configurado
+                      ? "status-chip status-chip--alert"
+                      : "status-chip"
+                } style={{ marginBottom: 4 }}>
+                  FHIR: {
+                    dash.overview.fhir.disponible
+                      ? `activo (${dash.overview.fhir.almacenamiento})`
+                      : dash.overview.fhir.configurado
+                        ? "caído — docker compose up -d"
+                        : `memoria (${dash.overview.fhir.almacenamiento})`
+                  }
+                </div>
+              ) : (
+                <span style={{ color: "#999", fontSize: "0.78rem" }}>FHIR: no detectado</span>
+              )}
+              {/* Blockchain */}
+              <div className={dash.overview.blockchainMode === "real"
+                ? "status-chip status-chip--ready" : "status-chip"}>
+                Blockchain: {dash.overview.blockchainMode === "real"
+                  ? "Sepolia real"
+                  : "simulación · datos del nodo RPC"}
+              </div>
+              {dash.overview.blockchainMode !== "real" && (
+                <span style={{ fontSize: "0.72rem", color: "#888", lineHeight: 1.3 }}>
+                  La simulación usa bloques reales de Sepolia para parametrizar las métricas.
+                </span>
+              )}
+            </article>
           </div>
 
           {/* Escenarios */}

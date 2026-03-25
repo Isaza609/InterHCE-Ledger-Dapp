@@ -491,6 +491,11 @@ export interface DashboardEvaluacionPrototipo {
     totalIpsSimuladas: number;
     blockchainMode: "real" | "mock";
     rolesConfigurados: string[];
+    fhir?: {
+      configurado: boolean;
+      disponible: boolean;
+      almacenamiento: string;
+    };
   };
   interoperability: {
     multipleIpsReady: boolean;

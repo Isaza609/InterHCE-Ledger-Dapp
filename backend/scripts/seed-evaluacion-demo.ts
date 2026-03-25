@@ -453,7 +453,17 @@ async function simularActualizacionEpisodioConTraz(
     throw new Error(`EPISODE_UPDATED precheck: ${precheck.error}`);
   }
   const previewOnChain = generarRegistroOnChainMetadataDesdeDocumento(episodeId, documento);
-  await almacenarDocumentoClinico(episodeId, documento);
+
+  // Persistir el documento actualizado. Si FHIR falla, abortamos el evento de trazabilidad
+  // para evitar que trazabilidad quede con el nuevo hash y FHIR con el documento antiguo.
+  // Sin este chequeo, al reiniciar el backend FHIR serviría el documento viejo (hash distinto)
+  // y la verificación de integridad mostraría "revision_requerida" incorrectamente.
+  const { fhirPersistWarning } = await almacenarDocumentoClinico(episodeId, documento);
+  if (fhirPersistWarning) {
+    console.warn(`[seed] EPISODE_UPDATED omitido para ${episodeId} — FHIR no persistió (integridad se mantiene consistente): ${fhirPersistWarning}`);
+    return;
+  }
+
   const lifecycleUpdated = actualizarRegistroLifecycleEpisodio(
     episodeId,
     documento,

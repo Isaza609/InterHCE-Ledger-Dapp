@@ -253,6 +253,43 @@ interface ExecError extends Error {
   stdout?: string;
 }
 
+/** Detecta si la URL del RPC es de Alchemy (limitado en compute units por segundo). */
+function esUrlAlchemy(rpcUrl: string): boolean {
+  return rpcUrl.includes("alchemy.com") || rpcUrl.includes("alchemyapi.io");
+}
+
+type TipoErrorAlchemy = "rate_limit" | "replacement_underpriced" | null;
+
+/**
+ * Detecta el tipo de error de Alchemy en el texto de salida/error de pandoras-box.
+ *
+ * "rate_limit": compute units exhausted antes de recibir los recibos.
+ *   pandoras-box tiene un timeout interno de 30 s (hardcoded, no configurable).
+ *   Si Alchemy devuelve HTTP 429 / "compute units per second capacity exceeded",
+ *   los recibos no llegan a tiempo y el proceso termina con código no cero.
+ *   Las transacciones SÍ se enviaron a Sepolia y pueden haberse minado.
+ *
+ * "replacement_underpriced": síntoma secundario de un rate limit previo.
+ *   pandoras-box reintenta con el mismo nonce pero con gas insuficiente porque
+ *   Alchemy rechazó la llamada previa de estimación de gas.
+ */
+function detectarTipoErrorAlchemy(text: string): TipoErrorAlchemy {
+  const lower = text.toLowerCase();
+  if (
+    lower.includes("compute units per second") ||
+    lower.includes("compute units capacity") ||
+    lower.includes("too many requests") ||
+    lower.includes("rate limit") ||
+    lower.includes("429")
+  ) {
+    return "rate_limit";
+  }
+  if (lower.includes("replacement transaction underpriced")) {
+    return "replacement_underpriced";
+  }
+  return null;
+}
+
 async function tryRunPandorasBox(
   config: AuditRunConfig,
   chainId: number
@@ -280,6 +317,12 @@ async function tryRunPandorasBox(
 
     if (config.batchSize) {
       args.push("-b", String(config.batchSize));
+    } else if (esUrlAlchemy(config.rpcUrl)) {
+      // Alchemy limita a ~330 compute units/s en el plan gratuito.
+      // Con el -b por defecto de pandoras-box (25) se agotan los CU antes de que
+      // lleguen todos los recibos → timeout interno de 30 s → salida non-zero.
+      // Con -b 5 cada lote tarda ~60 ms y no excede la capacidad del plan.
+      args.push("-b", "5");
     }
 
     // Timeout generoso: 10 min para pruebas grandes en Sepolia
@@ -346,6 +389,29 @@ async function tryRunPandorasBox(
     // Si el binario no existe en PATH
     if (e.code === "ENOENT") {
       return null; // pandoras-box no instalado → simulación (no es un error del usuario)
+    }
+
+    // Detectar errores específicos de Alchemy (rate limit / nonce reciclado)
+    const textoError = `${stderr} ${stdout} ${base}`;
+    const tipoErrorAlchemy = detectarTipoErrorAlchemy(textoError);
+    if (tipoErrorAlchemy === "rate_limit") {
+      return {
+        error:
+          `Rate limit de Alchemy: las transacciones SÍ se enviaron a Sepolia ` +
+          `pero pandoras-box no pudo recopilar todos los recibos antes del timeout ` +
+          `interno de 30 s. Reduce -t a 15–20 y -b a 5 para no agotar el límite ` +
+          `de compute units por segundo. Detalle: ${stderr || base}`
+      };
+    }
+    if (tipoErrorAlchemy === "replacement_underpriced") {
+      return {
+        error:
+          `"Replacement transaction underpriced": pandoras-box intentó reenviar txs ` +
+          `con el mismo nonce tras recibir errores de Alchemy. ` +
+          `Las transacciones anteriores SÍ pueden haberse enviado a Sepolia. ` +
+          `Espera ~2 min (para que los nonces avancen) y reduce -t a 15–20 y -b a 5 ` +
+          `antes de volver a intentarlo. Detalle: ${stderr || base}`
+      };
     }
 
     // Construir mensaje de error informativo con toda la info disponible

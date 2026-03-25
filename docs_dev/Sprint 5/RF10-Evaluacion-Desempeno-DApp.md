@@ -872,3 +872,146 @@ execFileAsync(pandoras-box, [..., "--mode", "EOA", "-o", outFile])
 | Bug pandoras-box modo EOA: búsqueda de archivo en rutas alternativas + stderr real | ✅ Sprint 5 |
 | Diagramas de arquitectura (`docs/arquitectura/`) | ✅ Sprint 5 |
 | Build sin errores (`npm run build` en backend y frontend) | ✅ Confirmado |
+| Rate limit Alchemy: batchSize=5 automático + mensajes diferenciados "txs SÍ enviadas" | ✅ Sprint 5 |
+| Tarjeta "Estado del entorno" en Sección B (FHIR / blockchain / nota simulación) | ✅ Sprint 5 |
+| Seed: omite EPISODE_UPDATED en trazabilidad si FHIR no persiste (integridad consistente) | ✅ Sprint 5 |
+
+---
+
+## 20. Qué métricas son reales y cuáles son estimadas o sintéticas
+
+Esta sección responde la pregunta más importante para interpretar los resultados del módulo RF10: **¿qué estoy midiendo realmente?**
+
+La respuesta varía según la sección del dashboard y el modo de ejecución.
+
+---
+
+### 20.1 Sección A — Pruebas de estrés (pandoras-box)
+
+#### Modo ejecución real (`fuente: "pandoras-box"`)
+
+Este modo se activa cuando se proporciona un mnemonic con fondos en la red objetivo. pandoras-box envía transacciones reales a la blockchain y reporta los datos de los bloques donde quedaron incluidas.
+
+| Métrica | ¿Es real? | Origen |
+|---|---|---|
+| **TPS promedio** | ✅ Real | pandoras-box mide las transacciones confirmadas sobre la duración total observada |
+| **TPS pico** | ✅ Derivado de datos reales | El adaptador calcula `max(numTxs_bloque / blocktime)` usando los datos reales de cada bloque |
+| **Blocktime promedio/mín/máx** | ✅ Real | Diferencia de timestamps entre bloques consecutivos reportados por pandoras-box |
+| **Gas usado (promedio y máx)** | ✅ Real | Valores hex `gasUsed` / `gasLimit` del bloque, tal como los reporta el nodo Ethereum |
+| **Utilización de gas (%)** | ✅ Derivado de datos reales | `(gas usado) / (gasLimit × bloques)`, calculado sobre valores reales |
+| **Transacciones exitosas** | ✅ Real | Número de transacciones que aparecen en bloques según pandoras-box |
+| **Transacciones fallidas** | ⚠️ Aproximado | Se infieren como `totalEnviadas − txEnBloques`; pandoras-box no distingue entre revert, out-of-gas y timeout |
+| **Latencia de confirmación** | ⚠️ Estimada | pandoras-box **no registra el timestamp de envío individual** de cada transacción. La latencia se estima como `blocktime × 1.15`, que representa la cota inferior realista (esperar al menos 1 bloque completo). No es la latencia exacta de ninguna transacción específica |
+| **P95 / P99 de latencia** | ⚠️ Estimados | Se derivan de la latencia promedio con factores fijos (`avg × 1.6` y `avg × 2.1`); pandoras-box no provee percentiles individuales |
+| **Transacciones revertidas** | ⚠️ Estimado | Se toma como el 70 % de las fallidas (heurística; pandoras-box no expone desglose) |
+| **Transacciones out-of-gas** | ⚠️ Estimado | El 30 % restante de las fallidas |
+| **Tiempo de respuesta del nodo** | ⚠️ Estimado | Heurística: `blocktime × 0.08` (≈ 8 % del blocktime); pandoras-box no mide latencia JSON-RPC individual |
+| **Transacciones enviadas** | ✅ Real | La cuenta del mnemonic gasta ETH real en Sepolia; las transacciones existen en la blockchain |
+
+> **Resumen modo real:** TPS, gas y blocktime son completamente reales. La latencia y el desglose de fallos son aproximaciones con base en los datos reales de bloques. Las transacciones sí se ejecutan y consumen ETH de Sepolia.
+
+#### Modo simulación (`fuente: "simulacion"`)
+
+Se activa cuando no hay mnemonic, pandoras-box no está instalado (`ENOENT`), o pandoras-box falló (fondos insuficientes, rate limit de Alchemy, etc.).
+
+| Métrica | ¿Es real? | Origen |
+|---|---|---|
+| **Blocktime promedio** | ✅ Real (si el nodo responde) | El adaptador consulta los últimos 10 bloques del nodo via `eth_getBlockByNumber` y mide timestamps reales |
+| **chainId** | ✅ Real | Consultado directamente al nodo via `eth_chainId` |
+| **TPS promedio** | ⚠️ Sintético | Generado con distribución normal calibrada por `chainId` (ej. Sepolia → media 12 TPS) |
+| **Gas por bloque** | ⚠️ Sintético | Estimado según el modo (EOA: 21 000, ERC20: 50 000, ERC721: 120 000) con varianza aleatoria |
+| **Latencia** | ⚠️ Sintética | Calculada a partir del blocktime real + ruido gaussiano |
+| **Transacciones exitosas/fallidas** | ⚠️ Sintético | Porcentaje de fallo fijo por modo (EOA: 1.5 %, ERC20: 2.5 %, ERC721: 3 %) + varianza aleatoria |
+| **Transacciones enviadas** | ❌ No se envía nada | En modo simulación **no se envía ninguna transacción a la red**; el ETH del mnemonic no se toca |
+
+> **Resumen modo simulación:** los bloques consultados al nodo son reales (blocktime, chainId), pero las métricas de carga (TPS, gas, fallos, latencia) son completamente sintéticas. No se gasta ETH. Es útil para estimar el comportamiento de la red sin riesgo de gasto.
+
+#### Por qué la simulación aún usa el nodo RPC
+
+Incluso en modo simulación, el adaptador consulta el nodo (`eth_chainId`, `eth_blockNumber`, `eth_getBlockByNumber`) para:
+1. Obtener el blocktime real de Sepolia en ese momento (12 s promedio en PoS post-merge).
+2. Calibrar los parámetros de la distribución normal con datos del nodo actual.
+3. Mostrar el chainId correcto en la tarjeta de entorno del dashboard.
+
+Esto hace que la simulación sea "realista" (parámetros anclados en la red real) aunque los valores de carga sean sintéticos.
+
+---
+
+### 20.2 Sección B — Interoperabilidad clínica (`/evaluation/dashboard`)
+
+La Sección B no envía transacciones. Mide el comportamiento del sistema backend sobre los episodios clínicos existentes.
+
+#### Tiempos de acceso (3 operaciones)
+
+| Operación | ¿Es real? | Qué mide |
+|---|---|---|
+| **Metadatos on-chain** (`obtenerRegistroOnChainMetadata`) | ✅ Real | Tiempo real de leer el store de trazabilidad (`episodio-trazabilidad.json`) o llamar al contrato en Sepolia (si blockchain real) |
+| **Documento off-chain** (`recuperarDocumentoClinico`) | ✅ Real | Tiempo real de: (1ª llamada) HTTP a HAPI FHIR, o (llamadas 2–5) lectura del caché en memoria |
+| **Verificación de integridad** | ✅ Real | Tiempo real de calcular `SHA-256(documento_canonico)` y comparar con el hash en trazabilidad |
+| **Consistencia** (stdDev de 3–5 muestras) | ✅ Real | Calculada sobre tiempos medidos reales; no se fabrican los números |
+
+> **Nota:** la 1ª llamada al documento es más lenta (HTTP a FHIR ~30–80 ms) que las siguientes (caché en memoria <1 ms). La métrica "acceso a documento off-chain" refleja el tiempo real de la primera llamada; las siguientes muestras son casi cero, lo que baja el promedio. Esto es el comportamiento real del sistema con caché habilitado.
+
+#### Escenarios de interoperabilidad
+
+| Dato | ¿Es real? | Origen |
+|---|---|---|
+| **Total episodios** | ✅ Real | Conteo de todos los episodios registrados en el sistema (FHIR o memoria) |
+| **Total IPS simuladas** | ✅ Real | Conteo de IPSs registradas en `backend/data/ips.json` |
+| **Episodios multi-IPS** | ✅ Real | El sistema analiza qué episodios tienen permisos concedidos a IPSs distintas a la propietaria |
+| **Integridad** (`integro` / `revision_requerida` / `sin_evidencia`) | ✅ Real | Comparación SHA-256 real entre el documento actual y el hash registrado en trazabilidad |
+| **Continuidad asistencial** (`hasCrossIpsContinuity`) | ✅ Real | Se detecta si el episodio tiene eventos de acceso desde una IPS distinta a la dueña |
+| **Flujo de permisos** (`hasPermissionFlow`) | ✅ Real | Presencia de eventos `PERMISSION_GRANTED` en la trazabilidad del episodio |
+| **Validación del modelo HCE** | ✅ Real | Ejecución del schema Zod contra el documento recuperado; no es un flag hardcodeado |
+
+#### Rendimiento blockchain en Sección B
+
+| Modo | ¿Son reales los costos/latencias? |
+|---|---|
+| `blockchainMode: "real"` | ✅ Las latencias de confirmación y costos en gas son los registrados cuando se enviaron las transacciones reales |
+| `blockchainMode: "mock"` | ⚠️ Los costos y latencias son **estimados** a partir de valores típicos de la red; no se enviaron transacciones |
+
+---
+
+### 20.3 Los datos clínicos (episodios) son sintéticos, las mediciones son reales
+
+Es importante distinguir dos cosas:
+
+| Aspecto | Naturaleza |
+|---|---|
+| **Los episodios clínicos** (pacientes, diagnósticos, signos vitales) | ⚠️ Sintéticos si vienen del script `seed-evaluacion-demo.ts` (datos ficticios estructuralmente válidos según RDA/FHIR); o reales si fueron creados por un usuario a través de la DApp |
+| **Las mediciones** (tiempos de acceso, hashes, consistencia) | ✅ Siempre reales — se miden sobre los datos que existan en el sistema, independientemente de si son seed o no |
+
+El script de seed genera datos ficticios pero clínicamente estructurados (siguiendo la norma RDA-FHIR) para tener episodios sobre los cuales medir. Las métricas que el dashboard calcula sobre esos episodios son mediciones reales del sistema.
+
+---
+
+### 20.4 Tabla resumen: real vs. estimado vs. sintético
+
+| Sección | Métrica | Con pandoras-box real | Con simulación | Con blockchain real |
+|---|---|---|---|---|
+| A | TPS promedio | ✅ Real | ⚠️ Sintético | — |
+| A | Blocktime | ✅ Real | ✅ Del nodo | — |
+| A | Gas | ✅ Real | ⚠️ Estimado | — |
+| A | Latencia | ⚠️ Estimada | ⚠️ Sintética | — |
+| A | Fallos/reverts | ⚠️ Aproximado | ⚠️ Sintético | — |
+| A | ETH gastado | ✅ Real (Sepolia) | ❌ Nada | — |
+| B | Tiempos de acceso | — | — | ✅ Reales |
+| B | Consistencia (stdDev) | — | — | ✅ Real |
+| B | Integridad hash | — | — | ✅ Real |
+| B | Multi-IPS / permisos | — | — | ✅ Real |
+| B | Costos blockchain | — | — | ✅ Real (modo real) / ⚠️ Estimado (modo mock) |
+
+---
+
+### 20.5 Cómo identificar en la UI qué tipo de dato estás viendo
+
+| Indicador | Ubicación | Qué dice |
+|---|---|---|
+| 🔴 "Ejecución real con pandoras-box" | Banner después de ejecutar prueba en Sección A | Las transacciones se enviaron a Sepolia; TPS, gas y blocktime son reales |
+| 🔵 "Simulación (datos del nodo RPC)" | Banner después de ejecutar prueba en Sección A | No se envió nada; solo blocktime y chainId son reales |
+| ⚠️ Banner amarillo con detalle | Aparece cuando pandoras-box falló y se usó simulación | Indica el motivo exacto del fallo (fondos, rate limit, etc.) |
+| Tarjeta "Estado del entorno" | Sección B del dashboard | Muestra si FHIR está activo (tiempos reales vs. memoria) y si la blockchain es real o mock |
+| `fuente` en el JSON del registro | Campo persistido en `audit-metrics.json` | `"pandoras-box"` = datos reales de la red; `"simulacion"` = datos sintéticos |
+| `metricsMode` por operación en Sección B | `blockchainPerformance.operations[].metricsMode` | `"medido"` = dato real; `"estimado"` = aproximación; `"no_disponible"` = sin evidencia |
+
