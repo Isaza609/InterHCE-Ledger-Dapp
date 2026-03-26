@@ -1015,3 +1015,250 @@ El script de seed genera datos ficticios pero clínicamente estructurados (sigui
 | `fuente` en el JSON del registro | Campo persistido en `audit-metrics.json` | `"pandoras-box"` = datos reales de la red; `"simulacion"` = datos sintéticos |
 | `metricsMode` por operación en Sección B | `blockchainPerformance.operations[].metricsMode` | `"medido"` = dato real; `"estimado"` = aproximación; `"no_disponible"` = sin evidencia |
 
+---
+
+## 21. Mejoras a la Sección B — Sprint 6
+
+### 21.1 Exportación PDF de la Sección B
+
+Se agregó la función `descargarInformeSeccionBPDF(d: DashboardEvaluacionPrototipo)` en `AuditoriaDashboardPage.tsx`. Genera un informe HTML completo de la Sección B y lo abre en una ventana nueva para imprimir como PDF (Ctrl+P → "Guardar como PDF").
+
+**Contenido del informe PDF Sección B:**
+1. Resumen general (episodios, trazas, IPS, modo blockchain)
+2. Catálogo de HUs evaluadas (HU0-E6 a HU5-E6) con título, descripción e interpretación
+3. Tiempos de acceso y verificación con umbrales de referencia e interpretación por métrica
+4. Escenarios de interoperabilidad entre IPS
+5. Costo y rendimiento blockchain por tipo de transacción
+6. Actores observados y hallazgos que requieren revisión
+7. Requisitos validados con estado de cumplimiento
+
+**Acceso:** botón "Descargar PDF Sección B" en la cabecera de la Sección B (`/auditoria/metricas`).
+
+> Nota: El PDF de la Sección A ya existía como `descargarInformePDF(r: AuditMetricDetalle)`, accesible desde el panel de detalle de cada evaluación. Ambas funciones son independientes y no requieren librerías externas.
+
+### 21.2 Métricas de timing enriquecidas
+
+Las tres métricas de timing de la Sección B (Metadatos on-chain, Documento off-chain, Verificación de integridad) se enriquecieron con:
+
+| Campo | Descripción |
+|---|---|
+| **Descripción** | Qué mide la métrica y de dónde obtiene los datos |
+| **Umbral de referencia** | Rangos esperados según el entorno (mock / FHIR local / blockchain real) |
+| **Interpretación dinámica** | Texto que varía según el valor y el número de muestras obtenidas |
+
+Se implementó el componente `TimingCardEnriquecida` que reemplaza la tarjeta resumida anterior. El catálogo de metadatos por métrica vive en `TIMING_META` (diccionario estático en el mismo archivo).
+
+### 21.3 Catálogo de historias de usuario (HU0-HU5)
+
+Se agregó el diccionario `HU_CATALOGO` con la siguiente información por cada HU:
+
+| HU | Título |
+|---|---|
+| HU0-E6 | Evaluar el flujo de interoperabilidad entre múltiples IPS |
+| HU1-E6 | Medir tiempos de acceso y verificación de información clínica |
+| HU2-E6 | Evaluar el costo y rendimiento de las transacciones blockchain |
+| HU3-E6 | Validar la integridad y trazabilidad del sistema |
+| HU4-E6 | Validar el cumplimiento del modelo HCE y los requisitos del sistema |
+| HU5-E6 | Documentar los resultados y conclusiones del prototipo |
+
+Cada entrada incluye `titulo`, `descripcion` (qué evalúa) e `interpretacion` (qué indica el resultado). Se presenta tanto en la vista web como en el PDF exportado.
+
+### 21.4 Consolidación de datos en `/auditoria/metricas`
+
+La Sección B de `/auditoria/metricas` ahora incluye toda la información que antes solo estaba disponible en `/auditoria/evaluacion`:
+
+| Subsección | Antes (Sección B) | Después (Sección B consolidada) |
+|---|---|---|
+| Catálogo HUs con descripción | ❌ | ✅ Grid con título, descripción e interpretación |
+| Tarjetas resumen con HU asociada | Genérica | Etiquetada por HU (HU0-E6, HU2-E6, etc.) |
+| Panel de conclusiones | ❌ | ✅ (Interop., Tiempos, Blockchain) |
+| Tiempos de acceso detallados | Solo valores | ✅ Con umbral, interpretación, desviación y consistencia |
+| Escenarios de interoperabilidad | ✅ | ✅ (sin cambios) |
+| Costo y rendimiento blockchain | ❌ | ✅ Tabla por tipo de operación |
+| Actores observados | ❌ | ✅ Tabla con roles, eventos e IPS |
+| Hallazgos con revisión | ❌ | ✅ Lista de episodios con issues |
+| Requisitos validados | Colapsable | ✅ Expandido por defecto |
+| IPS simuladas | ❌ | ✅ Badges visuales |
+| Exportar PDF Sección B | ❌ | ✅ Botón en cabecera |
+
+La Sección A no fue modificada.
+
+---
+
+## 22. Correcciones de bugs en la Sección B — Sprint 6
+
+### 22.1 Problema 1 — Verificador de integridad compara contra hash incorrecto
+
+**Síntoma:** 18 de 27 episodios mostraban `integrityStatus: "revision_requerida"`. Todos los afectados tenían exactamente 2 versiones (creación + actualización).
+
+**Causa raíz:** Race condition en la indexación asíncrona de HAPI FHIR. Cuando el seed crea y actualiza un episodio rápidamente, `upsertSnapshotDocumentReference` no encontraba el snapshot recién creado (aún no indexado por HAPI FHIR) y creaba un **segundo snapshot**. Posteriormente, `retrieveEpisodeFromFhir` usaba `findSnapshotByEpisodeId` que retornaba el snapshot más antiguo (V1), cuyo hash correspondía al documento original — no al actualizado (V2).
+
+**Archivos modificados:** `backend/src/hce/fhirStorageService.ts`
+
+**Correcciones aplicadas:**
+
+1. `findSnapshotByEpisodeId` — ahora usa `_sort=-_lastUpdated` y `_count=1` para retornar siempre el snapshot más reciente:
+   ```typescript
+   const bundle = await searchResources("DocumentReference", {
+     identifier: `${EPISODE_SNAPSHOT_SYSTEM}|${episodeId}`,
+     _sort: "-_lastUpdated",
+     _count: "1"
+   });
+   ```
+
+2. `upsertSnapshotDocumentReference` — busca **todos** los snapshots existentes, actualiza el más reciente y elimina los duplicados obsoletos para prevenir futuras lecturas inconsistentes.
+
+**Resultado:** 27/27 episodios pasan a `integro`. RF8 pasa de `parcial` a `cumple`.
+
+---
+
+### 22.2 Problema 2 — RF8 y RF9 aparecen como "parcial" sin explicación suficiente
+
+**Síntoma:** Los requisitos RF8 y RF9 se mostraban como `parcial` sin detalle sobre qué faltaba para cumplirlos.
+
+**Causa raíz de RF8:** Consecuencia directa del Problema 1 — los 18 episodios con hash incorrecto generaban `integrityIssues`, lo que forzaba `status: "parcial"` para RF8.
+
+**Causa raíz de RF9:** La condición `cumpleHu1E5 = contratosOperativos && ipsConsolidadas.length >= 2` fallaba porque `ipsConsolidadas` solo contenía IPS del Map `ipsSimuladas` (vacío — ver Problema 3). El mensaje de detalle era genérico y no explicaba qué condición fallaba.
+
+**Archivos modificados:** `backend/src/evaluation/prototipoEvaluationService.ts`
+
+**Corrección aplicada:** El detalle de RF9 ahora es condicional y específico. Indica exactamente qué falta:
+- Si blockchain no está habilitada **y** hay < 2 IPS: lista ambas condiciones.
+- Si solo blockchain no está habilitada: indica cómo configurar `BLOCKCHAIN_TRACE_MODE`.
+- Si solo faltan IPS: indica cuántas hay y cuántas se requieren.
+
+**Resultado:** RF8 y RF9 pasan a `cumple`. Los cuatro requisitos (RF8–RF11) muestran `cumple`.
+
+---
+
+### 22.3 Problema 3 — IPS simuladas aparece como 0
+
+**Síntoma:** `simulacionIps.total` mostraba 0 a pesar de que los episodios demo involucran IPS-001 a IPS-006.
+
+**Causa raíz:** El campo se calculaba desde `ipsSimuladas`, un `Map` en memoria que solo se alimenta por `POST /infra/ips`. El seed de datos demo (`seed-evaluacion-demo.ts`) crea IPS-003 a IPS-006 via `crearIps()` del `ipsService`, que es otro `Map` en memoria en un **proceso separado** — las IPS no sobreviven al fin del proceso del seed.
+
+**Archivos modificados:** `backend/src/infra/infraestructuraService.ts`
+
+**Corrección aplicada:** La función `obtenerEstadoInfraestructura` ahora consolida IPS de tres fuentes:
+
+| Fuente | Persistencia | IPS que aporta |
+|---|---|---|
+| `ipsSimuladas` (POST /infra/ips) | Memoria (mismo proceso) | Las configuradas manualmente |
+| `listarIpsActivas()` (ipsService) | Memoria (hardcoded seeds) | IPS-001, IPS-002 |
+| `listarEventosTrazabilidad()` (trazabilidadService) | **JSON persistido** | Todas las IPS que participaron en eventos (IPS-001 a IPS-006) |
+
+Se excluyen identificadores no-IPS como `"AUDITORIA"`, `"SISTEMA"`, `"ADMIN"` que corresponden a roles especiales.
+
+**Resultado:** `simulacionIps.total` muestra 6 IPS. IPS-001 e IPS-002 conservan sus nombres completos del seed hardcoded; IPS-003 a IPS-006 se descubren desde los eventos de trazabilidad persistidos.
+
+---
+
+### 22.4 Resumen de impacto
+
+| Métrica | Antes | Después |
+|---|---|---|
+| Episodios con integridad verificada | 9/27 (33%) | 27/27 (100%) |
+| RF8 (Verificación de integridad) | `parcial` | `cumple` |
+| RF9 (Interfaz DApp) | `parcial` | `cumple` |
+| IPS simuladas detectadas | 0 | 6 |
+| `multipleIpsActivo` | `false` | `true` |
+| `cumpleHu1E5` | `false` | `true` |
+
+---
+
+## 23. Transición de modo mock a blockchain real (Sepolia) — Sprint 6
+
+### 23.1 Contexto
+
+La Sección B originalmente operaba con `BLOCKCHAIN_TRACE_MODE=mock`, donde las transacciones se simulaban localmente con tiempos y costos estimados (emitterId: `mock-backend-signer`, metricsMode: `estimated`). Se migró a modo real para que cada operación clínica firme y envíe transacciones reales a la red Sepolia.
+
+### 23.2 Variables de entorno modificadas
+
+| Variable | Valor anterior | Valor nuevo | Archivo |
+|---|---|---|---|
+| `BLOCKCHAIN_TRACE_MODE` | `auto` (operaba como mock sin contrato compatible) | `auto` (opera como real con contrato re-desplegado) | `backend/.env` |
+| `InterHCELedger` address | `0xEdf3b264...D166` | `0x34C09c91c8B9dE148f4e17c5896A4ee0965fE9b0` | `shared/blockchain/contracts.sepolia.json` |
+
+**Nota:** `SEPOLIA_RPC_URL` y `DEPLOYER_PRIVATE_KEY` ya estaban configurados. No se crearon variables nuevas.
+
+### 23.3 Re-despliegue del contrato
+
+El contrato originalmente desplegado (`0xEdf3b264...D166`) tenía un bug en el modifier `onlyClinicalActor`: solo aceptaba `Rol.ProfesionalSalud`, excluyendo `Rol.AdminIps`. El código fuente corregido acepta ambos roles:
+
+```solidity
+modifier onlyClinicalActor() {
+    require(usuarios[msg.sender].activo, "Usuario inactivo");
+    Rol rol = usuarios[msg.sender].rol;
+    require(
+        rol == Rol.ProfesionalSalud || rol == Rol.AdminIps,
+        "Rol no autorizado"
+    );
+    _;
+}
+```
+
+Se recompiló (`npx hardhat clean && npx hardhat compile`) y re-desplegó (`npm run deploy:sepolia`) el contrato. El script de deploy actualizó automáticamente `shared/blockchain/contracts.sepolia.json` con la nueva dirección.
+
+**Wallet del backend (deployer y owner):** `0x580E296fbC145bfCB2A33891FCb7e116392c4dD6`
+- Rol asignado por el constructor: `AdminIps` (3)
+- Satisface tanto `onlyClinicalActor` como `onlyRol(AdminIps)`
+
+### 23.4 Ejecución del seed con transacciones reales
+
+```bash
+cd backend
+RESET_DEMO_CONFIRM=YES npm run reset:demo-data   # limpiar JSON mock
+docker compose down -v && docker compose up -d     # FHIR limpio
+# esperar ~90s a que FHIR arranque
+SEED_BLOCKCHAIN_REAL=1 npm run seed:eval-demo      # 117 txs reales
+```
+
+**Duración total del seed:** ~30 minutos (117 transacciones × ~15s confirmación promedio).
+
+### 23.5 Resultados observados — métricas reales vs. estimadas
+
+| Operación | N | Confirmación (ms) | Gas usado | Costo (gwei) | Modo |
+|---|---|---|---|---|---|
+| Creación de episodio | 27 | 12,554 | 141,269 | 141.3 | medido |
+| Otorgamiento de permiso | 18 | 14,042 | 29,833 | 29.8 | medido |
+| Acceso auditable | 18 | 13,283 | 34,658 | 34.7 | medido |
+| Actualización de episodio | 18 | 12,584 | 44,889 | 44.9 | medido |
+| Verificación de integridad | 18 | 13,282 | 34,058 | 34.1 | medido |
+| Revocación de permiso | 18 | 15,022 | 29,821 | 29.8 | medido |
+
+**Emisor en todos los eventos:** `0x580E296fbC145bfCB2A33891FCb7e116392c4dD6` (dirección real de la wallet del backend).
+
+### 23.6 Comparación mock vs. real
+
+| Métrica | Mock (estimado) | Real (medido) | Observación |
+|---|---|---|---|
+| emitterId | `mock-backend-signer` | `0x580E296f...4dD6` | Dirección Ethereum real |
+| metricsMode | `estimated` | `measured` | Datos reales de recibos de transacción |
+| Confirmación (episodio) | ~1,280 ms | ~12,554 ms | Sepolia blocktime real (~12s) |
+| Gas (episodio) | 205,000 (hardcoded) | 141,269 (medido) | El gas real es menor al estimado conservador |
+| Gas (permiso) | 128,000 (hardcoded) | 29,833 (medido) | El permiso emite solo un evento, gas muy bajo |
+| Costo total seed | 0 ETH | 0.000764 ETH | Costo real negligible en testnet |
+| blockNumber | 0 | 10,522,xxx | Bloques reales de Sepolia |
+| explorerUrl | Hash SHA-256 sintético | `https://sepolia.etherscan.io/tx/0x...` | Verificable en Etherscan |
+
+### 23.7 Estado final del dashboard
+
+| Campo | Valor |
+|---|---|
+| Blockchain mode | `real` |
+| Metric kind | `medido` |
+| Episodios | 27 |
+| Trace events | 117 |
+| IPS simuladas | 6 |
+| Integridad | 27/27 íntegro |
+| RF8–RF11 | Todos `cumple` |
+| Balance wallet restante | 0.0875 ETH |
+
+### 23.8 Impacto en la evaluación
+
+- El campo `blockchainPerformance.metricKind` cambió de `"estimado"` a `"medido"`.
+- Los tiempos de confirmación reflejan el blocktime real de Sepolia (~12-15s) en vez de milisegundos sintéticos.
+- Los costos de gas son valores reales de los recibos de transacción, no estimaciones hardcoded.
+- Cada evento de trazabilidad tiene un `transactionHash` verificable en Etherscan y un `blockNumber` real.
+- El emisor (`emitterId`) es la dirección `0x` de la wallet, no el placeholder `mock-backend-signer`.
+

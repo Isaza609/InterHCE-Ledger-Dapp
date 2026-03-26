@@ -323,7 +323,11 @@ async function generarDashboardEvaluacionPrototipo(input) {
             status: infraestructura.cumpleHu1E5 ? "cumple" : "parcial",
             detail: infraestructura.cumpleHu1E5
                 ? "La DApp dispone de vistas para episodios, permisos, trazabilidad e infraestructura con soporte multirol."
-                : "La interfaz existe, pero el entorno aún requiere completar alistamiento de blockchain real o simulación multi-IPS."
+                : !infraestructura.blockchain.contratosOperativos && infraestructura.simulacionIps.total < 2
+                    ? `La trazabilidad blockchain no está habilitada y solo hay ${infraestructura.simulacionIps.total} IPS registrada(s). Se requiere: (1) configurar BLOCKCHAIN_TRACE_MODE=mock o real con RPC+firma+contrato, y (2) al menos 2 IPS activas.`
+                    : !infraestructura.blockchain.contratosOperativos
+                        ? "La trazabilidad blockchain no está habilitada. Configure BLOCKCHAIN_TRACE_MODE=mock o auto, y asegúrese de que RPC, firma y contrato estén configurados en el .env."
+                        : `Solo hay ${infraestructura.simulacionIps.total} IPS registrada(s); se requieren al menos 2 para validar interoperabilidad multi-IPS. Ejecute el seed de datos demo o registre IPS adicionales.`
         },
         {
             requirementId: "RF10",

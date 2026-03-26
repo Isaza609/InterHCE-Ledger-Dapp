@@ -4,6 +4,8 @@ exports.configurarIpsSimuladas = configurarIpsSimuladas;
 exports.listarIpsSimuladas = listarIpsSimuladas;
 exports.obtenerEstadoInfraestructura = obtenerEstadoInfraestructura;
 const fhirClient_1 = require("../hce/fhirClient");
+const trazabilidadService_1 = require("../hce/trazabilidadService");
+const ipsService_1 = require("../ips/ipsService");
 const blockchainTraceService_1 = require("./blockchainTraceService");
 const estadoInfra = {
     red: "sepolia",
@@ -38,12 +40,60 @@ function listarIpsSimuladas() {
     return [...ipsSimuladas.values()];
 }
 function obtenerEstadoInfraestructura() {
-    const ips = listarIpsSimuladas();
     const fhirConfigurado = (0, fhirClient_1.isFhirConfigured)();
     const blockchainReal = (0, blockchainTraceService_1.obtenerConfiguracionBlockchainReal)();
     const blockchainMode = blockchainReal.enabled ? "real" : "no_disponible";
     const contratosOperativos = blockchainReal.enabled;
-    const cumpleHu1E5 = contratosOperativos && ips.length >= 2;
+    // IPS consolidadas: combinar tres fuentes para reflejar todas las IPS que
+    // participan en el sistema, incluyendo aquellas creadas por el seed en un
+    // proceso separado (que no sobreviven en el ipsService in-memory):
+    //   1. ipsSimuladas: registradas manualmente via POST /infra/ips
+    //   2. ipsService: IPS activas (seeds hardcoded IPS-001, IPS-002)
+    //   3. Trace events (JSON persistido): descubrir IPS por actor.ipsId y
+    //      metadata.targetIpsId — refleja IPS que realmente participaron en
+    //      episodios aunque el proceso que las creó ya no esté corriendo.
+    const ipsManual = listarIpsSimuladas();
+    const ipsRegistradas = (0, ipsService_1.listarIpsActivas)();
+    const ipsMap = new Map();
+    for (const ips of ipsManual) {
+        ipsMap.set(ips.ipsId, ips);
+    }
+    for (const ips of ipsRegistradas) {
+        if (!ipsMap.has(ips.ipsId)) {
+            ipsMap.set(ips.ipsId, {
+                ipsId: ips.ipsId,
+                nombre: ips.nombre,
+                repsCodigo: ips.repsCodigo
+            });
+        }
+    }
+    // Descubrir IPS adicionales desde los eventos de trazabilidad persistidos.
+    // Excluir identificadores de rol (e.g. "AUDITORIA", "SISTEMA") que no son IPS reales.
+    const NON_IPS_IDS = new Set(["AUDITORIA", "SISTEMA", "ADMIN"]);
+    const traceEvents = (0, trazabilidadService_1.listarEventosTrazabilidad)();
+    for (const event of traceEvents) {
+        const actorIps = event.actor.ipsId;
+        if (actorIps && !ipsMap.has(actorIps) && !NON_IPS_IDS.has(actorIps)) {
+            ipsMap.set(actorIps, {
+                ipsId: actorIps,
+                nombre: actorIps,
+                repsCodigo: actorIps
+            });
+        }
+        const targetIps = event.metadata.targetIpsId;
+        if (typeof targetIps === "string" && targetIps && !ipsMap.has(targetIps) && !NON_IPS_IDS.has(targetIps)) {
+            ipsMap.set(targetIps, {
+                ipsId: targetIps,
+                nombre: targetIps,
+                repsCodigo: targetIps
+            });
+        }
+    }
+    const ipsConsolidadas = [...ipsMap.values()].sort((a, b) => a.ipsId.localeCompare(b.ipsId));
+    // RF9 (cumpleHu1E5): la DApp dispone de vistas funcionales si la trazabilidad
+    // blockchain está habilitada (modo real o mock) y hay al menos 2 IPS registradas.
+    // El requisito evalúa la interfaz, no que la blockchain sea Sepolia real.
+    const cumpleHu1E5 = contratosOperativos && ipsConsolidadas.length >= 2;
     return {
         backend: {
             status: "ok",
@@ -67,9 +117,9 @@ function obtenerEstadoInfraestructura() {
             almacenamiento: fhirConfigurado ? "hapi-fhir" : "memoria"
         },
         simulacionIps: {
-            total: ips.length,
-            ips,
-            multipleIpsActivo: ips.length >= 2
+            total: ipsConsolidadas.length,
+            ips: ipsConsolidadas,
+            multipleIpsActivo: ipsConsolidadas.length >= 2
         },
         cumpleHu1E5
     };

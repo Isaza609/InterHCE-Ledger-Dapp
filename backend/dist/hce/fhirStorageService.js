@@ -43,13 +43,25 @@ async function findEncounterByEpisodeId(episodeId) {
         encounterId: enc.id
     };
 }
+/**
+ * Busca el snapshot más reciente del episodio. Usa `_sort=-_lastUpdated` para
+ * obtener el más nuevo primero, lo que corrige el caso donde HAPI FHIR creó
+ * snapshots duplicados por indexación asíncrona (upsert rápido durante el seed).
+ */
 async function findSnapshotByEpisodeId(episodeId) {
-    return searchSingleResource("DocumentReference", {
-        identifier: `${EPISODE_SNAPSHOT_SYSTEM}|${episodeId}`
+    const bundle = await (0, fhirClient_1.searchResources)("DocumentReference", {
+        identifier: `${EPISODE_SNAPSHOT_SYSTEM}|${episodeId}`,
+        _sort: "-_lastUpdated",
+        _count: "1"
     });
+    return bundle.entry?.[0]?.resource ?? null;
 }
+/**
+ * Crea o actualiza el snapshot del episodio. Si existen duplicados (causados por
+ * la indexación asíncrona de HAPI FHIR durante inserciones rápidas), actualiza
+ * el más reciente y elimina los obsoletos para prevenir lecturas inconsistentes.
+ */
 async function upsertSnapshotDocumentReference(episodeId, payload, patientId) {
-    const existing = await findSnapshotByEpisodeId(episodeId);
     const snapshotBody = {
         resourceType: "DocumentReference",
         status: "current",
@@ -73,11 +85,24 @@ async function upsertSnapshotDocumentReference(episodeId, payload, patientId) {
             }
         ]
     };
-    if (existing?.id) {
-        await (0, fhirClient_1.putResource)({
-            ...snapshotBody,
-            id: existing.id
-        });
+    // Buscar TODOS los snapshots existentes (puede haber duplicados por race condition)
+    const allSnapshots = await (0, fhirClient_1.searchResources)("DocumentReference", {
+        identifier: `${EPISODE_SNAPSHOT_SYSTEM}|${episodeId}`,
+        _sort: "-_lastUpdated"
+    });
+    const entries = (allSnapshots.entry ?? []).map((e) => e.resource);
+    if (entries.length > 0) {
+        // Actualizar el más reciente
+        await (0, fhirClient_1.putResource)({ ...snapshotBody, id: entries[0].id });
+        // Eliminar duplicados obsoletos
+        for (const dup of entries.slice(1)) {
+            if (dup.id) {
+                try {
+                    await (0, fhirClient_1.deleteResource)("DocumentReference", dup.id);
+                }
+                catch { /* best effort */ }
+            }
+        }
         return;
     }
     await (0, fhirClient_1.postResource)(snapshotBody);

@@ -889,6 +889,308 @@ function SeccionRedBlockchain() {
 // SECCIÓN B — INTEROPERABILIDAD CLÍNICA (HU0-HU5)
 // ═════════════════════════════════════════════════════════════════════════════
 
+/** Catálogo de HUs con descripción y qué indica cada resultado */
+const HU_CATALOGO: Record<string, { titulo: string; descripcion: string; interpretacion: string }> = {
+  "HU0-E6": {
+    titulo: "Evaluar el flujo de interoperabilidad entre múltiples IPS",
+    descripcion: "Valida escenarios multi-IPS desde el dashboard consolidado: continuidad asistencial, permisos controlados y consistencia de episodios entre organizaciones.",
+    interpretacion: "Un resultado positivo indica que los episodios clínicos pueden crearse, compartirse y mantenerse coherentes entre al menos dos IPS simuladas."
+  },
+  "HU1-E6": {
+    titulo: "Medir tiempos de acceso y verificación de información clínica",
+    descripcion: "Mide tiempos objetivos de consulta de metadatos on-chain, acceso a documentos clínicos off-chain y verificación de integridad SHA-256.",
+    interpretacion: "Tiempos sub-segundo indican que el prototipo responde adecuadamente en entornos de memoria/mock. Con FHIR real y blockchain Sepolia se esperan latencias mayores."
+  },
+  "HU2-E6": {
+    titulo: "Evaluar el costo y rendimiento de las transacciones blockchain",
+    descripcion: "Expone métricas de confirmación, gas y costo promedio por tipo de evento de trazabilidad; distingue entre estimaciones mock y mediciones reales.",
+    interpretacion: "En modo simulación los costos son estimados. En modo real (Sepolia), los valores reflejan el gas efectivamente consumido por cada operación del smart contract."
+  },
+  "HU3-E6": {
+    titulo: "Validar la integridad y trazabilidad del sistema",
+    descripcion: "Permite al auditor verificar eventos, hashes, historial de versiones y consistencia on-chain/off-chain desde la vista de evaluación consolidada.",
+    interpretacion: "Trazabilidad 'completa' significa que cada episodio tiene eventos registrados para todo su ciclo de vida. 'Con vacíos' indica episodios sin trazas."
+  },
+  "HU4-E6": {
+    titulo: "Validar el cumplimiento del modelo HCE y los requisitos del sistema",
+    descripcion: "Verifica que los episodios visibles cumplen con el modelo HCE definido y los requisitos funcionales clave (RF8, RF9, RF10, RF11).",
+    interpretacion: "Episodios 'válidos' pasan todas las validaciones Zod del modelo HCE. Las 'observaciones' indican campos opcionales faltantes o limitaciones del prototipo."
+  },
+  "HU5-E6": {
+    titulo: "Documentar los resultados y conclusiones del prototipo",
+    descripcion: "Consolida documentación con resultados, conclusiones, aportes, limitaciones y trabajo futuro bajo el perfil auditor.",
+    interpretacion: "Esta HU se valida verificando que la vista de evaluación presenta la documentación generada a partir de los datos reales del sistema."
+  }
+};
+
+/** Descripción, umbral y nota para cada métrica de timing de la Sección B */
+const TIMING_META: Record<string, {
+  descripcion: string;
+  umbralReferencia: string;
+  interpretacion: (v: number, samples: number) => string;
+}> = {
+  metadataOnChain: {
+    descripcion: "Tiempo de lectura del registro de trazabilidad (hash, eventId, versión) para cada episodio. En modo mock es una lectura de archivo local; en blockchain real incluye latencia RPC (~12-15 s/bloque).",
+    umbralReferencia: "Mock: < 1 ms | FHIR+mock: < 5 ms | Blockchain real (Sepolia): 12 000–15 000 ms",
+    interpretacion: (v, samples) => {
+      if (samples === 0) return "Sin muestras — no hay episodios con trazas. Ejecute seed:eval-demo con SEED_ALL_TRACE_EVENTS=1.";
+      if (v < 1) return "Tiempos sub-milisegundo: lectura en memoria/mock, esperable en el prototipo sin blockchain real.";
+      if (v < 100) return "Tiempos bajos: lectura local eficiente, adecuada para el entorno de desarrollo.";
+      return "Tiempos elevados: podría indicar latencia de red RPC o carga en el servidor FHIR.";
+    }
+  },
+  documentOffChain: {
+    descripcion: "Tiempo de recuperar el documento clínico desde HAPI FHIR o el almacén en memoria. Sin FHIR real (docker compose up -d) los tiempos son sub-milisegundo.",
+    umbralReferencia: "Memoria: < 1 ms | FHIR local: 5–50 ms | FHIR remoto: 50–500 ms",
+    interpretacion: (v, samples) => {
+      if (samples === 0) return "Sin muestras — los episodios no tienen DocumentReference almacenado.";
+      if (v < 1) return "Acceso en memoria: ultra rápido, confirma que el almacén in-memory está activo.";
+      if (v < 50) return "Acceso local eficiente al servidor FHIR.";
+      return "Latencia significativa: verificar la conexión con el servidor FHIR.";
+    }
+  },
+  integrityVerification: {
+    descripcion: "Tiempo de calcular el hash SHA-256 del documento off-chain y compararlo con el hash registrado en trazabilidad. El cálculo siempre ocurre localmente.",
+    umbralReferencia: "Esperado: < 5 ms (cálculo SHA-256 local) | > 50 ms indica documentos muy grandes",
+    interpretacion: (v, samples) => {
+      if (samples === 0) return "Sin muestras — los episodios no tienen trazas con hash. Ejecute seed:eval-demo con SEED_ALL_TRACE_EVENTS=1.";
+      if (v < 5) return "Cálculo SHA-256 rápido: documentos de tamaño normal, verificación instantánea.";
+      if (v < 50) return "Verificación adecuada: documentos de tamaño moderado.";
+      return "Verificación lenta: documentos excepcionalmente grandes o procesamiento concurrente.";
+    }
+  }
+};
+
+const TIMING_LABELS: Record<string, string> = {
+  metadataOnChain: "Consulta de metadatos on-chain",
+  documentOffChain: "Acceso a documento off-chain",
+  integrityVerification: "Verificación de integridad"
+};
+
+/**
+ * Genera un informe HTML de la Sección B (interoperabilidad clínica) y lo abre
+ * para imprimir como PDF.
+ */
+function descargarInformeSeccionBPDF(d: DashboardEvaluacionPrototipo): void {
+  const fMsR = (v?: number) => {
+    if (typeof v !== "number" || isNaN(v)) return "—";
+    return v >= 1000 ? `${(v / 1000).toFixed(2)} s` : `${v.toFixed(2)} ms`;
+  };
+  const fN = (v?: number) => typeof v === "number" ? String(v) : "—";
+
+  const row = (k: string, v: string) =>
+    `<tr><td style="color:#555;padding:3px 8px 3px 0">${k}</td><td style="font-weight:500;padding:3px 0">${v}</td></tr>`;
+  const sec = (title: string, body: string) =>
+    `<div style="margin-bottom:20px"><h3 style="font-size:13px;border-bottom:1px solid #ddd;padding-bottom:4px;margin-bottom:8px">${title}</h3>${body}</div>`;
+
+  // Timing rows with interpretation
+  const timingRows = (Object.keys(TIMING_META) as Array<keyof typeof TIMING_META>).map((key) => {
+    const meta = TIMING_META[key];
+    const op = key === "metadataOnChain" ? d.timings.operations.metadataOnChain
+      : key === "documentOffChain" ? d.timings.operations.documentOffChain
+      : d.timings.operations.integrityVerification;
+    return `
+      <tr><td colspan="2" style="padding:8px 0 4px;font-weight:600;color:#333">${TIMING_LABELS[key]}</td></tr>
+      ${row("Promedio", fMsR(op.averageMs))}
+      ${row("Mín / Máx", `${fMsR(op.minMs)} / ${fMsR(op.maxMs)}`)}
+      ${row("Muestras", fN(op.samples))}
+      ${row("Consistencia", op.consistency)}
+      ${row("Umbral de referencia", meta.umbralReferencia)}
+      <tr><td colspan="2" style="font-size:11px;color:#666;padding:2px 0 10px;border-bottom:1px solid #eee">
+        ${meta.interpretacion(op.averageMs, op.samples)}</td></tr>`;
+  }).join("");
+
+  // Scenarios table
+  const scenarioRows = d.interoperability.scenarios.map((s) =>
+    `<tr>
+      <td style="padding:3px 6px"><code style="font-size:11px">${s.episodeId}</code></td>
+      <td style="padding:3px 6px">${s.ipsInvolucradas.join(", ") || s.ownerIpsId || "—"}</td>
+      <td style="padding:3px 6px;text-align:center">${s.versionCount}</td>
+      <td style="padding:3px 6px;text-align:center">${s.activePermissions}</td>
+      <td style="padding:3px 6px">${s.integrityStatus}</td>
+      <td style="padding:3px 6px">${s.consistencyStatus}</td>
+    </tr>`
+  ).join("");
+
+  // Blockchain operations table
+  const blockchainRows = d.blockchainPerformance.operations.map((op) =>
+    `<tr>
+      <td style="padding:3px 6px">${op.label}</td>
+      <td style="padding:3px 6px;text-align:center">${op.count}</td>
+      <td style="padding:3px 6px">${fMsR(op.averageConfirmationMs)}</td>
+      <td style="padding:3px 6px">${typeof op.averageGasUsed === "number" ? op.averageGasUsed.toLocaleString("es-CO") : "—"}</td>
+      <td style="padding:3px 6px">${op.emitters.join(", ")}</td>
+    </tr>`
+  ).join("");
+
+  // Requirements
+  const reqRows = d.compliance.requirements.map((r) =>
+    `<tr>
+      <td style="padding:3px 6px;font-weight:500">${r.requirementId}</td>
+      <td style="padding:3px 6px">${r.label}</td>
+      <td style="padding:3px 6px;font-size:11px">${r.detail}</td>
+      <td style="padding:3px 6px"><span style="background:${r.status === "cumple" ? "#27ae60" : r.status === "parcial" ? "#e67e22" : "#999"};color:#fff;padding:1px 8px;border-radius:8px;font-size:11px">${r.status}</span></td>
+    </tr>`
+  ).join("");
+
+  // HU catalog
+  const huSections = Object.entries(HU_CATALOGO).map(([id, hu]) =>
+    `<div style="margin-bottom:12px;padding:8px 12px;background:#f8f9fa;border-radius:6px;border-left:3px solid #4f8ef7">
+      <strong style="font-size:12px">${id} — ${hu.titulo}</strong>
+      <p style="font-size:11px;color:#555;margin:4px 0 2px">${hu.descripcion}</p>
+      <p style="font-size:11px;color:#888;margin:0"><em>${hu.interpretacion}</em></p>
+    </div>`
+  ).join("");
+
+  // Actors
+  const actorRows = d.audit.observedActors.map((a) =>
+    `<tr>
+      <td style="padding:3px 6px">${a.rol}</td>
+      <td style="padding:3px 6px;text-align:center">${a.totalEventos}</td>
+      <td style="padding:3px 6px">${a.ipsIds.join(", ") || "—"}</td>
+    </tr>`
+  ).join("");
+
+  const html = `<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8"/>
+  <title>Informe Sección B — Interoperabilidad Clínica</title>
+  <style>
+    body{font-family:Arial,sans-serif;font-size:13px;color:#222;margin:32px;line-height:1.5}
+    h1{font-size:18px;margin-bottom:4px}
+    h2{font-size:15px;margin:24px 0 8px;border-bottom:2px solid #4f8ef7;padding-bottom:4px;color:#4f8ef7}
+    table{width:100%;border-collapse:collapse;font-size:12px}
+    th{background:#f0f4ff;padding:4px 6px;text-align:left;font-size:11px;border-bottom:1px solid #ddd}
+    td{border-bottom:1px solid #f0f0f0}
+    @media print{body{margin:20px}.no-print{display:none}}
+  </style>
+</head>
+<body>
+  <div class="no-print" style="background:#eef4ff;padding:10px 16px;border-radius:8px;margin-bottom:20px;font-size:12px">
+    <strong>Imprimir como PDF:</strong> Usa Ctrl+P (o Cmd+P) → selecciona "Guardar como PDF" → Guardar.
+  </div>
+
+  <h1>Informe de Evaluación — Sección B: Interoperabilidad Clínica</h1>
+  <p style="color:#666;font-size:12px;margin-top:0">
+    InterHCE Ledger · Generado el ${new Date().toLocaleString("es-CO")} · ${d.overview.totalEpisodes} episodio(s) evaluado(s)
+  </p>
+
+  <h2>1. Resumen general</h2>
+  ${sec("Panorama", `<table>
+    ${row("Episodios totales", fN(d.overview.totalEpisodes))}
+    ${row("Eventos de trazabilidad", fN(d.overview.totalTraceEvents))}
+    ${row("IPS simuladas", fN(d.overview.totalIpsSimuladas))}
+    ${row("Modo blockchain", d.blockchainPerformance.mode)}
+    ${row("Trazabilidad extremo a extremo", d.audit.endToEndTraceability ? "Completa" : "Con vacíos")}
+    ${row("Episodios íntegros", fN(d.audit.integrityValidEpisodes))}
+    ${row("Episodios válidos HCE", fN(d.compliance.hceModel.validEpisodes))}
+  </table>`)}
+
+  <h2>2. Historias de usuario evaluadas (HU0-HU5)</h2>
+  ${huSections}
+
+  <h2>3. Tiempos de acceso y verificación (HU1-E6)</h2>
+  <p style="font-size:11px;color:#666;margin-bottom:8px">${d.timings.conclusion}</p>
+  <table>${timingRows}</table>
+
+  <h2>4. Escenarios de interoperabilidad (HU0-E6)</h2>
+  <p style="font-size:11px;color:#666;margin-bottom:8px">${d.interoperability.conclusion}</p>
+  <table>
+    <thead><tr><th>Episodio</th><th>IPS involucradas</th><th>Versiones</th><th>Permisos</th><th>Integridad</th><th>Consistencia</th></tr></thead>
+    <tbody>${scenarioRows}</tbody>
+  </table>
+
+  <h2>5. Costo y rendimiento blockchain (HU2-E6)</h2>
+  <p style="font-size:11px;color:#666;margin-bottom:8px">${d.blockchainPerformance.conclusion}</p>
+  <table>
+    <thead><tr><th>Operación</th><th>Cantidad</th><th>Confirmación prom.</th><th>Gas promedio</th><th>Emisor</th></tr></thead>
+    <tbody>${blockchainRows}</tbody>
+  </table>
+
+  <h2>6. Integridad y trazabilidad (HU3-E6)</h2>
+  ${sec("Actores observados", `<table>
+    <thead><tr><th>Rol</th><th>Eventos</th><th>IPS observadas</th></tr></thead>
+    <tbody>${actorRows}</tbody>
+  </table>`)}
+  ${d.audit.episodesWithIssues.length > 0 ? sec("Hallazgos que requieren revisión",
+    d.audit.episodesWithIssues.map((i) =>
+      `<div style="padding:4px 0;border-bottom:1px solid #f0f0f0;font-size:12px"><strong>${i.episodeId}</strong> — ${i.issue}</div>`
+    ).join("")) : ""}
+
+  <h2>7. Cumplimiento del modelo HCE (HU4-E6)</h2>
+  <table>
+    <thead><tr><th>Requisito</th><th>Nombre</th><th>Detalle</th><th>Estado</th></tr></thead>
+    <tbody>${reqRows}</tbody>
+  </table>
+
+  <div style="margin-top:32px;border-top:1px solid #ddd;padding-top:12px;font-size:11px;color:#aaa">
+    Generado por InterHCE Ledger — Sección B: Evaluación de interoperabilidad clínica.<br/>
+    Fecha de generación: ${new Date().toLocaleString("es-CO")}.
+  </div>
+</body>
+</html>`;
+
+  const win = window.open("", "_blank", "width=900,height=700");
+  if (!win) {
+    alert("No se pudo abrir la ventana del informe. Desbloquea las ventanas emergentes para este sitio.");
+    return;
+  }
+  win.document.write(html);
+  win.document.close();
+  setTimeout(() => win.print(), 500);
+}
+
+/** Tarjeta de timing enriquecida con descripción, umbral e interpretación */
+function TimingCardEnriquecida({ metricKey, op }: {
+  metricKey: string;
+  op: { averageMs: number; minMs: number; maxMs: number; standardDeviationMs: number; samples: number; consistency: string };
+}) {
+  const meta = TIMING_META[metricKey];
+  const label = TIMING_LABELS[metricKey];
+  if (!meta || !label) return null;
+  const interp = meta.interpretacion(op.averageMs, op.samples);
+  const chipClass = op.consistency === "alta" ? "status-chip status-chip--ready"
+    : op.consistency === "media" ? "status-chip status-chip--alert" : "status-chip";
+  return (
+    <article className="metric-card" style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+      <strong style={{ fontSize: "0.85rem" }}>{label}</strong>
+      <p style={{ fontSize: "0.75rem", color: "#666", margin: "2px 0 6px", lineHeight: 1.4 }}>
+        {meta.descripcion}
+      </p>
+      <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.82rem", borderBottom: "1px solid #f0f0f0", padding: "2px 0" }}>
+        <span style={{ color: "#666" }}>Promedio</span>
+        <span style={{ fontWeight: 600 }}>
+          {op.samples > 0 ? `${op.averageMs.toFixed(2)} ms` : "— sin datos"}
+        </span>
+      </div>
+      <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.82rem", borderBottom: "1px solid #f0f0f0", padding: "2px 0" }}>
+        <span style={{ color: "#666" }}>Mín / Máx</span>
+        <span>{op.samples > 0 ? `${op.minMs.toFixed(2)} / ${op.maxMs.toFixed(2)} ms` : "—"}</span>
+      </div>
+      <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.82rem", borderBottom: "1px solid #f0f0f0", padding: "2px 0" }}>
+        <span style={{ color: "#666" }}>Desviación</span>
+        <span>{op.samples > 0 ? `${op.standardDeviationMs.toFixed(2)} ms` : "—"}</span>
+      </div>
+      <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.82rem", borderBottom: "1px solid #f0f0f0", padding: "2px 0" }}>
+        <span style={{ color: "#666" }}>Muestras</span>
+        <span style={{ color: op.samples > 0 ? "#333" : "#c00" }}>
+          {op.samples > 0 ? op.samples : "0 — sin datos"}
+        </span>
+      </div>
+      <div className={chipClass} style={{ alignSelf: "flex-start", marginTop: 4 }}>
+        Consistencia {op.consistency}
+      </div>
+      <div style={{ marginTop: 6, padding: "6px 8px", background: "#f5f8ff", borderRadius: 4, fontSize: "0.72rem", color: "#555", lineHeight: 1.4 }}>
+        <strong>Umbral de referencia:</strong> {meta.umbralReferencia}
+      </div>
+      <p style={{ fontSize: "0.72rem", color: "#888", margin: "4px 0 0", lineHeight: 1.4 }}>
+        {interp}
+      </p>
+    </article>
+  );
+}
+
 function SeccionInteroperabilidadClinica() {
   const { sesion } = useSesion();
   const [dash, setDash] = useState<DashboardEvaluacionPrototipo | null>(null);
@@ -906,11 +1208,6 @@ function SeccionInteroperabilidadClinica() {
 
   useEffect(() => { void cargar(); }, [sesion]);
 
-  function fMs2(v?: number) {
-    if (typeof v !== "number") return "—";
-    return `${v.toFixed(1)} ms`;
-  }
-
   return (
     <section className="card card--elevated" style={{ marginBottom: 16 }}>
       <div className="section-head section-head--tight">
@@ -925,10 +1222,19 @@ function SeccionInteroperabilidadClinica() {
             Se basa en los episodios registrados actualmente en el sistema.
           </p>
         </div>
-        <button type="button" className="btn btn--secondary"
-          onClick={cargar} disabled={loading} style={{ alignSelf: "flex-start" }}>
-          {loading ? "Actualizando…" : "Actualizar"}
-        </button>
+        <div style={{ display: "flex", gap: 8, alignSelf: "flex-start" }}>
+          {dash && (
+            <button type="button" className="btn btn--ghost"
+              style={{ fontSize: "0.78rem", padding: "4px 12px", whiteSpace: "nowrap" }}
+              onClick={() => descargarInformeSeccionBPDF(dash)}>
+              ⬇ Descargar PDF Sección B
+            </button>
+          )}
+          <button type="button" className="btn btn--secondary"
+            onClick={cargar} disabled={loading}>
+            {loading ? "Actualizando…" : "Actualizar"}
+          </button>
+        </div>
       </div>
 
       <hr style={{ border: "none", borderTop: "1px solid #eee", margin: "14px 0" }} />
@@ -942,12 +1248,37 @@ function SeccionInteroperabilidadClinica() {
 
       {dash && (
         <>
-          {/* Resumen en cards */}
+          {/* ── HU Catalog ── */}
+          <div className="section-block" style={{ marginBottom: 16 }}>
+            <h3 className="section-title" style={{ fontSize: "0.88rem", marginBottom: 10 }}>
+              Historias de usuario evaluadas
+            </h3>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 10 }}>
+              {Object.entries(HU_CATALOGO).map(([id, hu]) => (
+                <article key={id} style={{
+                  padding: "10px 14px", background: "#f8f9fa", borderRadius: 8,
+                  borderLeft: "3px solid #4f8ef7", fontSize: "0.82rem"
+                }}>
+                  <strong>{id} — {hu.titulo}</strong>
+                  <p style={{ fontSize: "0.75rem", color: "#555", margin: "4px 0 2px", lineHeight: 1.4 }}>
+                    {hu.descripcion}
+                  </p>
+                  <p style={{ fontSize: "0.72rem", color: "#888", margin: 0, fontStyle: "italic", lineHeight: 1.4 }}>
+                    {hu.interpretacion}
+                  </p>
+                </article>
+              ))}
+            </div>
+          </div>
+
+          {/* ── Summary cards ── */}
           <div className="dashboard-grid" style={{ marginBottom: 14 }}>
             <article className="metric-card">
-              <strong>Escenarios multi-IPS</strong>
+              <strong>HU0-E6 · Escenarios multi-IPS</strong>
               <span>{dash.interoperability.summary.crossIpsScenarios} escenario(s) entre IPS</span>
               <span>{dash.interoperability.summary.episodesWithContinuity} con continuidad asistencial</span>
+              <span>{dash.interoperability.summary.episodesWithPermissionFlow} con flujo de permisos</span>
+              <span>{dash.interoperability.summary.consistentEpisodes} consistente(s)</span>
               <div className={dash.interoperability.multipleIpsReady
                 ? "status-chip status-chip--ready" : "status-chip"}>
                 {dash.interoperability.multipleIpsReady ? "Multi-IPS activo" : "Single IPS"}
@@ -955,16 +1286,10 @@ function SeccionInteroperabilidadClinica() {
             </article>
 
             <article className="metric-card">
-              <strong>Tiempos de acceso</strong>
-              <span>Metadatos on-chain: {fMs2(dash.timings.operations.metadataOnChain.averageMs)}</span>
-              <span>Documento off-chain: {fMs2(dash.timings.operations.documentOffChain.averageMs)}</span>
-              <span>Verificación integridad: {fMs2(dash.timings.operations.integrityVerification.averageMs)}</span>
-            </article>
-
-            <article className="metric-card">
-              <strong>Integridad y trazabilidad</strong>
+              <strong>HU3-E6 · Integridad y trazabilidad</strong>
               <span>{dash.audit.integrityValidEpisodes} episodio(s) íntegros</span>
               <span>{dash.audit.totalEvents} evento(s) de trazabilidad</span>
+              <span>Historial de versiones: {dash.audit.versionHistoryComplete ? "Completo" : "Incompleto"}</span>
               <div className={dash.audit.endToEndTraceability
                 ? "status-chip status-chip--ready" : "status-chip status-chip--alert"}>
                 {dash.audit.endToEndTraceability ? "Trazabilidad completa" : "Con vacíos"}
@@ -972,14 +1297,20 @@ function SeccionInteroperabilidadClinica() {
             </article>
 
             <article className="metric-card">
-              <strong>Cumplimiento modelo HCE</strong>
+              <strong>HU4-E6 · Cumplimiento modelo HCE</strong>
               <span>{dash.compliance.hceModel.validEpisodes} episodio(s) válidos</span>
               <span>{dash.compliance.hceModel.invalidEpisodes} con observaciones</span>
             </article>
 
             <article className="metric-card">
+              <strong>HU2-E6 · Blockchain</strong>
+              <span>Modo: {dash.blockchainPerformance.mode}</span>
+              <span>{dash.blockchainPerformance.mostExpensiveOperation ?? "Sin operación destacada"}</span>
+              <span>{dash.blockchainPerformance.metricKind} como origen métrico</span>
+            </article>
+
+            <article className="metric-card">
               <strong>Estado del entorno</strong>
-              {/* FHIR */}
               {dash.overview.fhir ? (
                 <div className={
                   dash.overview.fhir.disponible
@@ -999,7 +1330,6 @@ function SeccionInteroperabilidadClinica() {
               ) : (
                 <span style={{ color: "#999", fontSize: "0.78rem" }}>FHIR: no detectado</span>
               )}
-              {/* Blockchain */}
               <div className={dash.overview.blockchainMode === "real"
                 ? "status-chip status-chip--ready" : "status-chip"}>
                 Blockchain: {dash.overview.blockchainMode === "real"
@@ -1014,11 +1344,39 @@ function SeccionInteroperabilidadClinica() {
             </article>
           </div>
 
-          {/* Escenarios */}
-          <div className="section-block" style={{ marginBottom: 14 }}>
-            <div style={{ fontSize: "0.82rem", fontWeight: 600, marginBottom: 8, color: "#555" }}>
-              Episodios evaluados
+          {/* ── Conclusions panel ── */}
+          <div className="result-panel" style={{ marginBottom: 16 }}>
+            <div>
+              <strong>Interoperabilidad (HU0-E6)</strong>
+              <span>{dash.interoperability.conclusion}</span>
             </div>
+            <div>
+              <strong>Tiempos (HU1-E6)</strong>
+              <span>{dash.timings.conclusion}</span>
+            </div>
+            <div>
+              <strong>Blockchain (HU2-E6)</strong>
+              <span>{dash.blockchainPerformance.conclusion}</span>
+            </div>
+          </div>
+
+          {/* ── Enriched Timing Cards (HU1-E6) ── */}
+          <div className="section-block" style={{ marginBottom: 16 }}>
+            <h3 className="section-title" style={{ fontSize: "0.88rem", marginBottom: 10 }}>
+              HU1-E6 · Tiempos de acceso y verificación
+            </h3>
+            <div className="dashboard-grid">
+              <TimingCardEnriquecida metricKey="metadataOnChain" op={dash.timings.operations.metadataOnChain} />
+              <TimingCardEnriquecida metricKey="documentOffChain" op={dash.timings.operations.documentOffChain} />
+              <TimingCardEnriquecida metricKey="integrityVerification" op={dash.timings.operations.integrityVerification} />
+            </div>
+          </div>
+
+          {/* ── Scenarios table (HU0-E6) ── */}
+          <div className="section-block" style={{ marginBottom: 16 }}>
+            <h3 className="section-title" style={{ fontSize: "0.88rem", marginBottom: 10 }}>
+              HU0-E6 · Escenarios de interoperabilidad observados
+            </h3>
             <div className="table-wrapper">
               <table className="tabla-clinica">
                 <thead>
@@ -1059,13 +1417,89 @@ function SeccionInteroperabilidadClinica() {
             </div>
           </div>
 
-          {/* Requisitos */}
-          <details>
-            <summary style={{ fontSize: "0.82rem", fontWeight: 600, cursor: "pointer",
-              color: "#555", marginBottom: 8 }}>
-              Requisitos validados ({dash.compliance.requirements.length})
-            </summary>
-            <div className="stack-list" style={{ marginTop: 8 }}>
+          {/* ── Blockchain operations (HU2-E6) ── */}
+          <div className="section-block" style={{ marginBottom: 16 }}>
+            <h3 className="section-title" style={{ fontSize: "0.88rem", marginBottom: 10 }}>
+              HU2-E6 · Costo y rendimiento por tipo de transacción
+            </h3>
+            <div className="table-wrapper">
+              <table className="tabla-clinica">
+                <thead>
+                  <tr>
+                    <th>Operación</th>
+                    <th>Cantidad</th>
+                    <th>Confirmación promedio</th>
+                    <th>Gas promedio</th>
+                    <th>Costo promedio (wei)</th>
+                    <th>Emisor técnico</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {dash.blockchainPerformance.operations.map((op) => (
+                    <tr key={op.eventType}>
+                      <td>{op.label}</td>
+                      <td>{op.count}</td>
+                      <td>{typeof op.averageConfirmationMs === "number" ? `${op.averageConfirmationMs.toFixed(2)} ms` : "—"}</td>
+                      <td>{typeof op.averageGasUsed === "number" ? op.averageGasUsed.toLocaleString("es-CO") : "—"}</td>
+                      <td>{typeof op.averageTransactionCostWei === "number" ? op.averageTransactionCostWei.toLocaleString("es-CO") : "—"}</td>
+                      <td>{op.emitters.join(", ")}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* ── Actors observed (HU3-E6) ── */}
+          <div className="section-block" style={{ marginBottom: 16 }}>
+            <h3 className="section-title" style={{ fontSize: "0.88rem", marginBottom: 10 }}>
+              HU3-E6 · Actores observados en la auditoría
+            </h3>
+            <div className="table-wrapper">
+              <table className="tabla-clinica">
+                <thead>
+                  <tr>
+                    <th>Rol</th>
+                    <th>Eventos</th>
+                    <th>IPS observadas</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {dash.audit.observedActors.map((a) => (
+                    <tr key={a.rol}>
+                      <td>{a.rol}</td>
+                      <td>{a.totalEventos}</td>
+                      <td>{a.ipsIds.join(", ") || "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* ── Issues (HU3-E6) ── */}
+          {!!dash.audit.episodesWithIssues.length && (
+            <div className="section-block" style={{ marginBottom: 16 }}>
+              <h3 className="section-title" style={{ fontSize: "0.88rem", marginBottom: 10 }}>
+                Hallazgos que requieren revisión
+              </h3>
+              <div className="stack-list">
+                {dash.audit.episodesWithIssues.map((item) => (
+                  <article key={`${item.episodeId}-${item.issue}`} className="stack-item">
+                    <strong>{item.episodeId}</strong>
+                    <span>{item.issue}</span>
+                  </article>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ── Requirements (HU4-E6) ── */}
+          <div className="section-block" style={{ marginBottom: 16 }}>
+            <h3 className="section-title" style={{ fontSize: "0.88rem", marginBottom: 10 }}>
+              HU4-E6 · Requisitos validados ({dash.compliance.requirements.length})
+            </h3>
+            <div className="stack-list">
               {dash.compliance.requirements.map((req) => (
                 <article key={req.requirementId} className="stack-item">
                   <strong>{req.requirementId} · {req.label}</strong>
@@ -1077,16 +1511,28 @@ function SeccionInteroperabilidadClinica() {
                 </article>
               ))}
             </div>
-          </details>
+          </div>
+
+          {/* ── IPS simuladas ── */}
+          {dash.interoperability.simulatedIps.length > 0 && (
+            <div className="section-block" style={{ marginBottom: 16 }}>
+              <h3 className="section-title" style={{ fontSize: "0.88rem", marginBottom: 10 }}>
+                IPS simuladas
+              </h3>
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                {dash.interoperability.simulatedIps.map((ips) => (
+                  <div key={typeof ips === "string" ? ips : JSON.stringify(ips)} style={{
+                    padding: "6px 12px", background: "#f0f4ff", borderRadius: 6,
+                    fontSize: "0.82rem", border: "1px solid #e0e8ff"
+                  }}>
+                    {typeof ips === "string" ? ips : JSON.stringify(ips)}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </>
       )}
-
-      <div style={{ marginTop: 14, fontSize: "0.78rem", color: "#aaa" }}>
-        Ver análisis completo (HU0-HU5, blockchain, documentación) →{" "}
-        <Link to="/auditoria/evaluacion" style={{ color: "#4f8ef7" }}>
-          Evaluación del prototipo
-        </Link>
-      </div>
     </section>
   );
 }
