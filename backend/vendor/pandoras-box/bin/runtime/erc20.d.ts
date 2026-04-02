@@ -1,0 +1,33 @@
+import { BigNumber } from '@ethersproject/bignumber';
+import { Contract } from '@ethersproject/contracts';
+import { Provider, TransactionRequest } from '@ethersproject/providers';
+import { Wallet } from '@ethersproject/wallet';
+import { senderAccount } from './signer';
+declare class ERC20Runtime {
+    mnemonic: string;
+    url: string;
+    provider: Provider;
+    gasEstimation: BigNumber;
+    gasPrice: BigNumber;
+    defaultValue: BigNumber;
+    defaultTransferValue: number;
+    totalSupply: number;
+    coinName: string;
+    coinSymbol: string;
+    contract: Contract | undefined;
+    baseDeployer: Wallet;
+    constructor(mnemonic: string, url: string);
+    Initialize(): Promise<void>;
+    deployERC20(): Promise<Contract>;
+    EstimateBaseTx(): Promise<BigNumber>;
+    GetTransferValue(): number;
+    GetTokenBalance(address: string): Promise<number>;
+    GetSupplierBalance(): Promise<number>;
+    FundAccount(to: string, amount: number): Promise<void>;
+    GetTokenSymbol(): string;
+    GetValue(): BigNumber;
+    GetGasPrice(): Promise<BigNumber>;
+    ConstructTransactions(accounts: senderAccount[], numTx: number): Promise<TransactionRequest[]>;
+    GetStartMessage(): string;
+}
+export default ERC20Runtime;

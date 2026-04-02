@@ -8,20 +8,19 @@ exports.UMBRALES_DEFAULT = void 0;
 /**
  * Umbrales por defecto para semáforos.
  *
- * LATENCIA — Criterios realistas para redes EVM (PoA/PoS):
- *   Ethereum/Sepolia tiene block time ≈ 12 s; una transacción tarda al menos
- *   un bloque en confirmarse (~13–15 s bajo carga normal).  Por eso los
- *   umbrales de "verde" y "amarillo" se sitúan en 15 000 ms y 30 000 ms
- *   respectivamente, en lugar de los 3 s/8 s propios de sistemas REST.
- *   - Verde  (óptimo)   : latencia promedio ≤ 15 s  — 1 bloque típico
- *   - Amarillo (aceptable): ≤ 30 s                   — hasta ~2 bloques
- *   - Rojo   (crítico)  :  > 30 s                   — retrasos o congestión
+ * LATENCIA — Criterios realistas para una red hospitalaria sobre EVM (PoA/PoS):
+ *   Ethereum/Sepolia tiene block time ≈ 12 s; en contexto hospitalario se
+ *   acepta que una confirmación en ~2 bloques siga siendo óptima y hasta ~5
+ *   bloques sea todavía aceptable bajo carga.
+ *   - Verde  (óptimo)     : latencia promedio ≤ 30 s  — ~2 bloques EVM
+ *   - Amarillo (aceptable): ≤ 60 s                    — aceptable en red hospitalaria
+ *   - Rojo   (crítico)    :  > 60 s                   — retrasos o congestión severa
  */
 exports.UMBRALES_DEFAULT = {
     tpsVerde: 10,
     tpsAmarillo: 5,
-    latenciaVerdeMs: 15000, // ≤ 15 s → 1 bloque normal (PoA/PoS ~12 s)
-    latenciaAmarilloMs: 30000, // ≤ 30 s → hasta 2 bloques bajo carga
+    latenciaVerdeMs: 30000, // ≤ 30 s → contexto hospitalario (~2 bloques EVM)
+    latenciaAmarilloMs: 60000, // ≤ 60 s → aceptable para red hospitalaria
     tasaExitoVerde: 95,
     tasaExitoAmarillo: 80
 };

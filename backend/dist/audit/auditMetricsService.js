@@ -89,6 +89,7 @@ function buildInteroperabilityDetails(output, config, chainId) {
     const llamadasERCExitosas = output.erc_function_success ?? 0;
     const writeCallsOk = output.successful_transactions > 0;
     const readCallsOk = nodoAccesible; // Siempre consultamos eth_chainId + eth_blockNumber
+    const rpcUrl = config.rpcUrl || output.rpc_url;
     let compatibilidadERC = config.modo;
     if (config.contractAddress) {
         compatibilidadERC = `${config.modo} (contrato: ${config.contractAddress.slice(0, 10)}…)`;
@@ -112,11 +113,11 @@ function buildInteroperabilityDetails(output, config, chainId) {
             : "sin llamadas ERC registradas";
         nota =
             `Compatibilidad ${config.modo}: deploy exitoso, llamadas ERC con tasa ${tasa}. ` +
-                `Red: chain ${chainId} · RPC: ${config.rpcUrl.slice(0, 40)}…`;
+                `Red: chain ${chainId} · RPC: ${rpcUrl.slice(0, 40)}…`;
     }
     return {
         chainId,
-        rpcUrl: config.rpcUrl,
+        rpcUrl,
         nodoAccesible,
         contratoAccesible: config.modo !== "EOA" ? deployExitoso : false,
         readCallsOk,
@@ -127,8 +128,11 @@ function buildInteroperabilityDetails(output, config, chainId) {
 }
 // ─── Conversión PandorasBoxOutput → AuditMetricRecord ─────────────────────────
 function convertirASalida(output, config, fuente, extras) {
-    const tasaExito = output.total_transactions > 0
-        ? (output.successful_transactions / output.total_transactions) * 100
+    const totalTransacciones = extras?.totalTransacciones ?? config.totalTransacciones ?? output.total_transactions;
+    const transaccionesExitosas = Math.min(output.successful_transactions, totalTransacciones);
+    const transaccionesFallidas = Math.max(output.failed_transactions, totalTransacciones - transaccionesExitosas);
+    const tasaExito = totalTransacciones > 0
+        ? (transaccionesExitosas / totalTransacciones) * 100
         : 0;
     const deployExitoso = output.deploy_successful ?? config.modo === "EOA";
     const llamadasERCTotal = output.erc_function_calls ?? 0;
@@ -141,14 +145,14 @@ function convertirASalida(output, config, fuente, extras) {
         sesionId: sesionActual?.id,
         batchId: extras?.batchId,
         modo: output.mode,
-        rpcUrl: output.rpc_url,
+        rpcUrl: config.rpcUrl || output.rpc_url,
         chainId: output.chain_id,
         contractAddress: output.contract_address ?? config.contractAddress,
         tpsPico: output.tps_peak,
         tpsPromedio: output.tps_average,
-        totalTransacciones: extras?.totalTransacciones ?? output.total_transactions,
-        transaccionesExitosas: output.successful_transactions,
-        transaccionesFallidas: output.failed_transactions,
+        totalTransacciones,
+        transaccionesExitosas,
+        transaccionesFallidas,
         tasaExito,
         latenciaPromedioMs: output.latency_avg_ms,
         latenciaMinMs: output.latency_min_ms,
@@ -213,8 +217,8 @@ function obtenerMetricaPorId(id) {
     return cargarRegistros().find((r) => r.id === id) ?? null;
 }
 async function ejecutarEvaluacion(config, extras) {
-    const { output, fuente, errorPandoras } = await (0, pandorasBoxAdapter_1.ejecutarPrueba)(config);
-    const record = convertirASalida(output, config, fuente, extras);
+    const { output, fuente, errorPandoras, configUsada } = await (0, pandorasBoxAdapter_1.ejecutarPrueba)(config);
+    const record = convertirASalida(output, configUsada, fuente, extras);
     const registros = cargarRegistros();
     registros.push(record);
     guardarRegistros(registros);

@@ -1301,6 +1301,18 @@ export interface AuditBatchResultado {
   error?: string;
 }
 
+export interface AuditBatchRuntimeStatus {
+  batchId: string;
+  estado: "running" | "waiting" | "completed";
+  startedAt: string;
+  modoActual?: ModoPrueba;
+  siguienteModo?: ModoPrueba;
+  waitStartedAt?: string;
+  waitEndsAt?: string;
+  delayMs?: number;
+  modosCompletados: ModoPrueba[];
+}
+
 export async function listarAuditMetricas(
   sesion?: SesionUsuario | null
 ): Promise<{ ok: boolean; message: string; data?: AuditMetricResumen[] }> {
@@ -1341,13 +1353,22 @@ export async function ejecutarAuditRun(
   sesion?: SesionUsuario | null
 ): Promise<{ ok: boolean; message: string; data?: AuditMetricDetalle; fuente?: AuditFuente; advertencia?: string }> {
   try {
+    const payload = {
+      modo: config.modo,
+      totalTransacciones: config.totalTransacciones,
+      numSubcuentas: config.numSubcuentas,
+      batchSize: config.batchSize,
+      ...(config.contractAddress?.trim()
+        ? { contractAddress: config.contractAddress.trim() }
+        : {})
+    };
     const res = await fetchApi(`${auditBase}/run`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         ...buildActorHeaders(sesion)
       },
-      body: JSON.stringify(config)
+      body: JSON.stringify(payload)
     });
     const data = await parseJson<{
       code?: string;
@@ -1387,6 +1408,31 @@ export async function listarAuditMetricasComparativas(
       return { ok: false, message: buildApiMessage(data, "Error al listar métricas comparativas.") };
     }
     return { ok: true, message: data.message ?? "Métricas comparativas obtenidas.", data: data.data ?? [] };
+  } catch {
+    return { ok: false, message: CONNECTION_ERROR };
+  }
+}
+
+export async function obtenerEstadoAuditRunBatch(
+  sesion?: SesionUsuario | null
+): Promise<{ ok: boolean; message: string; data?: AuditBatchRuntimeStatus | null }> {
+  try {
+    const res = await fetchApi(`${auditBase}/run-batch-status`, {
+      headers: buildActorHeaders(sesion)
+    });
+    const data = await parseJson<{
+      code?: string;
+      message?: string;
+      data?: AuditBatchRuntimeStatus | null;
+    }>(res);
+    if (!res.ok) {
+      return { ok: false, message: buildApiMessage(data, "Error al consultar el estado del batch.") };
+    }
+    return {
+      ok: true,
+      message: data.message ?? "Estado del batch obtenido.",
+      data: data.data ?? null
+    };
   } catch {
     return { ok: false, message: CONNECTION_ERROR };
   }

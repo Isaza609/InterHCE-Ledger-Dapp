@@ -386,11 +386,11 @@ Cada evaluación calcula cuatro semáforos automáticamente. Los umbrales son co
 
 | Estado | Condición (defaults) | Significado |
 |---|---|---|
-| 🟢 Verde | `latenciaPromedioMs ≤ 15 000` | ≤ 1 bloque normal (PoA/PoS ~12 s) |
-| 🟡 Amarillo | `latenciaPromedioMs ≤ 30 000` | ≤ 2 bloques bajo carga |
-| 🔴 Rojo | `latenciaPromedioMs > 30 000` | Más de 2 bloques; red congestionada |
+| 🟢 Verde | `latenciaPromedioMs ≤ 30 000` | Contexto hospitalario óptimo (~2 bloques EVM) |
+| 🟡 Amarillo | `latenciaPromedioMs ≤ 60 000` | Aceptable para red hospitalaria |
+| 🔴 Rojo | `latenciaPromedioMs > 60 000` | Más de 60 s; congestión o retrasos severos |
 
-> **Fundamento del cambio (sprint 5):** los umbrales anteriores (3 s / 8 s) eran umbrales REST-HTTP, inalcanzables en cualquier red EVM pública. Ethereum/Sepolia tiene un blocktime de ~12 s (PoS post-merge), por lo que la latencia mínima para una confirmación es ≈ 12–15 s. Los nuevos umbrales reflejan la realidad de blockchain: una transacción que confirma en 1 bloque (≤ 15 s) es normal; en 2 bloques (≤ 30 s) es aceptable; más de 2 bloques indica congestión.
+> **Ajuste hospitalario:** además del criterio blockchain, el director del proyecto definió umbrales más amplios para una red hospitalaria. Por eso, desde este ajuste se considera óptimo confirmar en ≤ 30 s (~2 bloques EVM), aceptable en ≤ 60 s y crítico por encima de 60 s.
 
 Los umbrales son configurables por prueba desde "Opciones avanzadas" del formulario (`umbralLatenciaVerdeMs`, `umbralLatenciaAmarilloMs`).
 
@@ -520,7 +520,7 @@ Cada evaluación se guarda en `backend/data/audit-metrics.json`:
     "nota": "Compatibilidad ERC20: deploy exitoso, llamadas ERC con tasa 97.0 %..."
   },
   "semaforoEficiencia": "amarillo",
-  "semaforoLatencia": "verde",       // ahora verde porque 13 800 ms ≤ 15 000 ms
+  "semaforoLatencia": "verde",       // ahora verde porque 13 800 ms ≤ 30 000 ms
   "semaforoSeguridad": "verde",
   "semaforoInteroperabilidad": "verde",
   "blockSamples": [ /* serie por bloque */ ],
@@ -558,8 +558,8 @@ Detalle completo incluyendo `blockSamples`, `rawOutput` e `interoperabilityDetai
   "contractAddress": "0x...",    // opcional, solo ERC20/ERC721
   "umbralTpsVerde": 10,          // opcionales: umbrales de semáforos
   "umbralTpsAmarillo": 5,
-  "umbralLatenciaVerdeMs": 15000,    // default: ≤ 15 s → 1 bloque normal EVM PoS
-  "umbralLatenciaAmarilloMs": 30000, // default: ≤ 30 s → hasta 2 bloques bajo carga
+  "umbralLatenciaVerdeMs": 30000,    // default: ≤ 30 s → óptimo hospitalario (~2 bloques EVM)
+  "umbralLatenciaAmarilloMs": 60000, // default: ≤ 60 s → aceptable en red hospitalaria
   "umbralTasaExitoVerde": 95
 }
 ```
@@ -870,6 +870,10 @@ El problema tiene dos causas simultáneas e interdependientes:
 
 Ambos errores desembocan en el mismo resultado: pandoras-box alcanza su **timeout interno de 30 s** (hardcoded en el binario, no configurable por CLI) sin haber recolectado todos los recibos → sale con código no cero → el adaptador cae a simulación.
 
+Desde este ajuste, el adaptador también intenta activar el **backend recovery** cuando detecta `REPLACEMENT_UNDERPRICED`, `replacement fee too low`, `replacement transaction underpriced` o un atasco en `Funding accounts...`. Si el recovery tampoco encuentra recibos suficientes, la corrida se persiste igualmente como `simulacion` para que el batch continúe.
+
+> **Recomendación operativa:** para cargas > 100 transacciones use un RPC privado (Alchemy/Infura). Los nodos públicos de Sepolia pueden introducir throttling, errores de gas y timeouts.
+
 Reducir el batch size a `-b 10` (corrección anterior) alivia la presión pero no elimina el problema: en condiciones de alta carga de la testnet o con muchas subcuentas, el throttling de Alchemy persiste.
 
 ### Solución definitiva: swap del RPC en pandoras-box
@@ -980,7 +984,7 @@ esUrlAlchemy(config.rpcUrl) === true
 | Swap RPC Alchemy → Ankr para pandoras-box | ✅ | Implementado |
 | Reducir `batchSize` de 20 a 10 | ✅ | Implementado |
 | Delay entre batches (500 ms) | ❌ | pandoras-box no expone flag de delay; único control es `-b` |
-| Timeout de recibos 30 s → 120 s | ❌ | Hardcoded en el binario; no existe flag CLI |
+| Timeout de recibos 30 s → 60 s por CLI / 120 s recovery backend | ⚠️ Parcial | El adaptador detecta si el binario soporta `--timeout`, `--wait-timeout` o `--receipt-timeout`; si no, activa recovery backend y luego simulación |
 
 ### Mecanismo de respaldo — sin cambios
 
@@ -998,7 +1002,7 @@ Si pandoras-box falla por cualquier causa (Ankr caído, Sepolia con congestión 
 | Simulación realista con datos del nodo RPC como fallback | ✅ Implementado |
 | Métricas de seguridad (reverts, out-of-gas, respuesta del nodo) | ✅ Implementado |
 | Interoperabilidad: semáforo con 4 condiciones + objeto `interoperabilityDetails` | ✅ Sprint 5 |
-| Umbrales de latencia realistas para EVM PoS (15 s / 30 s) | ✅ Sprint 5 |
+| Umbrales de latencia para red hospitalaria (30 s / 60 s) | ✅ Ajuste posterior |
 | Corrección de métricas de timing siempre vacías en Sección B | ✅ Sprint 5 |
 | Sesiones de evaluación: endpoints REST + UI con filtro por sesión | ✅ Sprint 5 |
 | Descarga de informe PDF desde el panel de detalle | ✅ Sprint 5 |

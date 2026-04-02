@@ -3,8 +3,10 @@
  * Adaptador para pandoras-box (https://github.com/sig-0/pandoras-box).
  *
  * Ejecuta el binario real cuando está disponible en PATH y parsea su JSON de salida.
- * Si no está instalado, cae a una simulación realista que consulta el nodo RPC
- * para obtener datos reales de bloques.
+ * La configuración sensible (RPC y mnemonic) se resuelve desde el entorno del
+ * backend para que nunca viaje en el body del request.
+ * Si no hay ejecución real disponible o faltan variables críticas, cae a una
+ * simulación realista que consulta el nodo RPC para obtener datos reales de bloques.
  *
  * Formato real de salida pandoras-box:
  * {
@@ -29,8 +31,65 @@ const os_1 = require("os");
 const path_1 = __importDefault(require("path"));
 const https_1 = __importDefault(require("https"));
 const http_1 = __importDefault(require("http"));
-const ethers_1 = require("ethers");
+const module_1 = require("module");
 const execFileAsync = (0, util_1.promisify)(child_process_1.execFile);
+const requireFromBackend = (0, module_1.createRequire)(__filename);
+function sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+const DEFAULT_BATCH_SIZE = 10;
+const SAFE_DEFAULT_TOTAL_TRANSACCIONES = 30;
+const SAFE_DEFAULT_NUM_SUBCUENTAS = 3;
+const PANDORAS_PROCESS_TIMEOUT_MS = 180000;
+const PANDORAS_UNDERPRICED_RETRY_DELAY_MS = 15000;
+const FALLBACK_RPC_URL = "no-configurado";
+const PRIMARY_RPC_ENV = "ALCHEMY_RPC_URL";
+const LEGACY_RPC_ENV = "SEPOLIA_RPC_URL";
+const PRIMARY_MNEMONIC_ENV = "MNEMONIC";
+const LEGACY_MNEMONIC_ENV = "PANDORAS_MNEMONIC";
+function readEnvValue(keys) {
+    for (const key of keys) {
+        const value = String(process.env[key] ?? "").trim();
+        if (value) {
+            return { value, source: key };
+        }
+    }
+    return {};
+}
+function normalizePositiveInt(value, fallback) {
+    if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+        return fallback;
+    }
+    return Math.floor(value);
+}
+function resolveAuditRunConfig(config) {
+    const rpcFromEnv = readEnvValue([PRIMARY_RPC_ENV, LEGACY_RPC_ENV]);
+    const mnemonicFromEnv = readEnvValue([PRIMARY_MNEMONIC_ENV, LEGACY_MNEMONIC_ENV]);
+    const rpcUrl = rpcFromEnv.value ?? config.rpcUrl?.trim() ?? "";
+    const mnemonic = mnemonicFromEnv.value ?? config.mnemonic?.trim() ?? "";
+    const totalTransacciones = normalizePositiveInt(config.totalTransacciones, SAFE_DEFAULT_TOTAL_TRANSACCIONES);
+    const numSubcuentas = normalizePositiveInt(config.numSubcuentas, SAFE_DEFAULT_NUM_SUBCUENTAS);
+    const batchSize = normalizePositiveInt(config.batchSize, DEFAULT_BATCH_SIZE);
+    const missing = [];
+    if (!rpcUrl)
+        missing.push(PRIMARY_RPC_ENV);
+    if (!mnemonic)
+        missing.push(PRIMARY_MNEMONIC_ENV);
+    return {
+        config: {
+            ...config,
+            rpcUrl: rpcUrl || FALLBACK_RPC_URL,
+            mnemonic: mnemonic || undefined,
+            totalTransacciones,
+            numSubcuentas,
+            batchSize
+        },
+        warning: missing.length > 0
+            ? `Variables de entorno faltantes (${missing.join(", ")}). ` +
+                `Se usará simulación en lugar de pandoras-box.`
+            : undefined
+    };
+}
 function hexToNumber(hex) {
     return parseInt(hex, 16);
 }
@@ -63,9 +122,10 @@ function parsearSalidaReal(raw, config, chainId) {
     const avgGasUtil = sorted.reduce((a, b) => a + b.gasUtilization, 0) / sorted.length;
     // Transacciones confirmadas en bloques
     const txEnBloques = sorted.reduce((a, b) => a + b.numTxs, 0);
-    // Las no confirmadas son las enviadas menos las que llegaron a bloque
-    const transaccionesExitosas = txEnBloques;
-    const transaccionesFallidas = Math.max(0, config.totalTransacciones - txEnBloques);
+    // pandoras-box reporta el total de tx del bloque, no solo las de esta prueba.
+    // Acotamos el conteo al volumen solicitado para no inflar la tasa de éxito.
+    const transaccionesExitosas = Math.min(config.totalTransacciones, txEnBloques);
+    const transaccionesFallidas = Math.max(0, config.totalTransacciones - transaccionesExitosas);
     // TPS pico: bloque con mayor tx/blocktime
     let tpsPico = averageTPS;
     for (let i = 1; i < sorted.length; i++) {
@@ -179,9 +239,11 @@ function construirSalidaMinima(averageTPS, config, chainId) {
     };
 }
 // ─── Ejecución real de pandoras-box ──────────────────────────────────────────
+const LOCAL_PANDORAS_BIN = path_1.default.resolve(__dirname, "../../vendor/pandoras-box/bin/index.js");
 // Ruta absoluta al binario de pandoras-box como fallback cuando PATH no la incluye
 // (ocurre cuando el backend corre con pm2, systemd o en entornos sin .bashrc)
 const PANDORAS_BIN_PATHS = [
+    LOCAL_PANDORAS_BIN, // copia local parchada para Sepolia/Alchemy
     "pandoras-box", // PATH global
     "/home/aisaza/.nvm/versions/node/v18.20.8/bin/pandoras-box", // nvm usuario
     "/usr/local/bin/pandoras-box",
@@ -189,6 +251,9 @@ const PANDORAS_BIN_PATHS = [
 ];
 function resolverBinario() {
     const { execSync } = require("child_process");
+    if ((0, fs_1.existsSync)(LOCAL_PANDORAS_BIN)) {
+        return LOCAL_PANDORAS_BIN;
+    }
     try {
         const found = execSync("which pandoras-box 2>/dev/null || true", { encoding: "utf8" }).trim();
         if (found)
@@ -196,67 +261,22 @@ function resolverBinario() {
     }
     catch { /* no encontrado */ }
     // Verificar rutas conocidas
-    for (const p of PANDORAS_BIN_PATHS.slice(1)) {
+    for (const p of PANDORAS_BIN_PATHS.slice(2)) {
         if ((0, fs_1.existsSync)(p))
             return p;
     }
     return "pandoras-box"; // fallback; execFile lanzará ENOENT que capturamos abajo
 }
+let ethersModuleCache = null;
+async function loadEthersModule() {
+    if (!ethersModuleCache) {
+        ethersModuleCache = requireFromBackend("ethers");
+    }
+    return ethersModuleCache;
+}
 /** Detecta si la URL del RPC es de Alchemy (limitado en compute units por segundo). */
 function esUrlAlchemy(rpcUrl) {
     return rpcUrl.includes("alchemy.com") || rpcUrl.includes("alchemyapi.io");
-}
-/**
- * RPCs públicos de Sepolia sin throttling agresivo, probados en orden como
- * alternativa al endpoint de Alchemy cuando pandoras-box envía transacciones
- * en ráfaga.
- *
- * Por qué se hace el swap:
- *   El plan gratuito de Alchemy limita a ~330 compute units/s. pandoras-box
- *   envía batches consecutivos sin delays configurables y espera los recibos
- *   con un timeout de 30 s (hardcoded en el binario, no configurable por CLI).
- *   Bajo throttling, Alchemy devuelve HTTP 429 antes de que lleguen todos los
- *   recibos → timeout → salida non-zero → simulación. Además, los reintentos
- *   con el mismo nonce generan "replacement transaction underpriced".
- *
- * Alcance del swap: SOLO el flag -url que se pasa a pandoras-box.
- *   La URL de Alchemy se sigue usando para todo lo demás: getChainId,
- *   fetchRealBlockData, consultas de bloque, interoperabilidad EVM.
- */
-const SEPOLIA_RPC_CANDIDATOS = [
-    "https://rpc.ankr.com/eth_sepolia",
-    "https://ethereum-sepolia-rpc.publicnode.com",
-    "https://sepolia.drpc.org",
-    "https://rpc2.sepolia.org",
-];
-/**
- * Prueba los RPCs candidatos en orden y devuelve la URL del primero que
- * responde a eth_blockNumber dentro de 3 segundos.
- * Devuelve null si ninguno responde (el llamador usa la URL original).
- */
-async function resolverRpcAlternativo(candidatos) {
-    for (const url of candidatos) {
-        try {
-            const ctrl = new AbortController();
-            const timer = setTimeout(() => ctrl.abort(), 3000);
-            const res = await fetch(url, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ jsonrpc: "2.0", method: "eth_blockNumber", params: [], id: 1 }),
-                signal: ctrl.signal,
-            });
-            clearTimeout(timer);
-            if (res.ok) {
-                const json = await res.json();
-                if (json.result)
-                    return url;
-            }
-        }
-        catch {
-            // RPC no accesible o timeout → probar el siguiente
-        }
-    }
-    return null;
 }
 /**
  * Detecta el tipo de error de Alchemy en el texto de salida/error de pandoras-box.
@@ -285,166 +305,637 @@ function detectarTipoErrorAlchemy(text) {
     }
     return null;
 }
+function contieneReplacementUnderpriced(text) {
+    return text.toLowerCase().includes("replacement transaction underpriced");
+}
+function extraerMensajeError(error) {
+    if (error instanceof Error && error.message) {
+        const extra = [
+            typeof error.reason === "string" ? String(error.reason) : "",
+            typeof error.code === "string" ? `code: ${error.code}` : ""
+        ].filter(Boolean).join(" | ");
+        return extra ? `${error.message} | ${extra}` : error.message;
+    }
+    if (typeof error === "object" && error) {
+        const candidate = error;
+        const values = [
+            typeof candidate.message === "string" ? candidate.message : "",
+            typeof candidate.reason === "string" ? candidate.reason : "",
+            typeof candidate.error?.message === "string" ? candidate.error.message : "",
+            typeof candidate.data?.message === "string" ? candidate.data.message : "",
+            typeof candidate.body === "string" ? candidate.body : ""
+        ].filter(Boolean);
+        if (values.length > 0)
+            return values.join(" | ");
+    }
+    return String(error);
+}
+function average(values) {
+    if (values.length === 0)
+        return 0;
+    return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+function percentile(values, ratio) {
+    if (values.length === 0)
+        return 0;
+    const sorted = [...values].sort((a, b) => a - b);
+    const idx = Math.min(sorted.length - 1, Math.max(0, Math.ceil(sorted.length * ratio) - 1));
+    return sorted[idx];
+}
+function chunkArray(items, chunkSize) {
+    const size = Math.max(1, chunkSize);
+    const chunks = [];
+    for (let i = 0; i < items.length; i += size) {
+        chunks.push(items.slice(i, i + size));
+    }
+    return chunks;
+}
+function resolveEoaRunnerOptions(config) {
+    const isAlchemy = esUrlAlchemy(config.rpcUrl);
+    return {
+        batchSize: Math.max(1, config.batchSize ?? (isAlchemy ? 5 : 10)),
+        batchDelayMs: Math.max(0, config.batchDelayMs ?? (isAlchemy ? 350 : 200)),
+        receiptTimeoutMs: Math.max(10000, config.receiptTimeoutMs ?? (isAlchemy ? 90000 : 60000)),
+        receiptPollIntervalMs: isAlchemy ? 2000 : 1500,
+        maxRetriesPorTransaccion: Math.max(1, config.maxRetriesPorTransaccion ?? (isAlchemy ? 5 : 3))
+    };
+}
+function findPandorasOutputFile(outFile, tmpDir) {
+    if ((0, fs_1.existsSync)(outFile)) {
+        return outFile;
+    }
+    const candidatos = [
+        path_1.default.join(process.cwd(), "result.json"),
+        path_1.default.join(process.cwd(), "pandoras-result.json"),
+        ...(0, fs_1.readdirSync)(tmpDir)
+            .filter((file) => file.endsWith(".json"))
+            .map((file) => path_1.default.join(tmpDir, file))
+    ];
+    for (const candidato of candidatos) {
+        if ((0, fs_1.existsSync)(candidato)) {
+            return candidato;
+        }
+    }
+    return null;
+}
+function cleanupPandorasOutputFiles(files) {
+    for (const file of files) {
+        try {
+            if ((0, fs_1.existsSync)(file)) {
+                (0, fs_1.unlinkSync)(file);
+            }
+        }
+        catch {
+            // noop
+        }
+    }
+}
 async function tryRunPandorasBox(config, chainId) {
     const mnemonic = config.mnemonic?.trim();
     if (!mnemonic) {
-        // Sin mnemonic no se puede correr pandoras-box
         return null;
     }
-    // Crear archivo temporal para la salida
     const tmpDir = (0, fs_1.mkdtempSync)(path_1.default.join((0, os_1.tmpdir)(), "pandoras-"));
-    const outFile = path_1.default.join(tmpDir, `result-${(0, crypto_1.randomBytes)(4).toString("hex")}.json`);
     const binario = resolverBinario();
-    // Si la URL configurada es de Alchemy, probar los RPCs candidatos en orden
-    // y usar el primero que responda. Ver comentario de SEPOLIA_RPC_CANDIDATOS.
-    let rpcUrlParaPandoras = config.rpcUrl;
-    if (esUrlAlchemy(config.rpcUrl)) {
-        const alternativo = await resolverRpcAlternativo(SEPOLIA_RPC_CANDIDATOS);
-        if (alternativo) {
-            console.log(`[pandoras-box] RPC alternativo seleccionado: ${alternativo}`);
-            rpcUrlParaPandoras = alternativo;
+    const generatedFiles = new Set([
+        path_1.default.join(process.cwd(), "result.json"),
+        path_1.default.join(process.cwd(), "pandoras-result.json")
+    ]);
+    const argsBase = [
+        "-url", config.rpcUrl,
+        "-m", mnemonic,
+        "-t", String(config.totalTransacciones),
+        "-s", String(config.numSubcuentas),
+        "--mode", config.modo,
+        "-b", String(config.batchSize)
+    ];
+    let previousUnderpricedError = "";
+    try {
+        for (let attempt = 0; attempt < 2; attempt++) {
+            const outFile = path_1.default.join(tmpDir, `result-${attempt + 1}-${(0, crypto_1.randomBytes)(4).toString("hex")}.json`);
+            generatedFiles.add(outFile);
+            const args = [...argsBase, "-o", outFile];
+            try {
+                // La versión instalada no expone un flag `-gp`; dejamos que el nodo
+                // resuelva el gas actual en cada ejecución de pandoras-box.
+                const batchDelayMs = Math.max(0, config.batchDelayMs ?? 5000);
+                const { stdout, stderr } = await execFileAsync(binario, args, {
+                    timeout: PANDORAS_PROCESS_TIMEOUT_MS,
+                    env: {
+                        ...process.env,
+                        PANDORAS_BATCH_DELAY_MS: String(batchDelayMs),
+                        PANDORAS_RECEIPT_TIMEOUT_MS: String(PANDORAS_PROCESS_TIMEOUT_MS)
+                    }
+                });
+                const archivoSalida = findPandorasOutputFile(outFile, tmpDir);
+                if (!archivoSalida) {
+                    const salidaRaw = [
+                        stderr?.trim() ? `stderr: ${stderr.trim()}` : "",
+                        stdout?.trim() ? `stdout: ${stdout.trim()}` : ""
+                    ].filter(Boolean).join(" | ");
+                    const textoDiagnostico = `${stderr} ${stdout}`;
+                    const tipoErrorAlchemy = detectarTipoErrorAlchemy(textoDiagnostico);
+                    const hayUnderpriced = contieneReplacementUnderpriced(textoDiagnostico);
+                    const incluyeTimeoutInterno = textoDiagnostico.toLowerCase().includes("timeout exceeded");
+                    if (hayUnderpriced && attempt === 0) {
+                        previousUnderpricedError = salidaRaw || "pandoras-box terminó sin JSON tras un replacement underpriced.";
+                        await sleep(PANDORAS_UNDERPRICED_RETRY_DELAY_MS);
+                        continue;
+                    }
+                    if (hayUnderpriced) {
+                        return {
+                            error: `pandoras-box falló dos veces con "replacement transaction underpriced" y no generó JSON. ` +
+                                `Primer intento: ${previousUnderpricedError}. Segundo intento: ${salidaRaw || "sin detalle adicional"}`
+                        };
+                    }
+                    if (tipoErrorAlchemy === "rate_limit") {
+                        return {
+                            error: `Rate limit de Alchemy: pandoras-box no generó JSON porque agotó los compute units por segundo. ` +
+                                `Use parámetros conservadores (-t 30, -s 3, -b 10) y ejecute las suites en secuencia. ` +
+                                `Detalle: ${salidaRaw || "sin salida de diagnóstico"}`
+                        };
+                    }
+                    if (incluyeTimeoutInterno) {
+                        return {
+                            error: `pandoras-box agotó su timeout interno de receipts (30 s) y no generó JSON. ` +
+                                `El timeout del proceso hijo ya se elevó a ${PANDORAS_PROCESS_TIMEOUT_MS / 1000} s, ` +
+                                `pero la versión instalada sigue teniendo un límite interno no configurable. ` +
+                                `Detalle: ${salidaRaw || "sin salida de diagnóstico"}`
+                        };
+                    }
+                    return {
+                        error: salidaRaw
+                            ? `pandoras-box ejecutó sin generar archivo de salida. Detalle: ${salidaRaw}`
+                            : `pandoras-box ejecutó pero no generó archivo de salida JSON.`
+                    };
+                }
+                generatedFiles.add(archivoSalida);
+                const rawText = (0, fs_1.readFileSync)(archivoSalida, "utf8");
+                let raw;
+                try {
+                    raw = JSON.parse(rawText);
+                }
+                catch {
+                    return {
+                        error: `pandoras-box generó un JSON inválido. Contenido recibido: ${rawText.slice(0, 200)}`
+                    };
+                }
+                return { output: parsearSalidaReal(raw, config, chainId) };
+            }
+            catch (err) {
+                const e = err;
+                const stderr = (e.stderr ?? "").trim();
+                const stdout = (e.stdout ?? "").trim();
+                const base = e.message ?? String(err);
+                if (e.code === "ENOENT") {
+                    return null;
+                }
+                const detalle = [
+                    base,
+                    stderr ? `stderr: ${stderr}` : "",
+                    stdout && !stderr ? `stdout: ${stdout}` : ""
+                ].filter(Boolean).join(" | ");
+                const textoDiagnostico = `${stderr} ${stdout} ${base}`;
+                const tipoErrorAlchemy = detectarTipoErrorAlchemy(textoDiagnostico);
+                const hayUnderpriced = contieneReplacementUnderpriced(textoDiagnostico);
+                if (hayUnderpriced && attempt === 0) {
+                    previousUnderpricedError = detalle;
+                    await sleep(PANDORAS_UNDERPRICED_RETRY_DELAY_MS);
+                    continue;
+                }
+                if (hayUnderpriced) {
+                    return {
+                        error: `pandoras-box falló dos veces con "replacement transaction underpriced". ` +
+                            `Se esperaron ${PANDORAS_UNDERPRICED_RETRY_DELAY_MS / 1000} s entre intentos para que el mempool drenara. ` +
+                            `Primer intento: ${previousUnderpricedError}. Segundo intento: ${detalle}`
+                    };
+                }
+                if (tipoErrorAlchemy === "rate_limit") {
+                    return {
+                        error: `Rate limit de Alchemy: pandoras-box excedió la capacidad de compute units por segundo. ` +
+                            `Sin flag nativo de throttle en la versión instalada, use parámetros conservadores ` +
+                            `(-t 30, -s 3, -b 10) y ejecute las suites en secuencia. Detalle: ${detalle}`
+                    };
+                }
+                return { error: `pandoras-box falló: ${detalle}` };
+            }
         }
-        else {
-            console.log(`[pandoras-box] Ningún RPC alternativo respondió; usando Alchemy como último recurso.`);
+        return {
+            error: `pandoras-box no pudo completarse tras el reintento controlado por replacement underpriced.`
+        };
+    }
+    finally {
+        cleanupPandorasOutputFiles(generatedFiles);
+    }
+}
+function derivationPathForIndex(index) {
+    return `m/44'/60'/0'/0/${index}`;
+}
+function distribuirTransacciones(total, numSenders) {
+    const distribution = Array.from({ length: Math.max(1, numSenders) }, () => 0);
+    for (let i = 0; i < total; i++) {
+        distribution[i % distribution.length] += 1;
+    }
+    return distribution;
+}
+function maxBigNumber(a, b) {
+    return BigInt(a.toString()) >= BigInt(b.toString()) ? a : b;
+}
+async function getFreshGasPrice(provider, fallback) {
+    try {
+        const fresh = await provider.getGasPrice();
+        return maxBigNumber(fresh, fallback);
+    }
+    catch {
+        return fallback;
+    }
+}
+async function getPendingNonce(provider, address) {
+    try {
+        return await provider.getTransactionCount(address, "pending");
+    }
+    catch {
+        return await provider.getTransactionCount(address);
+    }
+}
+function buildFundingAmount(ethers, gasPrice, txCount) {
+    const gasLimit = ethers.BigNumber.from(21000);
+    const budgetTxs = Math.max(1, txCount) + 2;
+    return gasPrice.mul(gasLimit).mul(budgetTxs).mul(16).div(10);
+}
+async function sendSignedTransactionWithRetries(params) {
+    const { ethers, provider, wallet, chainId, nonce, initialGasPrice, txBase, options, contextLabel } = params;
+    let gasPrice = initialGasPrice;
+    let lastMessage = "";
+    for (let attempt = 0; attempt < options.maxRetriesPorTransaccion; attempt++) {
+        gasPrice = await getFreshGasPrice(provider, gasPrice);
+        const txRequest = {
+            ...txBase,
+            chainId,
+            nonce,
+            gasPrice
+        };
+        const signedTx = await wallet.signTransaction(txRequest);
+        const txHash = ethers.utils.keccak256(signedTx);
+        const startedAtMs = Date.now();
+        try {
+            const response = await provider.sendTransaction(signedTx);
+            return {
+                hash: response?.hash ?? txHash,
+                sender: wallet.address,
+                nonce,
+                gasPriceWei: gasPrice.toString(),
+                submittedAtMs: startedAtMs,
+                rpcResponseMs: Date.now() - startedAtMs
+            };
+        }
+        catch (error) {
+            const message = extraerMensajeError(error);
+            const lower = message.toLowerCase();
+            lastMessage = message;
+            if (lower.includes("already known")) {
+                return {
+                    hash: txHash,
+                    sender: wallet.address,
+                    nonce,
+                    gasPriceWei: gasPrice.toString(),
+                    submittedAtMs: startedAtMs,
+                    rpcResponseMs: Date.now() - startedAtMs
+                };
+            }
+            const tipoError = detectarTipoErrorAlchemy(message);
+            if (tipoError === "replacement_underpriced" ||
+                lower.includes("replacement fee too low")) {
+                gasPrice = gasPrice.mul(115).add(99).div(100);
+                await sleep(Math.min(250 * (attempt + 1), 1000));
+                continue;
+            }
+            if (tipoError === "rate_limit") {
+                const backoffMs = Math.min(Math.max(200, options.batchDelayMs) * (2 ** attempt), 6000);
+                await sleep(backoffMs);
+                continue;
+            }
+            throw new Error(`${contextLabel}: ${message}`);
         }
     }
-    // Registrar el bloque actual y el instante antes del envío para poder
-    // recuperar los recibos si pandoras-box falla tras el envío.
-    const inicioMs = Date.now();
-    const startBlock = await getLatestBlockNumber(rpcUrlParaPandoras);
-    try {
-        const args = [
-            "-url", rpcUrlParaPandoras,
-            "-m", mnemonic,
-            "-t", String(config.totalTransacciones),
-            "-s", String(config.numSubcuentas),
-            "--mode", config.modo,
-            "-o", outFile
-        ];
-        if (config.batchSize) {
-            args.push("-b", String(config.batchSize));
-        }
-        // Timeout generoso: 10 min para pruebas grandes en Sepolia
-        const { stdout, stderr } = await execFileAsync(binario, args, {
-            timeout: 600000,
-            // Heredar el PATH del proceso para que nvm funcione correctamente
-            env: { ...process.env }
-        });
-        // Buscar el archivo de salida. En modo EOA pandoras-box a veces ignora el flag -o
-        // y escribe en el directorio de trabajo actual o dentro de tmpDir con otro nombre.
-        let archivoSalida = null;
-        if ((0, fs_1.existsSync)(outFile)) {
-            archivoSalida = outFile;
-        }
-        else {
-            // Búsqueda de rutas alternativas (diferencia de comportamiento por modo)
-            const candidatos = [
-                path_1.default.join(process.cwd(), "result.json"),
-                path_1.default.join(process.cwd(), "pandoras-result.json"),
-                ...(0, fs_1.readdirSync)(tmpDir)
-                    .filter((f) => f.endsWith(".json"))
-                    .map((f) => path_1.default.join(tmpDir, f))
-            ];
-            for (const candidato of candidatos) {
-                if ((0, fs_1.existsSync)(candidato)) {
-                    archivoSalida = candidato;
-                    break;
+    throw new Error(`${contextLabel}: agotó reintentos. Último error: ${lastMessage}`);
+}
+async function pollReceipts(provider, hashes, options) {
+    const receipts = new Map();
+    if (hashes.length === 0)
+        return receipts;
+    const deadline = Date.now() + options.receiptTimeoutMs;
+    let round = 0;
+    while (receipts.size < hashes.length && Date.now() < deadline) {
+        const pendientes = hashes.filter((hash) => !receipts.has(hash));
+        const lotes = chunkArray(pendientes, Math.min(options.batchSize, 5));
+        for (const lote of lotes) {
+            for (const hash of lote) {
+                try {
+                    const receipt = await provider.getTransactionReceipt(hash);
+                    if (receipt) {
+                        receipts.set(hash, receipt);
+                    }
+                }
+                catch (error) {
+                    if (detectarTipoErrorAlchemy(extraerMensajeError(error)) === "rate_limit") {
+                        await sleep(Math.min(Math.max(200, options.batchDelayMs) * (2 ** round), 4000));
+                    }
                 }
             }
         }
-        if (!archivoSalida) {
-            // pandoras-box terminó sin error pero no generó ningún archivo JSON.
-            // Incluir stdout/stderr para facilitar el diagnóstico (no el mensaje genérico).
-            const salidaRaw = [
-                stderr?.trim() ? `stderr: ${stderr.trim()}` : "",
-                stdout?.trim() ? `stdout: ${stdout.trim()}` : ""
-            ].filter(Boolean).join(" | ");
-            return {
-                error: salidaRaw
-                    ? `pandoras-box ejecutó sin generar archivo de salida. Detalle: ${salidaRaw}`
-                    : `pandoras-box ejecutó pero no generó archivo de salida en ${outFile} ni en el directorio de trabajo. Verifica que el mnemonic tenga fondos suficientes.`
-            };
+        if (receipts.size < hashes.length) {
+            round += 1;
+            await sleep(options.receiptPollIntervalMs);
         }
-        const rawText = (0, fs_1.readFileSync)(archivoSalida, "utf8");
-        let raw;
+    }
+    return receipts;
+}
+async function fetchBlocksMap(provider, blockNumbers) {
+    const blocks = new Map();
+    const unique = [...new Set(blockNumbers.filter((blockNumber) => Number.isFinite(blockNumber)))];
+    for (const blockNumber of unique) {
         try {
-            raw = JSON.parse(rawText);
+            const block = await provider.getBlock(blockNumber);
+            if (block) {
+                blocks.set(blockNumber, block);
+            }
         }
         catch {
-            return { error: `pandoras-box generó un JSON inválido. Contenido recibido: ${rawText.slice(0, 200)}` };
+            // Si el bloque falla, se omite y se siguen calculando métricas con lo disponible.
         }
-        return { output: parsearSalidaReal(raw, config, chainId) };
     }
-    catch (err) {
-        const e = err;
-        // Recoger mensaje de stderr (donde pandoras-box escribe sus errores)
-        const stderr = (e.stderr ?? "").trim();
-        const stdout = (e.stdout ?? "").trim();
-        const base = e.message ?? String(err);
-        // Si el binario no existe en PATH
-        if (e.code === "ENOENT") {
-            return null; // pandoras-box no instalado → simulación (no es un error del usuario)
+    return blocks;
+}
+function buildEoaOutput(params) {
+    const { config, chainId, submittedTxs, receipts, blocks } = params;
+    const confirmedTxs = [];
+    for (const tx of submittedTxs) {
+        const receipt = receipts.get(tx.hash);
+        if (!receipt || typeof receipt.blockNumber !== "number")
+            continue;
+        const block = blocks.get(receipt.blockNumber);
+        const blockTimestampSec = typeof block?.timestamp === "number"
+            ? block.timestamp
+            : Math.floor(tx.submittedAtMs / 1000);
+        const gasUsed = receipt?.gasUsed ? Number(receipt.gasUsed.toString()) : 21000;
+        const effectiveGasPriceWei = (receipt?.effectiveGasPrice ??
+            receipt?.gasPrice ??
+            tx.gasPriceWei).toString();
+        confirmedTxs.push({
+            ...tx,
+            blockNumber: receipt.blockNumber,
+            blockTimestampSec,
+            gasUsed,
+            effectiveGasPriceWei,
+            status: typeof receipt.status === "number" ? receipt.status : 1
+        });
+    }
+    const confirmedOnChain = confirmedTxs.length;
+    const revertedTxs = confirmedTxs.filter((tx) => tx.status === 0);
+    const exitosas = confirmedOnChain - revertedTxs.length;
+    const fallidas = Math.max(0, config.totalTransacciones - exitosas);
+    const startMs = submittedTxs.length > 0
+        ? Math.min(...submittedTxs.map((tx) => tx.submittedAtMs))
+        : Date.now();
+    const endMs = confirmedTxs.length > 0
+        ? Math.max(...confirmedTxs.map((tx) => tx.blockTimestampSec * 1000))
+        : (submittedTxs.length > 0
+            ? Math.max(...submittedTxs.map((tx) => tx.submittedAtMs))
+            : startMs);
+    const durationSeconds = Math.max(1, (endMs - startMs) / 1000);
+    const latencias = confirmedTxs.map((tx) => Math.max(0, tx.blockTimestampSec * 1000 - tx.submittedAtMs));
+    const gasUsedValues = confirmedTxs.map((tx) => tx.gasUsed);
+    const nodeResponseAvgMs = average(submittedTxs.map((tx) => tx.rpcResponseMs));
+    const grouped = new Map();
+    for (const tx of confirmedTxs) {
+        if (!grouped.has(tx.blockNumber)) {
+            grouped.set(tx.blockNumber, []);
         }
-        // ── Recolector de recibos del backend ────────────────────────────────────
-        // pandoras-box tiene un timeout interno de 30 s (hardcoded) para recolectar
-        // recibos. Si el proceso falló pero el stdout contiene "batches sent", las
-        // transacciones SÍ se enviaron a Sepolia. En ese caso el backend toma el
-        // relevo: deriva las direcciones de las subcuentas, escanea los bloques
-        // desde startBlock y recolecta los recibos directamente desde el nodo.
-        const envioCompleto = stdout.includes("batches sent");
-        if (envioCompleto && startBlock > 0) {
-            console.log(`[backend-recovery] pandoras-box falló tras el envío exitoso de transacciones. ` +
-                `Iniciando recolector de recibos desde bloque ${startBlock}...`);
-            const recovered = await recolectarRecibosDesdeNodo(config, startBlock, rpcUrlParaPandoras, chainId, inicioMs).catch((recErr) => {
-                console.error("[backend-recovery] Error inesperado en el recolector:", recErr);
-                return null;
+        grouped.get(tx.blockNumber).push(tx);
+    }
+    const orderedBlocks = [...grouped.entries()]
+        .map(([blockNumber, txs]) => {
+        const block = blocks.get(blockNumber);
+        return {
+            blockNumber,
+            timestampSec: typeof block?.timestamp === "number"
+                ? block.timestamp
+                : Math.floor(Math.min(...txs.map((tx) => tx.submittedAtMs)) / 1000),
+            txCount: txs.length,
+            gasUsed: block?.gasUsed ? Number(block.gasUsed.toString()) : txs.reduce((sum, tx) => sum + tx.gasUsed, 0),
+            gasLimit: block?.gasLimit ? Number(block.gasLimit.toString()) : 30000000
+        };
+    })
+        .sort((a, b) => a.blockNumber - b.blockNumber);
+    const blockSamples = orderedBlocks.map((block, index) => {
+        const prevTimestamp = index > 0 ? orderedBlocks[index - 1].timestampSec : block.timestampSec - 12;
+        const blockTimeSeconds = Math.max(1, block.timestampSec - prevTimestamp);
+        return {
+            block_number: block.blockNumber,
+            timestamp: new Date(block.timestampSec * 1000).toISOString(),
+            tx_count: block.txCount,
+            gas_used: block.gasUsed,
+            gas_limit: block.gasLimit,
+            block_time_seconds: blockTimeSeconds,
+            tps: block.txCount / blockTimeSeconds
+        };
+    });
+    const blockTimes = blockSamples.map((sample) => sample.block_time_seconds);
+    const avgBlockTime = average(blockTimes);
+    const avgGasUtilization = average(blockSamples.map((sample) => sample.gas_limit > 0 ? (sample.gas_used / sample.gas_limit) * 100 : 0));
+    const tpsAverage = confirmedOnChain > 0 ? confirmedOnChain / durationSeconds : 0;
+    const tpsPeak = Math.max(tpsAverage, ...blockSamples.map((sample) => sample.tps), 0);
+    return {
+        mode: config.modo,
+        start_time: new Date(startMs).toISOString(),
+        end_time: new Date(endMs).toISOString(),
+        duration_seconds: durationSeconds,
+        rpc_url: config.rpcUrl,
+        chain_id: chainId,
+        total_transactions: config.totalTransacciones,
+        successful_transactions: exitosas,
+        failed_transactions: fallidas,
+        tps_peak: tpsPeak,
+        tps_average: tpsAverage,
+        latency_avg_ms: average(latencias),
+        latency_min_ms: latencias.length > 0 ? Math.min(...latencias) : 0,
+        latency_max_ms: latencias.length > 0 ? Math.max(...latencias) : 0,
+        latency_p50_ms: percentile(latencias, 0.5),
+        latency_p95_ms: percentile(latencias, 0.95),
+        latency_p99_ms: percentile(latencias, 0.99),
+        block_time_avg_seconds: avgBlockTime,
+        block_time_min_seconds: blockTimes.length > 0 ? Math.min(...blockTimes) : 0,
+        block_time_max_seconds: blockTimes.length > 0 ? Math.max(...blockTimes) : 0,
+        blocks_observed: blockSamples.length,
+        gas_used_avg: average(gasUsedValues),
+        gas_used_max: gasUsedValues.length > 0 ? Math.max(...gasUsedValues) : 0,
+        gas_limit: blockSamples.length > 0 ? blockSamples[blockSamples.length - 1].gas_limit : 30000000,
+        gas_utilization_pct: avgGasUtilization,
+        reverted_transactions: revertedTxs.length,
+        out_of_gas_transactions: 0,
+        node_response_avg_ms: nodeResponseAvgMs,
+        contract_address: config.contractAddress,
+        deploy_successful: undefined,
+        erc_function_calls: 0,
+        erc_function_success: 0,
+        block_samples: blockSamples
+    };
+}
+async function tryRunInternalEoa(config, chainId) {
+    const mnemonic = config.mnemonic?.trim();
+    if (!mnemonic) {
+        return { error: "Se requiere un mnemonic para ejecutar transferencias EOA reales." };
+    }
+    const options = resolveEoaRunnerOptions(config);
+    try {
+        const ethers = await loadEthersModule();
+        const provider = new ethers.providers.JsonRpcProvider(config.rpcUrl);
+        const network = await provider.getNetwork();
+        const effectiveChainId = chainId || Number(network?.chainId ?? 0);
+        const zeroValue = ethers.BigNumber.from(0);
+        const gasLimit = ethers.BigNumber.from(21000);
+        const distributor = ethers.Wallet
+            .fromMnemonic(mnemonic, derivationPathForIndex(0))
+            .connect(provider);
+        const distribution = distribuirTransacciones(config.totalTransacciones, config.numSubcuentas);
+        const senderStates = distribution
+            .map((objetivoTxs, idx) => {
+            const wallet = ethers.Wallet
+                .fromMnemonic(mnemonic, derivationPathForIndex(idx + 1))
+                .connect(provider);
+            return {
+                wallet,
+                address: wallet.address,
+                recipient: "",
+                nextNonce: 0,
+                objetivoTxs,
+                enviadas: 0
+            };
+        })
+            .filter((sender) => sender.objetivoTxs > 0);
+        if (senderStates.length === 0) {
+            return { output: construirSalidaMinima(0, config, effectiveChainId) };
+        }
+        senderStates.forEach((sender, index) => {
+            sender.recipient = senderStates.length > 1
+                ? senderStates[(index + 1) % senderStates.length].address
+                : distributor.address;
+        });
+        for (const sender of senderStates) {
+            sender.nextNonce = await getPendingNonce(provider, sender.address);
+        }
+        let distributorNonce = await getPendingNonce(provider, distributor.address);
+        let gasPrice = await provider.getGasPrice();
+        const fundingTxs = [];
+        for (const sender of senderStates) {
+            gasPrice = await getFreshGasPrice(provider, gasPrice);
+            const fundingTx = await sendSignedTransactionWithRetries({
+                ethers,
+                provider,
+                wallet: distributor,
+                chainId: effectiveChainId,
+                nonce: distributorNonce,
+                initialGasPrice: gasPrice,
+                txBase: {
+                    to: sender.address,
+                    value: buildFundingAmount(ethers, gasPrice, sender.objetivoTxs),
+                    gasLimit
+                },
+                options,
+                contextLabel: `Fondeo de ${sender.address}`
             });
-            if (recovered) {
-                console.log(`[backend-recovery] Recolección completada: ` +
-                    `${recovered.successful_transactions}/${recovered.total_transactions} transacciones exitosas.`);
-                return { output: recovered, isRecovery: true };
+            distributorNonce += 1;
+            fundingTxs.push(fundingTx);
+            if (options.batchDelayMs > 0) {
+                await sleep(Math.min(options.batchDelayMs, 400));
             }
-            console.log("[backend-recovery] No se encontraron transacciones en el escaneo de bloques. " +
-                "Continuando con diagnóstico de error estándar.");
         }
-        // Detectar errores específicos de Alchemy (rate limit / nonce reciclado)
-        const textoError = `${stderr} ${stdout} ${base}`;
-        const tipoErrorAlchemy = detectarTipoErrorAlchemy(textoError);
-        if (tipoErrorAlchemy === "rate_limit") {
+        const fundingReceipts = await pollReceipts(provider, fundingTxs.map((tx) => tx.hash), options);
+        const fundingPendientes = fundingTxs.filter((tx) => {
+            const receipt = fundingReceipts.get(tx.hash);
+            return !receipt || (typeof receipt.status === "number" && receipt.status === 0);
+        });
+        if (fundingPendientes.length > 0) {
             return {
-                error: `[Ejecución directa con pandoras-box] Rate limit de Alchemy: las transacciones ` +
-                    `SÍ se enviaron a Sepolia pero pandoras-box no pudo recopilar todos los recibos ` +
-                    `antes del timeout interno de 30 s (hardcoded en el binario, no configurable). ` +
-                    `Usa -b ≤ 10 con -t ≤ 100 para no agotar el límite de compute units por segundo. ` +
-                    `Detalle: ${stderr || base}`
+                error: `El fondeo inicial de subcuentas no se confirmó completamente ` +
+                    `(${fundingPendientes.length}/${fundingTxs.length} pendientes o revertidas) ` +
+                    `dentro de ${options.receiptTimeoutMs} ms.`
             };
         }
-        if (tipoErrorAlchemy === "replacement_underpriced") {
+        const queue = [];
+        const maxObjetivo = Math.max(...senderStates.map((sender) => sender.objetivoTxs));
+        for (let round = 0; round < maxObjetivo; round++) {
+            for (const sender of senderStates) {
+                if (round < sender.objetivoTxs) {
+                    queue.push(sender);
+                }
+            }
+        }
+        const submittedTxs = [];
+        const sendErrors = [];
+        const queueBatches = chunkArray(queue, options.batchSize);
+        for (const [batchIndex, batch] of queueBatches.entries()) {
+            gasPrice = await getFreshGasPrice(provider, gasPrice);
+            for (const sender of batch) {
+                try {
+                    const tx = await sendSignedTransactionWithRetries({
+                        ethers,
+                        provider,
+                        wallet: sender.wallet,
+                        chainId: effectiveChainId,
+                        nonce: sender.nextNonce,
+                        initialGasPrice: gasPrice,
+                        txBase: {
+                            to: sender.recipient,
+                            value: zeroValue,
+                            gasLimit
+                        },
+                        options,
+                        contextLabel: `Transferencia EOA nonce ${sender.nextNonce} desde ${sender.address}`
+                    });
+                    sender.nextNonce += 1;
+                    sender.enviadas += 1;
+                    submittedTxs.push(tx);
+                }
+                catch (error) {
+                    sendErrors.push(extraerMensajeError(error));
+                    try {
+                        const remotePendingNonce = await getPendingNonce(provider, sender.address);
+                        sender.nextNonce = Math.max(sender.nextNonce, remotePendingNonce);
+                    }
+                    catch {
+                        // Si el refresh del nonce falla, se mantiene el nonce local actual.
+                    }
+                }
+            }
+            if (batchIndex < queueBatches.length - 1 && options.batchDelayMs > 0) {
+                await sleep(options.batchDelayMs);
+            }
+        }
+        if (submittedTxs.length === 0) {
             return {
-                error: `[Ejecución directa con pandoras-box] "Replacement transaction underpriced": ` +
-                    `pandoras-box intentó reenviar txs con el mismo nonce tras recibir errores de Alchemy. ` +
-                    `Las transacciones anteriores SÍ pueden haberse enviado a Sepolia. ` +
-                    `Espera ~2 min (para que los nonces avancen) y usa -b ≤ 10 con -t ≤ 100 ` +
-                    `antes de volver a intentarlo. Detalle: ${stderr || base}`
+                error: sendErrors[0]
+                    ? `No se pudo enviar ninguna transferencia EOA. Detalle: ${sendErrors[0]}`
+                    : "No se pudo enviar ninguna transferencia EOA."
             };
         }
-        // Construir mensaje de error informativo con toda la info disponible
-        const detalle = [
-            base,
-            stderr ? `stderr: ${stderr}` : "",
-            stdout && !stderr ? `stdout: ${stdout}` : ""
-        ].filter(Boolean).join(" | ");
-        return { error: `pandoras-box falló: ${detalle}` };
+        const receipts = await pollReceipts(provider, submittedTxs.map((tx) => tx.hash), options);
+        const blocks = await fetchBlocksMap(provider, [...receipts.values()]
+            .map((receipt) => Number(receipt?.blockNumber))
+            .filter((blockNumber) => Number.isFinite(blockNumber)));
+        return {
+            output: buildEoaOutput({
+                config,
+                chainId: effectiveChainId,
+                submittedTxs,
+                receipts,
+                blocks
+            })
+        };
     }
-    finally {
-        // Limpiar el archivo temporal (puede estar en outFile u otra ruta alternativa encontrada)
-        for (const f of [outFile, path_1.default.join(process.cwd(), "result.json"), path_1.default.join(process.cwd(), "pandoras-result.json")]) {
-            try {
-                if ((0, fs_1.existsSync)(f))
-                    (0, fs_1.unlinkSync)(f);
-            }
-            catch { /* noop */ }
-        }
+    catch (error) {
+        return { error: `Runner EOA interno falló: ${extraerMensajeError(error)}` };
     }
 }
 // ─── Utilidades JSON-RPC ──────────────────────────────────────────────────────
@@ -511,204 +1002,6 @@ async function getBlockByNumber(rpcUrl, blockNum) {
     catch {
         return null;
     }
-}
-async function getBlockWithFullTxs(rpcUrl, blockNum) {
-    try {
-        const hex = "0x" + blockNum.toString(16);
-        const result = await jsonRpcPost(rpcUrl, "eth_getBlockByNumber", [hex, true]);
-        return result;
-    }
-    catch {
-        return null;
-    }
-}
-async function getTransactionReceipt(rpcUrl, txHash) {
-    try {
-        const result = await jsonRpcPost(rpcUrl, "eth_getTransactionReceipt", [txHash]);
-        if (!result)
-            return null;
-        return result;
-    }
-    catch {
-        return null;
-    }
-}
-/**
- * Recolector de recibos del backend — fallback cuando pandoras-box envía
- * todas las transacciones exitosamente pero falla al recolectar los recibos
- * por el timeout interno de 30 s (hardcoded, no configurable en el binario).
- *
- * Estrategia:
- * 1. Deriva las direcciones de las subcuentas a partir del mnemonic,
- *    usando la misma ruta HD que pandoras-box: m/44'/60'/0'/0/${i} (i=1..numSubcuentas).
- * 2. Escanea los bloques desde startBlock hasta el bloque actual (máx. 60 bloques)
- *    buscando transacciones cuyo campo `from` coincida con alguna subcuenta.
- * 3. Espera los recibos de todas las transacciones encontradas (timeout 120 s).
- * 4. Calcula métricas reales: TPS, latencia (aprox.), gas, tasa de éxito.
- */
-async function recolectarRecibosDesdeNodo(config, startBlock, rpcUrl, chainId, inicioMs) {
-    const mnemonic = config.mnemonic?.trim();
-    if (!mnemonic)
-        return null;
-    // 1. Derivar direcciones de subcuentas (misma ruta que signer.js de pandoras-box)
-    let senderAddresses;
-    try {
-        const addrs = new Set();
-        for (let i = 1; i <= config.numSubcuentas; i++) {
-            const w = ethers_1.Wallet.fromMnemonic(mnemonic, `m/44'/60'/0'/0/${i}`);
-            addrs.add(w.address.toLowerCase());
-        }
-        senderAddresses = addrs;
-    }
-    catch (e) {
-        console.error("[backend-recovery] No se pudieron derivar las direcciones del mnemonic:", e);
-        return null;
-    }
-    // 2. Escanear bloques desde startBlock hasta el bloque actual (máx. 60)
-    const currentBlock = await getLatestBlockNumber(rpcUrl);
-    if (!currentBlock || currentBlock < startBlock)
-        return null;
-    const MAX_BLOQUES = 60;
-    const toBlock = Math.min(currentBlock, startBlock + MAX_BLOQUES);
-    console.log(`[backend-recovery] Escaneando bloques ${startBlock}–${toBlock} ` +
-        `(${toBlock - startBlock + 1} bloques, ${senderAddresses.size} cuentas)...`);
-    const txHashesCandidatos = [];
-    const blockDataMap = new Map();
-    for (let n = startBlock; n <= toBlock; n++) {
-        const bloque = await getBlockWithFullTxs(rpcUrl, n);
-        if (!bloque)
-            continue;
-        blockDataMap.set(n, {
-            timestamp: parseInt(bloque.timestamp, 16),
-            gasUsed: parseInt(bloque.gasUsed, 16),
-            gasLimit: parseInt(bloque.gasLimit, 16)
-        });
-        for (const tx of (bloque.transactions ?? [])) {
-            if (tx.from && senderAddresses.has(tx.from.toLowerCase())) {
-                txHashesCandidatos.push(tx.hash);
-            }
-        }
-    }
-    if (txHashesCandidatos.length === 0) {
-        console.log(`[backend-recovery] Ninguna transacción de las subcuentas encontrada ` +
-            `en los bloques ${startBlock}–${toBlock}.`);
-        return null;
-    }
-    console.log(`[backend-recovery] ${txHashesCandidatos.length} transacciones encontradas. ` +
-        `Recolectando recibos (timeout 120 s)...`);
-    // 3. Recolectar recibos con timeout de 120 s
-    const RECEIPT_TIMEOUT_MS = 120000;
-    const deadline = Date.now() + RECEIPT_TIMEOUT_MS;
-    const recibos = [];
-    const pendientes = new Set(txHashesCandidatos);
-    while (pendientes.size > 0 && Date.now() < deadline) {
-        for (const hash of [...pendientes]) {
-            const recibo = await getTransactionReceipt(rpcUrl, hash);
-            if (recibo) {
-                recibos.push(recibo);
-                pendientes.delete(hash);
-            }
-        }
-        if (pendientes.size > 0 && Date.now() < deadline) {
-            await new Promise((r) => setTimeout(r, 2000));
-        }
-    }
-    const exitosas = recibos.filter((r) => r.status === "0x1").length;
-    const fallidas = recibos.filter((r) => r.status === "0x0").length;
-    const sinRecibo = pendientes.size;
-    console.log(`[backend-recovery] Resultado: ${exitosas} exitosas / ${fallidas} fallidas / ` +
-        `${sinRecibo} sin recibo (total encontradas: ${txHashesCandidatos.length}).`);
-    // 4. Calcular métricas a partir de recibos y datos de bloque
-    const bloqueNums = [...blockDataMap.keys()].sort((a, b) => a - b);
-    const timestamps = bloqueNums.map((n) => blockDataMap.get(n).timestamp);
-    const blockTimes = [];
-    for (let i = 1; i < timestamps.length; i++) {
-        const dt = timestamps[i] - timestamps[i - 1];
-        if (dt > 0)
-            blockTimes.push(dt);
-    }
-    const avgBlockTimeSec = blockTimes.length > 0
-        ? blockTimes.reduce((a, b) => a + b, 0) / blockTimes.length
-        : 12;
-    const startTs = timestamps[0] ?? Math.floor(inicioMs / 1000);
-    const endTs = timestamps[timestamps.length - 1] ?? startTs;
-    const durationSec = Math.max(1, endTs - startTs);
-    const avgTps = exitosas / durationSec;
-    const tpsPico = Math.max(avgTps, ...bloqueNums.map((n, i) => {
-        const bd = blockDataMap.get(n);
-        const bt = i > 0
-            ? Math.max(1, bd.timestamp - blockDataMap.get(bloqueNums[i - 1]).timestamp)
-            : avgBlockTimeSec;
-        const txEnBloque = recibos.filter((r) => parseInt(r.blockNumber, 16) === n).length;
-        return txEnBloque / bt;
-    }));
-    // Latencia aproximada: sin timestamps de envío individuales, se usa el punto
-    // medio del intervalo de prueba como estimación conservadora.
-    const latAvgMs = (durationSec / 2) * 1000;
-    const latMinMs = avgBlockTimeSec * 1000;
-    const latMaxMs = durationSec * 1000;
-    // Gas de los recibos
-    const gasValues = recibos.map((r) => parseInt(r.gasUsed, 16)).filter((g) => g > 0);
-    const gasAvg = gasValues.length > 0 ? gasValues.reduce((a, b) => a + b, 0) / gasValues.length : 21000;
-    const gasMax = gasValues.length > 0 ? Math.max(...gasValues) : gasAvg;
-    const gasLimitVal = blockDataMap.size > 0
-        ? Math.max(...[...blockDataMap.values()].map((b) => b.gasLimit))
-        : 30000000;
-    const totalGasUsedInBlocks = [...blockDataMap.values()].reduce((a, b) => a + b.gasUsed, 0);
-    const gasUtil = gasLimitVal > 0 && blockDataMap.size > 0
-        ? Math.min(100, (totalGasUsedInBlocks / (gasLimitVal * blockDataMap.size)) * 100)
-        : 0;
-    const blockSamples = bloqueNums.map((n, i) => {
-        const bd = blockDataMap.get(n);
-        const bt = i > 0
-            ? Math.max(1, bd.timestamp - blockDataMap.get(bloqueNums[i - 1]).timestamp)
-            : avgBlockTimeSec;
-        const txEnBloque = recibos.filter((r) => parseInt(r.blockNumber, 16) === n).length;
-        return {
-            block_number: n,
-            timestamp: new Date(bd.timestamp * 1000).toISOString(),
-            tx_count: txEnBloque,
-            gas_used: bd.gasUsed,
-            gas_limit: bd.gasLimit,
-            block_time_seconds: bt,
-            tps: txEnBloque / bt
-        };
-    });
-    return {
-        mode: config.modo,
-        start_time: new Date(startTs * 1000).toISOString(),
-        end_time: new Date(endTs * 1000).toISOString(),
-        duration_seconds: durationSec,
-        rpc_url: rpcUrl,
-        chain_id: chainId,
-        total_transactions: config.totalTransacciones,
-        successful_transactions: exitosas,
-        failed_transactions: fallidas + sinRecibo,
-        tps_peak: tpsPico,
-        tps_average: avgTps,
-        latency_avg_ms: latAvgMs,
-        latency_min_ms: latMinMs,
-        latency_max_ms: latMaxMs,
-        latency_p50_ms: latAvgMs,
-        latency_p95_ms: latMaxMs * 0.8,
-        latency_p99_ms: latMaxMs * 0.95,
-        block_time_avg_seconds: avgBlockTimeSec,
-        block_time_min_seconds: blockTimes.length > 0 ? Math.min(...blockTimes) : avgBlockTimeSec,
-        block_time_max_seconds: blockTimes.length > 0 ? Math.max(...blockTimes) : avgBlockTimeSec,
-        blocks_observed: bloqueNums.length,
-        gas_used_avg: gasAvg,
-        gas_used_max: gasMax,
-        gas_limit: gasLimitVal,
-        gas_utilization_pct: gasUtil,
-        reverted_transactions: fallidas,
-        out_of_gas_transactions: 0,
-        node_response_avg_ms: avgBlockTimeSec * 80,
-        contract_address: config.contractAddress,
-        deploy_successful: config.modo !== "EOA" ? exitosas > 0 : undefined,
-        erc_function_calls: config.modo !== "EOA" ? txHashesCandidatos.length : 0,
-        erc_function_success: config.modo !== "EOA" ? exitosas : 0,
-        block_samples: blockSamples
-    };
 }
 async function fetchRealBlockData(rpcUrl, blockCount) {
     const chainId = await getChainId(rpcUrl);
@@ -855,29 +1148,40 @@ function buildSimulation(config, realSamples, chainId) {
 }
 // ─── Función principal ────────────────────────────────────────────────────────
 async function ejecutarPrueba(config) {
-    // Obtener chainId consultando el nodo (siempre, para parámetros precisos)
-    const chainId = await getChainId(config.rpcUrl).catch(() => 0);
-    // Intentar con pandoras-box real si hay mnemonic
-    if (config.mnemonic?.trim()) {
-        const resultado = await tryRunPandorasBox(config, chainId);
+    const resolved = resolveAuditRunConfig(config);
+    const configUsada = resolved.config;
+    const hasRunnableConfig = configUsada.rpcUrl !== FALLBACK_RPC_URL &&
+        !!configUsada.mnemonic?.trim();
+    const chainId = await getChainId(configUsada.rpcUrl).catch(() => 0);
+    if (hasRunnableConfig) {
+        const resultado = await tryRunPandorasBox(configUsada, chainId);
         if (resultado === null) {
-            // ENOENT: pandoras-box no está instalado → caemos a simulación sin error
+            // pandoras-box no está instalado; se cae a simulación sin romper el backend.
         }
         else if ("output" in resultado) {
-            // Éxito real (directo o recuperación de recibos por el backend)
-            const fuente = resultado.isRecovery ? "pandoras-box-recovery" : "pandoras-box";
-            return { output: resultado.output, fuente };
+            return {
+                output: resultado.output,
+                fuente: "pandoras-box",
+                configUsada
+            };
         }
         else {
-            // pandoras-box estaba instalado pero falló (fondos, RPC, etc.)
-            // Caemos a simulación pero informamos del error para que el usuario lo vea
-            const { samples } = await fetchRealBlockData(config.rpcUrl, 10);
-            const sim = buildSimulation(config, samples, chainId);
-            return { output: sim, fuente: "simulacion", errorPandoras: resultado.error };
+            const { samples } = await fetchRealBlockData(configUsada.rpcUrl, 10);
+            const sim = buildSimulation(configUsada, samples, chainId);
+            return {
+                output: sim,
+                fuente: "simulacion",
+                errorPandoras: resultado.error,
+                configUsada
+            };
         }
     }
-    // Fallback: simulación con datos reales de bloques del nodo
-    const { samples } = await fetchRealBlockData(config.rpcUrl, 10);
-    const sim = buildSimulation(config, samples, chainId);
-    return { output: sim, fuente: "simulacion" };
+    const { samples } = await fetchRealBlockData(configUsada.rpcUrl, 10);
+    const sim = buildSimulation(configUsada, samples, chainId);
+    return {
+        output: sim,
+        fuente: "simulacion",
+        errorPandoras: resolved.warning,
+        configUsada
+    };
 }

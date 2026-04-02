@@ -30,6 +30,7 @@ import {
   obtenerAuditMetrica,
   ejecutarAuditRun,
   ejecutarAuditRunBatch,
+  obtenerEstadoAuditRunBatch,
   obtenerDashboardEvaluacion,
   iniciarSesionEvaluacion,
   obtenerSesionEvaluacion,
@@ -37,6 +38,7 @@ import {
   type AuditMetricResumen,
   type AuditMetricDetalle,
   type AuditBatchResultado,
+  type AuditBatchRuntimeStatus,
   type AuditRunBatchConfigFrontend,
   type AuditRunConfigFrontend,
   type ModoPrueba,
@@ -69,6 +71,25 @@ function fDate(iso?: string): string {
     hour: "2-digit", minute: "2-digit"
   });
 }
+function formatCountdown(ms: number): string {
+  const totalSeg = Math.max(0, Math.ceil(ms / 1000));
+  const minutos = Math.floor(totalSeg / 60);
+  const segundos = totalSeg % 60;
+  return `${String(minutos).padStart(1, "0")}:${String(segundos).padStart(2, "0")}`;
+}
+
+function sleepMs(ms: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+const ALCHEMY_RATE_LIMIT_BACKEND_MESSAGE =
+  "Rate limit de Alchemy alcanzado. Espera 10 minutos antes de ejecutar la siguiente prueba y vuelve a intentarlo.";
+const ALCHEMY_RATE_LIMIT_BANNER_MESSAGE =
+  "⏱ Rate limit de Alchemy — Espera 10 minutos antes de ejecutar la siguiente prueba.";
+
+function esMensajeRateLimitAlchemy(message?: string | null): boolean {
+  return !!message && message.includes(ALCHEMY_RATE_LIMIT_BACKEND_MESSAGE);
+}
 function fChainId(id: number): string {
   const m: Record<number, string> = {
     1: "Ethereum", 11155111: "Sepolia", 137: "Polygon",
@@ -93,7 +114,7 @@ const SEMAFORO_COLORS: Record<Color, string> = {
   rojo: "#ef4444"
 };
 const CONFIG_BATCH_DEFAULT: AuditRunBatchConfigFrontend = {
-  rpcUrl: "",
+  rpcUrl: "https://eth-sepolia.g.alchemy.com/v2/xydYTeN86EmEPVWW7f1wU",
   totalTransacciones: 100,
   mnemonic: ""
 };
@@ -178,7 +199,7 @@ function descargarInformePDF(r: AuditMetricDetalle): void {
     `<div style="display:inline-block;margin-right:16px;text-align:center"><div style="background:${semColor(s)};color:#fff;border-radius:12px;padding:2px 10px;font-size:11px">${semLabel(s)}</div><div style="font-size:13px;font-weight:600;margin-top:3px">${val}</div><div style="font-size:11px;color:#888">${label}</div></div>`;
 
   const interop = r.interoperabilityDetails;
-  const umbral = `Verde ≤ 15 s · Amarillo ≤ 30 s · Rojo > 30 s (1 bloque EVM ≈ 12–15 s)`;
+  const umbral = `Verde ≤ 30 s · Amarillo ≤ 60 s · Rojo > 60 s (contexto hospitalario; ~2–5 bloques EVM)`;
 
   const html = `<!DOCTYPE html>
 <html lang="es">
@@ -303,6 +324,13 @@ type UltimoBatchRecordState = {
   error?: string;
 };
 
+type BatchHistoryRow = {
+  batchId: string;
+  timestamp: string;
+  totalTransacciones: number;
+  recordsByModo: Partial<Record<ModoPrueba, AuditMetricResumen>>;
+};
+
 function escapeHtml(value: string): string {
   return value
     .replace(/&/g, "&amp;")
@@ -362,6 +390,41 @@ async function capturarGraficasComparativas(
   return capturas;
 }
 
+
+async function construirDetallesBatchDesdeResumen(
+  records: AuditMetricResumen[],
+  sesion: ReturnType<typeof useSesion>["sesion"]
+): Promise<UltimoBatchRecordState[]> {
+  const detalles = await Promise.all(
+    MODOS_PRUEBA.map(async (modo) => {
+      const resumen = records.find((item) => item.modo === modo);
+      if (!resumen) {
+        return {
+          modo,
+          error: "No hay registro disponible para este modo en el batch seleccionado."
+        } satisfies UltimoBatchRecordState;
+      }
+
+      const detalle = await obtenerAuditMetrica(resumen.id, sesion);
+      if (detalle.ok && detalle.data) {
+        return {
+          modo,
+          record: detalle.data,
+          fuente: detalle.data.fuente
+        } satisfies UltimoBatchRecordState;
+      }
+
+      return {
+        modo,
+        fuente: resumen.fuente,
+        error: detalle.message
+      } satisfies UltimoBatchRecordState;
+    })
+  );
+
+  return detalles.sort(ordenarPorModo);
+}
+
 function renderAuditDetallePdfHtml(r: AuditMetricDetalle): string {
   const fN = (v?: number, d = 2) =>
     typeof v === "number" && !isNaN(v) ? v.toFixed(d) : "—";
@@ -391,7 +454,7 @@ function renderAuditDetallePdfHtml(r: AuditMetricDetalle): string {
     `<div style="display:inline-block;margin-right:16px;text-align:center"><div style="background:${semColor(s)};color:#fff;border-radius:12px;padding:2px 10px;font-size:11px">${semLabel(s)}</div><div style="font-size:13px;font-weight:600;margin-top:3px">${escapeHtml(val)}</div><div style="font-size:11px;color:#888">${escapeHtml(label)}</div></div>`;
 
   const interop = r.interoperabilityDetails;
-  const umbral = "Verde ≤ 15 s · Amarillo ≤ 30 s · Rojo > 30 s (1 bloque EVM ≈ 12–15 s)";
+  const umbral = "Verde ≤ 30 s · Amarillo ≤ 60 s · Rojo > 60 s (contexto hospitalario; ~2–5 bloques EVM)";
 
   return `
     <div style="margin-bottom:20px;padding:12px 14px;background:#f8fbff;border:1px solid #e4eef8;border-radius:10px">
@@ -853,25 +916,30 @@ function PanelDetalle({ r }: { r: AuditMetricDetalle }) {
 // FORMULARIO DE NUEVA EVALUACIÓN
 // ═════════════════════════════════════════════════════════════════════════════
 
-// Umbrales de latencia realistas para redes EVM (PoA/PoS ≈ 12 s por bloque):
-//   Verde ≤ 15 000 ms (1 bloque típico), Amarillo ≤ 30 000 ms (≤ 2 bloques).
+// Umbrales de latencia para red hospitalaria sobre EVM:
+//   Verde ≤ 30 000 ms (~2 bloques), Amarillo ≤ 60 000 ms (aceptable bajo carga).
 const CONFIG_DEFAULT: AuditRunConfigFrontend = {
-  rpcUrl: "", modo: "EOA", totalTransacciones: 100, numSubcuentas: 5,
-  contractAddress: "", mnemonic: "", batchSize: 10,
-  umbralTpsVerde: 10, umbralTpsAmarillo: 5,
-  umbralLatenciaVerdeMs: 15_000, umbralLatenciaAmarilloMs: 30_000,
-  umbralTasaExitoVerde: 95
+  rpcUrl: "",
+  modo: "EOA",
+  totalTransacciones: 30,
+  numSubcuentas: 3,
+  contractAddress: "",
+  mnemonic: "",
+  batchSize: 10
 };
 
 function FormularioEvaluacion({
-  onSubmit, running, onCancelar
+  onSubmit, onRunSuite, running, suiteRunning, onCancelar
 }: {
   onSubmit: (c: AuditRunConfigFrontend) => void;
+  onRunSuite: (c: AuditRunConfigFrontend) => void;
   running: boolean;
+  suiteRunning: boolean;
   onCancelar: () => void;
 }) {
   const [cfg, setCfg] = useState<AuditRunConfigFrontend>({ ...CONFIG_DEFAULT });
   const [mostrarAvanzado, setMostrarAvanzado] = useState(false);
+  const busy = running || suiteRunning;
 
   function set<K extends keyof AuditRunConfigFrontend>(k: K, v: AuditRunConfigFrontend[K]) {
     setCfg((p) => ({ ...p, [k]: v }));
@@ -884,9 +952,9 @@ function FormularioEvaluacion({
         marginBottom: 14, fontSize: "0.83rem", lineHeight: 1.55 }}>
         <strong>¿Qué hace esta prueba?</strong><br/>
         Envía transacciones reales a la red blockchain usando <strong>pandoras-box</strong>
-        {" "}(si se configura un mnemonic con fondos en Sepolia) o genera una simulación realista
-        consultando el nodo RPC para medir TPS, latencia y gas en la red objetivo.
-        El resultado queda guardado en el historial de evaluaciones.
+        {" "}desde el backend. La URL RPC y el mnemonic se leen del entorno del servidor,
+        así que nunca se piden en este formulario. Para Sepolia se recomiendan valores
+        iniciales conservadores: 30 transacciones, 3 subcuentas y batch 10.
       </div>
 
       <form onSubmit={(e) => { e.preventDefault(); onSubmit(cfg); }}>
@@ -895,17 +963,6 @@ function FormularioEvaluacion({
         </h3>
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
-          <label className="form-field">
-            <span className="form-label">URL del nodo RPC *</span>
-            <input className="form-input" type="url" required
-              placeholder="https://rpc.sepolia.org"
-              value={cfg.rpcUrl}
-              onChange={(e) => set("rpcUrl", e.target.value)} />
-            <small style={{ color: "#888", fontSize: "0.72rem" }}>
-              Ejemplo Sepolia: https://eth-sepolia.g.alchemy.com/v2/&lt;key&gt;
-            </small>
-          </label>
-
           <label className="form-field">
             <span className="form-label">Modo de prueba *</span>
             <select className="form-input" value={cfg.modo}
@@ -929,24 +986,7 @@ function FormularioEvaluacion({
               value={cfg.numSubcuentas}
               onChange={(e) => set("numSubcuentas", Number(e.target.value))} />
             <small style={{ color: "#888", fontSize: "0.72rem" }}>
-              Cuentas que enviarán transacciones en paralelo.
-            </small>
-          </label>
-
-          <label className="form-field" style={{ gridColumn: "1 / -1" }}>
-            <span className="form-label">
-              Mnemonic BIP-39 (12 palabras){" "}
-              <span style={{ color: "#4f8ef7", fontSize: "0.72rem" }}>
-                — requerido para ejecución real con pandoras-box
-              </span>
-            </span>
-            <input className="form-input" type="password"
-              placeholder="word1 word2 word3 … word12"
-              value={cfg.mnemonic ?? ""}
-              onChange={(e) => set("mnemonic", e.target.value || undefined)} />
-            <small style={{ color: "#888", fontSize: "0.72rem" }}>
-              La primera dirección del mnemonic debe tener ETH en la red seleccionada
-              para distribuirlo a las subcuentas. Sin mnemonic se usará la simulación.
+              Con Alchemy/Sepolia el valor recomendado es 3 para evitar rate limit.
             </small>
           </label>
         </div>
@@ -961,7 +1001,7 @@ function FormularioEvaluacion({
         </div>
 
         {mostrarAvanzado && (
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10,
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10,
             marginBottom: 14, background: "#fafafa", padding: 12, borderRadius: 8 }}>
             {cfg.modo !== "EOA" && (
               <label className="form-field" style={{ gridColumn: "1 / -1" }}>
@@ -974,47 +1014,37 @@ function FormularioEvaluacion({
             <label className="form-field">
               <span className="form-label">Tamaño de lote JSON-RPC</span>
               <input className="form-input" type="number" min={1} max={5000}
-                value={cfg.batchSize ?? 20}
+                value={cfg.batchSize ?? 10}
                 onChange={(e) => set("batchSize", Number(e.target.value))} />
             </label>
             <label className="form-field">
-              <span className="form-label">Umbral TPS verde ≥</span>
-              <input className="form-input" type="number" min={0}
-                value={cfg.umbralTpsVerde ?? 10}
-                onChange={(e) => set("umbralTpsVerde", Number(e.target.value))} />
-            </label>
-            <label className="form-field">
-              <span className="form-label">Umbral TPS amarillo ≥</span>
-              <input className="form-input" type="number" min={0}
-                value={cfg.umbralTpsAmarillo ?? 5}
-                onChange={(e) => set("umbralTpsAmarillo", Number(e.target.value))} />
-            </label>
-            <label className="form-field">
-              <span className="form-label">Latencia verde ≤ (ms) <span style={{color:"#888",fontSize:"0.7rem"}}>— 1 bloque EVM ≈ 15 000</span></span>
-              <input className="form-input" type="number" min={0}
-                value={cfg.umbralLatenciaVerdeMs ?? 15_000}
-                onChange={(e) => set("umbralLatenciaVerdeMs", Number(e.target.value))} />
-            </label>
-            <label className="form-field">
-              <span className="form-label">Latencia amarillo ≤ (ms) <span style={{color:"#888",fontSize:"0.7rem"}}>— 2 bloques ≈ 30 000</span></span>
-              <input className="form-input" type="number" min={0}
-                value={cfg.umbralLatenciaAmarilloMs ?? 30_000}
-                onChange={(e) => set("umbralLatenciaAmarilloMs", Number(e.target.value))} />
-            </label>
-            <label className="form-field">
-              <span className="form-label">Tasa de éxito verde ≥ (%)</span>
-              <input className="form-input" type="number" min={0} max={100}
-                value={cfg.umbralTasaExitoVerde ?? 95}
-                onChange={(e) => set("umbralTasaExitoVerde", Number(e.target.value))} />
+              <span className="form-label">Recomendación operativa</span>
+              <div style={{
+                minHeight: 42,
+                border: "1px solid #d6e2ee",
+                borderRadius: 8,
+                background: "#fff",
+                padding: "10px 12px",
+                fontSize: "0.76rem",
+                color: "#556"
+              }}>
+                Para Sepolia/Alchemy evita subir estos valores hasta confirmar que la cuenta
+                soporta la carga. La suite completa ya ejecuta EOA, ERC20 y ERC721 en secuencia
+                con pausas de 15 s entre modos.
+              </div>
             </label>
           </div>
         )}
 
         <div className="btn-group">
-          <button type="submit" className="btn btn--primary" disabled={running}>
-            {running ? "Ejecutando prueba… (puede tardar varios minutos en Sepolia)" : "Ejecutar prueba"}
+          <button type="submit" className="btn btn--primary" disabled={busy}>
+            {running ? "Ejecutando prueba…" : "Ejecutar prueba"}
           </button>
-          <button type="button" className="btn btn--ghost" onClick={onCancelar} disabled={running}>
+          <button type="button" className="btn btn--secondary" disabled={busy}
+            onClick={() => onRunSuite(cfg)}>
+            {suiteRunning ? "Ejecutando suite completa…" : "Ejecutar suite completa (3 modos)"}
+          </button>
+          <button type="button" className="btn btn--ghost" onClick={onCancelar} disabled={busy}>
             Cancelar
           </button>
         </div>
@@ -1091,6 +1121,10 @@ function SeccionRedBlockchain() {
   const [running, setRunning] = useState(false);
   const [runMsg, setRunMsg] = useState<string | null>(null);
   const [runError, setRunError] = useState<string | null>(null);
+  const [suiteRunning, setSuiteRunning] = useState(false);
+  const [suitePasoActual, setSuitePasoActual] = useState(0);
+  const [suiteEstado, setSuiteEstado] = useState<string | null>(null);
+  const [suiteResultados, setSuiteResultados] = useState<UltimoBatchRecordState[]>([]);
   const resultRef = useRef<HTMLDivElement>(null);
   // Sesión de evaluación
   const [sesionActual, setSesionActual] = useState<EvaluacionSesion | null>(null);
@@ -1152,6 +1186,74 @@ function SeccionRedBlockchain() {
     }
   }
 
+  async function handleRunSuite(cfgBase: AuditRunConfigFrontend) {
+    const modos: ModoPrueba[] = ["EOA", "ERC20", "ERC721"];
+    const resultados: UltimoBatchRecordState[] = [];
+
+    setSuiteRunning(true);
+    setSuitePasoActual(0);
+    setSuiteEstado("Preparando suite completa…");
+    setSuiteResultados([]);
+    setRunMsg(null);
+    setRunError(null);
+
+    try {
+      for (const [index, modo] of modos.entries()) {
+        const pasoActual = index + 1;
+        setSuitePasoActual(pasoActual);
+        setSuiteEstado(`Paso ${pasoActual}/3 · Ejecutando ${modo}…`);
+
+        const response = await ejecutarAuditRun(
+          {
+            ...cfgBase,
+            modo
+          },
+          sesion
+        );
+
+        if (response.ok && response.data) {
+          resultados.push({
+            modo,
+            record: response.data,
+            fuente: response.fuente,
+            advertencia: response.advertencia
+          });
+        } else {
+          resultados.push({
+            modo,
+            error: response.message
+          });
+        }
+
+        setSuiteResultados([...resultados]);
+
+        if (index < modos.length - 1) {
+          setSuiteEstado(`Paso ${pasoActual}/3 completado · Esperando 15 s antes de ${modos[index + 1]}…`);
+          await sleepMs(15_000);
+        }
+      }
+
+      const exitosas = resultados.filter((item) => item.record).length;
+      const fallidas = resultados.length - exitosas;
+      setSuiteEstado("Suite completa finalizada.");
+      setRunMsg(
+        `Suite completa finalizada. ${exitosas}/3 corridas con resultado guardado` +
+        (fallidas > 0 ? ` · ${fallidas} con error.` : ".")
+      );
+      setMostrarForm(false);
+      await cargar();
+
+      const ultimoExito = [...resultados].reverse().find((item) => item.record)?.record;
+      if (ultimoExito) {
+        setExpandedId(ultimoExito.id);
+        setDetalle(ultimoExito);
+        setTimeout(() => resultRef.current?.scrollIntoView({ behavior: "smooth" }), 200);
+      }
+    } finally {
+      setSuiteRunning(false);
+    }
+  }
+
   useEffect(() => { void cargar(); void cargarSesion(); }, [sesion]);
 
   // Aplicar filtro de sesión sobre la lista cargada
@@ -1164,6 +1266,7 @@ function SeccionRedBlockchain() {
 
   const optimos = listaFiltrada.filter((r) =>
     r.semaforoEficiencia === "verde" && r.semaforoSeguridad === "verde").length;
+  const busy = running || suiteRunning;
 
   return (
     <section className="card card--elevated" style={{ marginBottom: 16 }}>
@@ -1189,11 +1292,11 @@ function SeccionRedBlockchain() {
           )}
           <div className="btn-group">
             <button type="button" className="btn btn--primary"
-              onClick={() => setMostrarForm((v) => !v)}>
+              onClick={() => setMostrarForm((v) => !v)} disabled={busy}>
               {mostrarForm ? "Cerrar formulario" : "Nueva prueba"}
             </button>
             <button type="button" className="btn btn--ghost"
-              onClick={cargar} disabled={loading} style={{ fontSize: "0.82rem" }}>
+              onClick={cargar} disabled={loading || busy} style={{ fontSize: "0.82rem" }}>
               {loading ? "…" : "↺"}
             </button>
           </div>
@@ -1236,14 +1339,73 @@ function SeccionRedBlockchain() {
       {mostrarForm && (
         <FormularioEvaluacion
           onSubmit={handleRun}
+          onRunSuite={handleRunSuite}
           running={running}
+          suiteRunning={suiteRunning}
           onCancelar={() => setMostrarForm(false)}
         />
       )}
 
       {runMsg && <div className="alert alert--info" style={{ marginBottom: 10 }}>{runMsg}</div>}
-      {runError && <div className="alert alert--error" style={{ marginBottom: 10 }}>{runError}</div>}
-      {error && !lista.length && <div className="alert alert--error">{error}</div>}
+      {runError && (
+        esMensajeRateLimitAlchemy(runError)
+          ? <div className="alert alert--error" style={{ marginBottom: 10, background: "#fff7ed", borderColor: "#fdba74", color: "#9a3412" }}>{ALCHEMY_RATE_LIMIT_BANNER_MESSAGE}</div>
+          : <div className="alert alert--error" style={{ marginBottom: 10 }}>{runError}</div>
+      )}
+      {error && !lista.length && (
+        esMensajeRateLimitAlchemy(error)
+          ? <div className="alert alert--error" style={{ background: "#fff7ed", borderColor: "#fdba74", color: "#9a3412" }}>{ALCHEMY_RATE_LIMIT_BANNER_MESSAGE}</div>
+          : <div className="alert alert--error">{error}</div>
+      )}
+
+      {(suiteRunning || suiteResultados.length > 0) && (
+        <section className="card" style={{ marginBottom: 14, background: "#f8fbff", border: "1px solid #dbeafe" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center", marginBottom: 10 }}>
+            <div>
+              <strong>Suite completa EOA / ERC20 / ERC721</strong><br />
+              <span style={{ color: "#667085", fontSize: "0.78rem" }}>
+                {suiteEstado ?? "Lista para ejecutar."}
+              </span>
+            </div>
+            <div style={{ fontSize: "0.8rem", color: "#1d4ed8", fontWeight: 600 }}>
+              Paso {suitePasoActual || 0}/3
+            </div>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10 }}>
+            {MODOS_PRUEBA.map((modo) => {
+              const item = suiteResultados.find((resultado) => resultado.modo === modo);
+              return (
+                <article key={modo} style={{
+                  background: "#fff",
+                  border: "1px solid #e5eef5",
+                  borderRadius: 10,
+                  padding: "12px 14px"
+                }}>
+                  <div style={{ fontWeight: 600, marginBottom: 6 }}>{modo}</div>
+                  {!item ? (
+                    <span style={{ color: "#98a2b3", fontSize: "0.78rem" }}>Pendiente</span>
+                  ) : item.record ? (
+                    <div style={{ fontSize: "0.78rem", color: "#475467", lineHeight: 1.6 }}>
+                      <div>{formatFuenteAudit(item.fuente)}</div>
+                      <div>TPS: {fNum(item.record.tpsPromedio)}</div>
+                      <div>Latencia: {fMs(item.record.latenciaPromedioMs)}</div>
+                      <div>Tasa éxito: {fPct(item.record.tasaExito)}</div>
+                      {item.advertencia && (
+                        <div style={{ color: "#9a3412", marginTop: 6 }}>{item.advertencia}</div>
+                      )}
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: "0.78rem", color: "#b42318", lineHeight: 1.5 }}>
+                      {item.error ?? "La corrida no produjo resultado."}
+                    </div>
+                  )}
+                </article>
+              );
+            })}
+          </div>
+        </section>
+      )}
 
       {/* Historial */}
       {loading && !lista.length ? (
@@ -1327,7 +1489,7 @@ function SeccionRedBlockchain() {
         </summary>
         <div style={{ fontSize: "0.78rem", color: "#666", marginTop: 8, display: "flex", gap: 20, flexWrap: "wrap" }}>
           <div><b>Eficiencia</b> 🟢 TPS ≥ 10 · 🟡 ≥ 5 · 🔴 {"< 5"}</div>
-          <div><b>Latencia</b> 🟢 ≤ 15 s · 🟡 ≤ 30 s · 🔴 {"> 30 s"} <span style={{color:"#aaa"}}>(1 bloque EVM ≈ 12–15 s)</span></div>
+          <div><b>Latencia</b> 🟢 ≤ 30 s · 🟡 ≤ 60 s · 🔴 {"> 60 s"} <span style={{color:"#aaa"}}>(contexto hospitalario ≈ 2–5 bloques EVM)</span></div>
           <div><b>Seguridad</b> 🟢 tasa ≥ 95 % · 🟡 ≥ 80 % · 🔴 {"< 80 %"}</div>
           <div><b>Interop.</b> 🟢 nodo responde + contrato activo · 🟡 solo nodo · 🔴 sin respuesta / deploy fallido</div>
         </div>
@@ -1343,7 +1505,7 @@ function SeccionComparativa() {
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
   const [exporting, setExporting] = useState(false);
-  const [exportingPdfBatch, setExportingPdfBatch] = useState(false);
+  const [exportingBatchId, setExportingBatchId] = useState<string | null>(null);
   const [mensaje, setMensaje] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [cfg, setCfg] = useState<AuditRunBatchConfigFrontend>({ ...CONFIG_BATCH_DEFAULT });
@@ -1351,6 +1513,8 @@ function SeccionComparativa() {
   const [ultimoBatchId, setUltimoBatchId] = useState<string | null>(null);
   const [ultimoBatchFecha, setUltimoBatchFecha] = useState<string | null>(null);
   const [ultimoBatchTotalTransacciones, setUltimoBatchTotalTransacciones] = useState<number | null>(null);
+  const [batchRuntimeStatus, setBatchRuntimeStatus] = useState<AuditBatchRuntimeStatus | null>(null);
+  const batchPollingRef = useRef<number | null>(null);
   const graficaTpsRef = useRef<HTMLDivElement>(null);
   const graficaLatenciaRef = useRef<HTMLDivElement>(null);
   const graficaExitoRef = useRef<HTMLDivElement>(null);
@@ -1361,6 +1525,20 @@ function SeccionComparativa() {
     value: AuditRunBatchConfigFrontend[K]
   ) {
     setCfg((prev) => ({ ...prev, [key]: value }));
+  }
+
+  function detenerPollingBatch() {
+    if (batchPollingRef.current !== null) {
+      window.clearInterval(batchPollingRef.current);
+      batchPollingRef.current = null;
+    }
+  }
+
+  async function cargarEstadoBatch() {
+    const status = await obtenerEstadoAuditRunBatch(sesion);
+    if (status.ok) {
+      setBatchRuntimeStatus(status.data ?? null);
+    }
   }
 
   async function cargarMetricasComparativas(): Promise<AuditMetricResumen[]> {
@@ -1400,25 +1578,9 @@ function SeccionComparativa() {
       .filter((record) => record.batchId === latestId)
       .sort(ordenarMetricasComparativas);
 
-    const detalles = await Promise.all(
-      registrosBatch.map(async (record) => {
-        const detalle = await obtenerAuditMetrica(record.id, sesion);
-        if (detalle.ok && detalle.data) {
-          return {
-            modo: record.modo,
-            record: detalle.data,
-            fuente: detalle.data.fuente
-          } satisfies UltimoBatchRecordState;
-        }
-        return {
-          modo: record.modo,
-          fuente: record.fuente,
-          error: detalle.message
-        } satisfies UltimoBatchRecordState;
-      })
-    );
+    const detalles = await construirDetallesBatchDesdeResumen(registrosBatch, sesion);
 
-    setUltimoBatchRecords(detalles.sort(ordenarPorModo));
+    setUltimoBatchRecords(detalles);
     setUltimoBatchId(latestId);
     setUltimoBatchFecha(registrosBatch[registrosBatch.length - 1]?.timestamp ?? null);
     setUltimoBatchTotalTransacciones(registrosBatch[0]?.totalTransacciones ?? null);
@@ -1451,8 +1613,9 @@ function SeccionComparativa() {
     setRunning(true);
     setMensaje(null);
     setError(null);
+    setBatchRuntimeStatus(null);
 
-    const response = await ejecutarAuditRunBatch(
+    const responsePromise = ejecutarAuditRunBatch(
       {
         rpcUrl: cfg.rpcUrl.trim(),
         totalTransacciones: cfg.totalTransacciones,
@@ -1461,8 +1624,18 @@ function SeccionComparativa() {
       sesion
     );
 
+    await cargarEstadoBatch();
+    detenerPollingBatch();
+    batchPollingRef.current = window.setInterval(() => {
+      void cargarEstadoBatch();
+    }, 1000);
+
+    const response = await responsePromise;
+
     console.log("BATCH response:", JSON.stringify(response, null, 2));
 
+    detenerPollingBatch();
+    await cargarEstadoBatch();
     setRunning(false);
 
     if (!response.ok) {
@@ -1530,22 +1703,30 @@ function SeccionComparativa() {
     }
   }
 
-  async function handleExportarPdfBatch() {
-    if (ultimoBatchRecords.length !== 3) return;
-
-    const batchId = ultimoBatchId
+  async function handleExportarPdfBatch(batchIdArg?: string, recordsArg?: AuditMetricResumen[]) {
+    const batchId = batchIdArg
+      ?? ultimoBatchId
       ?? ultimoBatchRecords.find((item) => item.record?.batchId)?.record?.batchId
       ?? null;
 
     if (!batchId) {
-      setError("No se encontró el Batch ID del último lote para generar el PDF.");
+      setError("No se encontró el Batch ID del lote para generar el PDF.");
       return;
     }
 
-    setExportingPdfBatch(true);
+    setExportingBatchId(batchId);
     setError(null);
 
     try {
+      const records = recordsArg && recordsArg.length > 0
+        ? await construirDetallesBatchDesdeResumen(recordsArg, sesion)
+        : ultimoBatchRecords;
+
+      if (!records.length) {
+        setError("No hay registros disponibles para exportar este batch.");
+        return;
+      }
+
       const graficas = await capturarGraficasComparativas([
         { ref: graficaTpsRef, titulo: "Gráfica 1 — TPS Promedio vs Transacciones" },
         { ref: graficaLatenciaRef, titulo: "Gráfica 2 — Latencia Promedio vs Transacciones" },
@@ -1553,30 +1734,51 @@ function SeccionComparativa() {
         { ref: graficaGasRef, titulo: "Gráfica 4 — Gas Promedio vs Transacciones" }
       ]);
 
+      const timestamps = records.flatMap((item) => item.record ? [new Date(item.record.timestamp).getTime()] : []);
+      const generatedAt = timestamps.length > 0
+        ? new Date(Math.max(...timestamps)).toISOString()
+        : ultimoBatchFecha ?? new Date().toISOString();
+      const totalTransacciones = recordsArg?.[0]?.totalTransacciones
+        ?? ultimoBatchTotalTransacciones
+        ?? records.find((item) => item.record)?.record?.totalTransacciones
+        ?? cfg.totalTransacciones;
+
       abrirInformeBatchPdf({
         batchId,
-        generatedAt: ultimoBatchFecha ?? new Date().toISOString(),
-        totalTransacciones: ultimoBatchTotalTransacciones
-          ?? ultimoBatchRecords.find((item) => item.record)?.record?.totalTransacciones
-          ?? cfg.totalTransacciones,
-        records: ultimoBatchRecords,
+        generatedAt,
+        totalTransacciones,
+        records,
         graficas: graficas.map(({ titulo, dataUrl }) => ({ titulo, dataUrl }))
       });
     } catch {
       setError("No se pudo generar el PDF consolidado del batch.");
     } finally {
-      setExportingPdfBatch(false);
+      setExportingBatchId(null);
     }
   }
 
   useEffect(() => {
     void cargar();
+    return () => {
+      detenerPollingBatch();
+    };
   }, [sesion]);
 
   const registrosOrdenados = [...registros].sort(ordenarMetricasComparativas);
-  const agrupados = new Map<number, ComparativeChartPoint>();
+  const latestByPoint = new Map<string, AuditMetricResumen>();
 
   for (const record of registrosOrdenados) {
+    const key = `${record.totalTransacciones}:${record.modo}`;
+    const current = latestByPoint.get(key);
+    if (!current || new Date(record.timestamp).getTime() >= new Date(current.timestamp).getTime()) {
+      latestByPoint.set(key, record);
+    }
+  }
+
+  const registrosGraficas = Array.from(latestByPoint.values()).sort(ordenarMetricasComparativas);
+  const agrupados = new Map<number, ComparativeChartPoint>();
+
+  for (const record of registrosGraficas) {
     const total = record.totalTransacciones;
     const point = agrupados.get(total) ?? { totalTransacciones: total };
     point["tps_" + record.modo] = record.tpsPromedio;
@@ -1589,8 +1791,30 @@ function SeccionComparativa() {
   const chartData = Array.from(agrupados.values()).sort(
     (a, b) => a.totalTransacciones - b.totalTransacciones
   );
-  const batchIds = Array.from(
-    new Set(registrosOrdenados.map((record) => record.batchId).filter((id): id is string => Boolean(id)))
+  const batchHistoryMap = new Map<string, BatchHistoryRow>();
+
+  for (const record of registrosOrdenados) {
+    if (!record.batchId) continue;
+    const existing = batchHistoryMap.get(record.batchId);
+    if (!existing) {
+      batchHistoryMap.set(record.batchId, {
+        batchId: record.batchId,
+        timestamp: record.timestamp,
+        totalTransacciones: record.totalTransacciones,
+        recordsByModo: { [record.modo]: record }
+      });
+      continue;
+    }
+
+    existing.recordsByModo[record.modo] = record;
+    if (new Date(record.timestamp).getTime() >= new Date(existing.timestamp).getTime()) {
+      existing.timestamp = record.timestamp;
+      existing.totalTransacciones = record.totalTransacciones;
+    }
+  }
+
+  const batchHistoryRows = Array.from(batchHistoryMap.values()).sort(
+    (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
   );
 
   let latestHistoricalBatchId: string | undefined;
@@ -1623,6 +1847,22 @@ function SeccionComparativa() {
   const latestBatchTimestamp = ultimoBatchFecha
     ? new Date(ultimoBatchFecha).getTime()
     : latestHistoricalTimestamp;
+  const tiempoRestanteEsperaMs =
+    running && batchRuntimeStatus?.estado === "waiting" && batchRuntimeStatus.waitEndsAt
+      ? Math.max(0, new Date(batchRuntimeStatus.waitEndsAt).getTime() - Date.now())
+      : 0;
+  const mensajeBatchEnCurso = (() => {
+    if (!running) {
+      return "";
+    }
+    if (batchRuntimeStatus?.estado === "waiting" && batchRuntimeStatus.modoActual && batchRuntimeStatus.siguienteModo) {
+      return `✅ ${batchRuntimeStatus.modoActual} completado — esperando ${formatCountdown(tiempoRestanteEsperaMs)} min antes de ${batchRuntimeStatus.siguienteModo}...`;
+    }
+    if (batchRuntimeStatus?.estado === "running" && batchRuntimeStatus.modoActual) {
+      return `Ejecutando ${batchRuntimeStatus.modoActual}...`;
+    }
+    return "Ejecutando EOA... ERC20... ERC721... (puede tardar varios minutos)";
+  })();
   const latestBatchRecords = resumenUltimoBatch
     .flatMap((item) => item.record ? [item.record] : [])
     .sort(ordenarMetricasComparativas);
@@ -1705,6 +1945,9 @@ function SeccionComparativa() {
               <small style={{ color: "#888", fontSize: "0.72rem" }}>
                 Se precarga con la última RPC usada en auditoría cuando existe historial.
               </small>
+              <small style={{ color: "#9a3412", fontSize: "0.72rem", display: "block", marginTop: 4 }}>
+                Se recomienda usar un nodo RPC privado (Alchemy/Infura) para pruebas con más de 100 transacciones. Los nodos públicos pueden causar errores de gas o timeout.
+              </small>
             </label>
 
             <label className="form-field" style={{ gridColumn: "1 / -1" }}>
@@ -1734,11 +1977,20 @@ function SeccionComparativa() {
 
       {running && (
         <div className="alert alert--info" style={{ marginBottom: 12 }}>
-          <SpinnerInline label="Ejecutando EOA... ERC20... ERC721... (puede tardar varios minutos)" />
+          <SpinnerInline label={mensajeBatchEnCurso} />
+          {batchRuntimeStatus?.estado === "waiting" && batchRuntimeStatus.siguienteModo && (
+            <div style={{ marginTop: 8, fontSize: "0.82rem", color: "#1d4ed8", fontWeight: 600 }}>
+              Reinicio estimado del rate limit en {formatCountdown(tiempoRestanteEsperaMs)} para continuar con {batchRuntimeStatus.siguienteModo}.
+            </div>
+          )}
         </div>
       )}
       {mensaje && <div className="alert alert--info" style={{ marginBottom: 12 }}>{mensaje}</div>}
-      {error && <div className="alert alert--error" style={{ marginBottom: 12 }}>{error}</div>}
+      {error && (
+        esMensajeRateLimitAlchemy(error)
+          ? <div className="alert alert--error" style={{ marginBottom: 12, background: "#fff7ed", borderColor: "#fdba74", color: "#9a3412" }}>{ALCHEMY_RATE_LIMIT_BANNER_MESSAGE}</div>
+          : <div className="alert alert--error" style={{ marginBottom: 12 }}>{error}</div>
+      )}
 
       {loading && !registrosOrdenados.length ? (
         <div style={{ color: "#888", fontSize: "0.85rem" }}>Cargando métricas comparativas…</div>
@@ -1755,7 +2007,7 @@ function SeccionComparativa() {
             <MetricCard
               title="Cobertura comparativa"
               rows={[
-                ["Batches ejecutados", String(batchIds.length)],
+                ["Batches ejecutados", String(batchHistoryRows.length)],
                 ["Registros comparativos", String(registrosOrdenados.length)],
                 ["Puntos del eje X", resumenPuntos || "—"]
               ]}
@@ -1822,9 +2074,9 @@ function SeccionComparativa() {
                     className="btn btn--ghost"
                     style={{ fontSize: "0.8rem", padding: "4px 12px", whiteSpace: "nowrap" }}
                     onClick={() => void handleExportarPdfBatch()}
-                    disabled={exportingPdfBatch}
+                    disabled={exportingBatchId !== null}
                   >
-                    {exportingPdfBatch ? "Preparando PDF…" : "Exportar PDF del batch"}
+                    {exportingBatchId === latestBatchId ? "Preparando PDF…" : "Exportar PDF del batch"}
                   </button>
                 )}
               </div>
@@ -1910,7 +2162,7 @@ function SeccionComparativa() {
             <article ref={graficaLatenciaRef} style={{ background: "#fff", border: "1px solid #e5eef5", borderRadius: 10, padding: 16 }}>
               <strong style={{ display: "block", marginBottom: 4 }}>Gráfica 2 — Latencia Promedio vs Transacciones</strong>
               <p style={{ fontSize: "0.76rem", color: "#778", margin: "0 0 12px" }}>
-                Latencia promedio en segundos por modo con referencia objetivo de 15 s.
+                Latencia promedio en segundos por modo con umbrales hospitalarios de 30 s y 60 s.
               </p>
               <div style={{ width: "100%", height: 280 }}>
                 <ResponsiveContainer width="100%" height="100%">
@@ -1924,10 +2176,16 @@ function SeccionComparativa() {
                     />
                     <Legend />
                     <ReferenceLine
-                      y={15}
+                      y={30}
                       stroke={SEMAFORO_COLORS.verde}
                       strokeDasharray="6 4"
-                      label={{ value: "15 s", fill: SEMAFORO_COLORS.verde, fontSize: 12, position: "insideTopRight" }}
+                      label={{ value: "Umbral óptimo (30s)", fill: SEMAFORO_COLORS.verde, fontSize: 12, position: "insideTopRight" }}
+                    />
+                    <ReferenceLine
+                      y={60}
+                      stroke={SEMAFORO_COLORS.amarillo}
+                      strokeDasharray="6 4"
+                      label={{ value: "Umbral aceptable (60s)", fill: SEMAFORO_COLORS.amarillo, fontSize: 12, position: "insideBottomRight" }}
                     />
                     {MODOS_PRUEBA.map((modo) => (
                       <Line
@@ -2010,6 +2268,51 @@ function SeccionComparativa() {
             </article>
           </div>
 
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ fontSize: "0.82rem", fontWeight: 600, marginBottom: 8, color: "#555" }}>
+              Historial de batches comparativos
+            </div>
+            <div className="table-wrapper">
+              <table className="tabla-clinica">
+                <thead>
+                  <tr>
+                    <th>Fecha</th>
+                    <th>Transacciones</th>
+                    <th>EOA TPS</th>
+                    <th>ERC20 TPS</th>
+                    <th>ERC721 TPS</th>
+                    <th>Acciones</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {batchHistoryRows.map((batch) => {
+                    const batchRecords = MODOS_PRUEBA.flatMap((modo) => batch.recordsByModo[modo] ? [batch.recordsByModo[modo] as AuditMetricResumen] : []);
+                    return (
+                      <tr key={batch.batchId}>
+                        <td style={{ whiteSpace: "nowrap" }}>{fDate(batch.timestamp)}</td>
+                        <td>{batch.totalTransacciones}</td>
+                        <td>{batch.recordsByModo.EOA ? fNum(batch.recordsByModo.EOA.tpsPromedio) : "—"}</td>
+                        <td>{batch.recordsByModo.ERC20 ? fNum(batch.recordsByModo.ERC20.tpsPromedio) : "—"}</td>
+                        <td>{batch.recordsByModo.ERC721 ? fNum(batch.recordsByModo.ERC721.tpsPromedio) : "—"}</td>
+                        <td>
+                          <button
+                            type="button"
+                            className="btn btn--ghost"
+                            style={{ padding: "2px 10px", fontSize: "0.78rem", whiteSpace: "nowrap" }}
+                            onClick={() => void handleExportarPdfBatch(batch.batchId, batchRecords)}
+                            disabled={exportingBatchId !== null}
+                          >
+                            {exportingBatchId === batch.batchId ? "Preparando PDF…" : "Exportar PDF"}
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
           <div>
             <div style={{ fontSize: "0.82rem", fontWeight: 600, marginBottom: 8, color: "#555" }}>
               Tabla resumen de corridas batch
@@ -2055,9 +2358,9 @@ function SeccionComparativa() {
                 className="btn btn--ghost"
                 style={{ fontSize: "0.8rem", padding: "4px 12px", whiteSpace: "nowrap" }}
                 onClick={() => void handleExportarPdfBatch()}
-                disabled={exportingPdfBatch}
+                disabled={exportingBatchId !== null}
               >
-                {exportingPdfBatch ? "Preparando PDF…" : "Exportar PDF del batch"}
+                {exportingBatchId === latestBatchId ? "Preparando PDF…" : "Exportar PDF del batch"}
               </button>
             </div>
           )}
@@ -2071,6 +2374,8 @@ function SeccionComparativa() {
 // ═════════════════════════════════════════════════════════════════════════════
 // SECCIÓN B — INTEROPERABILIDAD CLÍNICA (HU0-HU5)
 // ═════════════════════════════════════════════════════════════════════════════
+
+void SeccionComparativa;
 
 /** Catálogo de HUs con descripción y qué indica cada resultado */
 const HU_CATALOGO: Record<string, { titulo: string; descripcion: string; interpretacion: string }> = {
@@ -2754,7 +3059,6 @@ export function AuditoriaDashboardPage() {
       </div>
 
       <SeccionRedBlockchain />
-      <SeccionComparativa />
       <SeccionInteroperabilidadClinica />
     </>
   );

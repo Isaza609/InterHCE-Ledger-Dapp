@@ -151,15 +151,30 @@ export interface AuditMetricRecord {
 
 /** Configuración que el frontend envía para lanzar una prueba */
 export interface AuditRunConfig {
-  rpcUrl: string;
+  /**
+   * URL del nodo RPC resuelta en el backend.
+   * El cliente no debe enviarla; el adaptador usa process.env.ALCHEMY_RPC_URL
+   * (o SEPOLIA_RPC_URL por compatibilidad legado). Si no existe, se usa simulación.
+   */
+  rpcUrl?: string;
   modo: ModoPrueba;
   totalTransacciones: number;
   numSubcuentas: number;
   contractAddress?: string;
-  /** Mnemonic BIP-39 para pandoras-box (12 palabras). La primera cuenta debe tener ETH. */
+  /**
+   * Mnemonic BIP-39 resuelto en el backend.
+   * El cliente no debe enviarlo; el adaptador usa process.env.MNEMONIC
+   * (o PANDORAS_MNEMONIC por compatibilidad legado).
+   */
   mnemonic?: string;
-  /** Tamaño de lote JSON-RPC (default 20) */
+  /** Tamaño de lote JSON-RPC. Para Sepolia/Alchemy el default seguro es 10. */
   batchSize?: number;
+  /** Espera entre lotes de envío para evitar rate limit del RPC. */
+  batchDelayMs?: number;
+  /** Timeout total para recolectar recibos mediante polling. */
+  receiptTimeoutMs?: number;
+  /** Máximo de reintentos por rate limit / replacement bajo un mismo nonce. */
+  maxRetriesPorTransaccion?: number;
   // Umbrales para semáforos (opcionales, se usan los defaults si no se envían)
   umbralTpsVerde?: number;
   umbralTpsAmarillo?: number;
@@ -168,23 +183,30 @@ export interface AuditRunConfig {
   umbralTasaExitoVerde?: number;
 }
 
+export type AuditRunResolvedConfig = AuditRunConfig & {
+  rpcUrl: string;
+  totalTransacciones: number;
+  numSubcuentas: number;
+  batchSize: number;
+  mnemonic?: string;
+};
+
 /**
  * Umbrales por defecto para semáforos.
  *
- * LATENCIA — Criterios realistas para redes EVM (PoA/PoS):
- *   Ethereum/Sepolia tiene block time ≈ 12 s; una transacción tarda al menos
- *   un bloque en confirmarse (~13–15 s bajo carga normal).  Por eso los
- *   umbrales de "verde" y "amarillo" se sitúan en 15 000 ms y 30 000 ms
- *   respectivamente, en lugar de los 3 s/8 s propios de sistemas REST.
- *   - Verde  (óptimo)   : latencia promedio ≤ 15 s  — 1 bloque típico
- *   - Amarillo (aceptable): ≤ 30 s                   — hasta ~2 bloques
- *   - Rojo   (crítico)  :  > 30 s                   — retrasos o congestión
+ * LATENCIA — Criterios realistas para una red hospitalaria sobre EVM (PoA/PoS):
+ *   Ethereum/Sepolia tiene block time ≈ 12 s; en contexto hospitalario se
+ *   acepta que una confirmación en ~2 bloques siga siendo óptima y hasta ~5
+ *   bloques sea todavía aceptable bajo carga.
+ *   - Verde  (óptimo)     : latencia promedio ≤ 30 s  — ~2 bloques EVM
+ *   - Amarillo (aceptable): ≤ 60 s                    — aceptable en red hospitalaria
+ *   - Rojo   (crítico)    :  > 60 s                   — retrasos o congestión severa
  */
 export const UMBRALES_DEFAULT = {
   tpsVerde: 10,
   tpsAmarillo: 5,
-  latenciaVerdeMs: 15_000,   // ≤ 15 s → 1 bloque normal (PoA/PoS ~12 s)
-  latenciaAmarilloMs: 30_000, // ≤ 30 s → hasta 2 bloques bajo carga
+  latenciaVerdeMs: 30_000,   // ≤ 30 s → contexto hospitalario (~2 bloques EVM)
+  latenciaAmarilloMs: 60_000, // ≤ 60 s → aceptable para red hospitalaria
   tasaExitoVerde: 95,
   tasaExitoAmarillo: 80
 } as const;
