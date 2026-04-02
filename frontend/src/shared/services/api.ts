@@ -1199,6 +1199,7 @@ const auditBase = `${API_BASE_URL}/audit`;
 
 export type ModoPrueba = "EOA" | "ERC20" | "ERC721";
 export type SemaforoColor = "verde" | "amarillo" | "rojo";
+export type AuditFuente = "pandoras-box" | "pandoras-box-recovery" | "simulacion";
 
 export interface BlockSampleFrontend {
   block_number: number;
@@ -1213,6 +1214,8 @@ export interface BlockSampleFrontend {
 export interface AuditMetricResumen {
   id: string;
   timestamp: string;
+  sesionId?: string;
+  batchId?: string;
   modo: ModoPrueba;
   rpcUrl: string;
   chainId: number;
@@ -1253,7 +1256,7 @@ export interface AuditMetricResumen {
   semaforoLatencia: SemaforoColor;
   semaforoSeguridad: SemaforoColor;
   semaforoInteroperabilidad: SemaforoColor;
-  fuente: "pandoras-box" | "simulacion";
+  fuente: AuditFuente;
 }
 
 export interface AuditMetricDetalle extends AuditMetricResumen {
@@ -1276,6 +1279,26 @@ export interface AuditRunConfigFrontend {
   umbralLatenciaVerdeMs?: number;
   umbralLatenciaAmarilloMs?: number;
   umbralTasaExitoVerde?: number;
+}
+
+export interface AuditRunBatchConfigFrontend {
+  rpcUrl: string;
+  totalTransacciones: number;
+  mnemonic?: string;
+}
+
+export interface AuditBatchAdvertencia {
+  modo: ModoPrueba;
+  detalle: string;
+  fuente: AuditFuente;
+}
+
+export interface AuditBatchResultado {
+  modo: ModoPrueba;
+  record?: AuditMetricDetalle;
+  fuente?: AuditFuente;
+  advertencia?: string;
+  error?: string;
 }
 
 export async function listarAuditMetricas(
@@ -1316,7 +1339,7 @@ export async function obtenerAuditMetrica(
 export async function ejecutarAuditRun(
   config: AuditRunConfigFrontend,
   sesion?: SesionUsuario | null
-): Promise<{ ok: boolean; message: string; data?: AuditMetricDetalle; fuente?: string; advertencia?: string }> {
+): Promise<{ ok: boolean; message: string; data?: AuditMetricDetalle; fuente?: AuditFuente; advertencia?: string }> {
   try {
     const res = await fetchApi(`${auditBase}/run`, {
       method: "POST",
@@ -1331,7 +1354,7 @@ export async function ejecutarAuditRun(
       message?: string;
       details?: unknown;
       data?: AuditMetricDetalle;
-      fuente?: string;
+      fuente?: AuditFuente;
       advertencia?: string | null;
     }>(res);
     if (!res.ok || !data.data) {
@@ -1346,6 +1369,74 @@ export async function ejecutarAuditRun(
       data: data.data,
       fuente: data.fuente,
       advertencia: data.advertencia ?? undefined
+    };
+  } catch {
+    return { ok: false, message: CONNECTION_ERROR };
+  }
+}
+
+export async function listarAuditMetricasComparativas(
+  sesion?: SesionUsuario | null
+): Promise<{ ok: boolean; message: string; data?: AuditMetricResumen[] }> {
+  try {
+    const res = await fetchApi(`${auditBase}/metrics-comparative`, {
+      headers: buildActorHeaders(sesion)
+    });
+    const data = await parseJson<{ code?: string; message?: string; data?: AuditMetricResumen[] }>(res);
+    if (!res.ok) {
+      return { ok: false, message: buildApiMessage(data, "Error al listar métricas comparativas.") };
+    }
+    return { ok: true, message: data.message ?? "Métricas comparativas obtenidas.", data: data.data ?? [] };
+  } catch {
+    return { ok: false, message: CONNECTION_ERROR };
+  }
+}
+
+export async function ejecutarAuditRunBatch(
+  config: AuditRunBatchConfigFrontend,
+  sesion?: SesionUsuario | null
+): Promise<{
+  ok: boolean;
+  message: string;
+  batchId?: string;
+  data?: AuditMetricDetalle[];
+  results?: AuditBatchResultado[];
+  advertencias?: AuditBatchAdvertencia[];
+  errores?: Array<{ modo: ModoPrueba; error: string }>;
+}> {
+  try {
+    const res = await fetchApi(`${auditBase}/run-batch`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...buildActorHeaders(sesion)
+      },
+      body: JSON.stringify(config)
+    });
+    const data = await parseJson<{
+      code?: string;
+      message?: string;
+      details?: unknown;
+      batchId?: string;
+      data?: AuditMetricDetalle[];
+      results?: AuditBatchResultado[];
+      advertencias?: AuditBatchAdvertencia[];
+      errores?: Array<{ modo: ModoPrueba; error: string }>;
+    }>(res);
+    if (!res.ok || (!data.data && !data.results)) {
+      return {
+        ok: false,
+        message: buildApiMessage(data, "Error al ejecutar la prueba comparativa.")
+      };
+    }
+    return {
+      ok: true,
+      message: data.message ?? "Prueba comparativa completada.",
+      batchId: data.batchId,
+      data: data.data ?? data.results?.flatMap((item) => item.record ? [item.record] : []) ?? [],
+      results: data.results ?? [],
+      advertencias: data.advertencias ?? [],
+      errores: data.errores ?? []
     };
   } catch {
     return { ok: false, message: CONNECTION_ERROR };

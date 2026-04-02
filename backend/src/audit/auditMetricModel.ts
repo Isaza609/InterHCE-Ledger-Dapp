@@ -73,6 +73,8 @@ export interface AuditMetricRecord {
   timestamp: string;
   /** ID de la sesión de evaluación a la que pertenece este registro (si se inició una) */
   sesionId?: string;
+  /** ID compartido por las 3 corridas de una prueba comparativa batch */
+  batchId?: string;
   modo: ModoPrueba;
   rpcUrl: string;
   chainId: number;
@@ -81,7 +83,7 @@ export interface AuditMetricRecord {
   // Throughput
   tpsPico: number;
   tpsPromedio: number;
-  totalTransacciones: number;
+  totalTransacciones?: number;
   transaccionesExitosas: number;
   transaccionesFallidas: number;
   tasaExito: number; // 0–100 %
@@ -144,7 +146,7 @@ export interface AuditMetricRecord {
   rawOutput: PandorasBoxOutput;
 
   // Fuente del resultado
-  fuente: "pandoras-box" | "simulacion";
+  fuente: "pandoras-box" | "pandoras-box-recovery" | "simulacion";
 }
 
 /** Configuración que el frontend envía para lanzar una prueba */

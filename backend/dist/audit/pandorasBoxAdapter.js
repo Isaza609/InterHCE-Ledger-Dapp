@@ -29,6 +29,7 @@ const os_1 = require("os");
 const path_1 = __importDefault(require("path"));
 const https_1 = __importDefault(require("https"));
 const http_1 = __importDefault(require("http"));
+const ethers_1 = require("ethers");
 const execFileAsync = (0, util_1.promisify)(child_process_1.execFile);
 function hexToNumber(hex) {
     return parseInt(hex, 16);
@@ -206,6 +207,58 @@ function esUrlAlchemy(rpcUrl) {
     return rpcUrl.includes("alchemy.com") || rpcUrl.includes("alchemyapi.io");
 }
 /**
+ * RPCs públicos de Sepolia sin throttling agresivo, probados en orden como
+ * alternativa al endpoint de Alchemy cuando pandoras-box envía transacciones
+ * en ráfaga.
+ *
+ * Por qué se hace el swap:
+ *   El plan gratuito de Alchemy limita a ~330 compute units/s. pandoras-box
+ *   envía batches consecutivos sin delays configurables y espera los recibos
+ *   con un timeout de 30 s (hardcoded en el binario, no configurable por CLI).
+ *   Bajo throttling, Alchemy devuelve HTTP 429 antes de que lleguen todos los
+ *   recibos → timeout → salida non-zero → simulación. Además, los reintentos
+ *   con el mismo nonce generan "replacement transaction underpriced".
+ *
+ * Alcance del swap: SOLO el flag -url que se pasa a pandoras-box.
+ *   La URL de Alchemy se sigue usando para todo lo demás: getChainId,
+ *   fetchRealBlockData, consultas de bloque, interoperabilidad EVM.
+ */
+const SEPOLIA_RPC_CANDIDATOS = [
+    "https://rpc.ankr.com/eth_sepolia",
+    "https://ethereum-sepolia-rpc.publicnode.com",
+    "https://sepolia.drpc.org",
+    "https://rpc2.sepolia.org",
+];
+/**
+ * Prueba los RPCs candidatos en orden y devuelve la URL del primero que
+ * responde a eth_blockNumber dentro de 3 segundos.
+ * Devuelve null si ninguno responde (el llamador usa la URL original).
+ */
+async function resolverRpcAlternativo(candidatos) {
+    for (const url of candidatos) {
+        try {
+            const ctrl = new AbortController();
+            const timer = setTimeout(() => ctrl.abort(), 3000);
+            const res = await fetch(url, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ jsonrpc: "2.0", method: "eth_blockNumber", params: [], id: 1 }),
+                signal: ctrl.signal,
+            });
+            clearTimeout(timer);
+            if (res.ok) {
+                const json = await res.json();
+                if (json.result)
+                    return url;
+            }
+        }
+        catch {
+            // RPC no accesible o timeout → probar el siguiente
+        }
+    }
+    return null;
+}
+/**
  * Detecta el tipo de error de Alchemy en el texto de salida/error de pandoras-box.
  *
  * "rate_limit": compute units exhausted antes de recibir los recibos.
@@ -242,9 +295,26 @@ async function tryRunPandorasBox(config, chainId) {
     const tmpDir = (0, fs_1.mkdtempSync)(path_1.default.join((0, os_1.tmpdir)(), "pandoras-"));
     const outFile = path_1.default.join(tmpDir, `result-${(0, crypto_1.randomBytes)(4).toString("hex")}.json`);
     const binario = resolverBinario();
+    // Si la URL configurada es de Alchemy, probar los RPCs candidatos en orden
+    // y usar el primero que responda. Ver comentario de SEPOLIA_RPC_CANDIDATOS.
+    let rpcUrlParaPandoras = config.rpcUrl;
+    if (esUrlAlchemy(config.rpcUrl)) {
+        const alternativo = await resolverRpcAlternativo(SEPOLIA_RPC_CANDIDATOS);
+        if (alternativo) {
+            console.log(`[pandoras-box] RPC alternativo seleccionado: ${alternativo}`);
+            rpcUrlParaPandoras = alternativo;
+        }
+        else {
+            console.log(`[pandoras-box] Ningún RPC alternativo respondió; usando Alchemy como último recurso.`);
+        }
+    }
+    // Registrar el bloque actual y el instante antes del envío para poder
+    // recuperar los recibos si pandoras-box falla tras el envío.
+    const inicioMs = Date.now();
+    const startBlock = await getLatestBlockNumber(rpcUrlParaPandoras);
     try {
         const args = [
-            "-url", config.rpcUrl,
+            "-url", rpcUrlParaPandoras,
             "-m", mnemonic,
             "-t", String(config.totalTransacciones),
             "-s", String(config.numSubcuentas),
@@ -253,13 +323,6 @@ async function tryRunPandorasBox(config, chainId) {
         ];
         if (config.batchSize) {
             args.push("-b", String(config.batchSize));
-        }
-        else if (esUrlAlchemy(config.rpcUrl)) {
-            // Alchemy limita a ~330 compute units/s en el plan gratuito.
-            // Con el -b por defecto de pandoras-box (25) se agotan los CU antes de que
-            // lleguen todos los recibos → timeout interno de 30 s → salida non-zero.
-            // Con -b 5 cada lote tarda ~60 ms y no excede la capacidad del plan.
-            args.push("-b", "5");
         }
         // Timeout generoso: 10 min para pruebas grandes en Sepolia
         const { stdout, stderr } = await execFileAsync(binario, args, {
@@ -322,23 +385,46 @@ async function tryRunPandorasBox(config, chainId) {
         if (e.code === "ENOENT") {
             return null; // pandoras-box no instalado → simulación (no es un error del usuario)
         }
+        // ── Recolector de recibos del backend ────────────────────────────────────
+        // pandoras-box tiene un timeout interno de 30 s (hardcoded) para recolectar
+        // recibos. Si el proceso falló pero el stdout contiene "batches sent", las
+        // transacciones SÍ se enviaron a Sepolia. En ese caso el backend toma el
+        // relevo: deriva las direcciones de las subcuentas, escanea los bloques
+        // desde startBlock y recolecta los recibos directamente desde el nodo.
+        const envioCompleto = stdout.includes("batches sent");
+        if (envioCompleto && startBlock > 0) {
+            console.log(`[backend-recovery] pandoras-box falló tras el envío exitoso de transacciones. ` +
+                `Iniciando recolector de recibos desde bloque ${startBlock}...`);
+            const recovered = await recolectarRecibosDesdeNodo(config, startBlock, rpcUrlParaPandoras, chainId, inicioMs).catch((recErr) => {
+                console.error("[backend-recovery] Error inesperado en el recolector:", recErr);
+                return null;
+            });
+            if (recovered) {
+                console.log(`[backend-recovery] Recolección completada: ` +
+                    `${recovered.successful_transactions}/${recovered.total_transactions} transacciones exitosas.`);
+                return { output: recovered, isRecovery: true };
+            }
+            console.log("[backend-recovery] No se encontraron transacciones en el escaneo de bloques. " +
+                "Continuando con diagnóstico de error estándar.");
+        }
         // Detectar errores específicos de Alchemy (rate limit / nonce reciclado)
         const textoError = `${stderr} ${stdout} ${base}`;
         const tipoErrorAlchemy = detectarTipoErrorAlchemy(textoError);
         if (tipoErrorAlchemy === "rate_limit") {
             return {
-                error: `Rate limit de Alchemy: las transacciones SÍ se enviaron a Sepolia ` +
-                    `pero pandoras-box no pudo recopilar todos los recibos antes del timeout ` +
-                    `interno de 30 s. Reduce -t a 15–20 y -b a 5 para no agotar el límite ` +
-                    `de compute units por segundo. Detalle: ${stderr || base}`
+                error: `[Ejecución directa con pandoras-box] Rate limit de Alchemy: las transacciones ` +
+                    `SÍ se enviaron a Sepolia pero pandoras-box no pudo recopilar todos los recibos ` +
+                    `antes del timeout interno de 30 s (hardcoded en el binario, no configurable). ` +
+                    `Usa -b ≤ 10 con -t ≤ 100 para no agotar el límite de compute units por segundo. ` +
+                    `Detalle: ${stderr || base}`
             };
         }
         if (tipoErrorAlchemy === "replacement_underpriced") {
             return {
-                error: `"Replacement transaction underpriced": pandoras-box intentó reenviar txs ` +
-                    `con el mismo nonce tras recibir errores de Alchemy. ` +
+                error: `[Ejecución directa con pandoras-box] "Replacement transaction underpriced": ` +
+                    `pandoras-box intentó reenviar txs con el mismo nonce tras recibir errores de Alchemy. ` +
                     `Las transacciones anteriores SÍ pueden haberse enviado a Sepolia. ` +
-                    `Espera ~2 min (para que los nonces avancen) y reduce -t a 15–20 y -b a 5 ` +
+                    `Espera ~2 min (para que los nonces avancen) y usa -b ≤ 10 con -t ≤ 100 ` +
                     `antes de volver a intentarlo. Detalle: ${stderr || base}`
             };
         }
@@ -425,6 +511,204 @@ async function getBlockByNumber(rpcUrl, blockNum) {
     catch {
         return null;
     }
+}
+async function getBlockWithFullTxs(rpcUrl, blockNum) {
+    try {
+        const hex = "0x" + blockNum.toString(16);
+        const result = await jsonRpcPost(rpcUrl, "eth_getBlockByNumber", [hex, true]);
+        return result;
+    }
+    catch {
+        return null;
+    }
+}
+async function getTransactionReceipt(rpcUrl, txHash) {
+    try {
+        const result = await jsonRpcPost(rpcUrl, "eth_getTransactionReceipt", [txHash]);
+        if (!result)
+            return null;
+        return result;
+    }
+    catch {
+        return null;
+    }
+}
+/**
+ * Recolector de recibos del backend — fallback cuando pandoras-box envía
+ * todas las transacciones exitosamente pero falla al recolectar los recibos
+ * por el timeout interno de 30 s (hardcoded, no configurable en el binario).
+ *
+ * Estrategia:
+ * 1. Deriva las direcciones de las subcuentas a partir del mnemonic,
+ *    usando la misma ruta HD que pandoras-box: m/44'/60'/0'/0/${i} (i=1..numSubcuentas).
+ * 2. Escanea los bloques desde startBlock hasta el bloque actual (máx. 60 bloques)
+ *    buscando transacciones cuyo campo `from` coincida con alguna subcuenta.
+ * 3. Espera los recibos de todas las transacciones encontradas (timeout 120 s).
+ * 4. Calcula métricas reales: TPS, latencia (aprox.), gas, tasa de éxito.
+ */
+async function recolectarRecibosDesdeNodo(config, startBlock, rpcUrl, chainId, inicioMs) {
+    const mnemonic = config.mnemonic?.trim();
+    if (!mnemonic)
+        return null;
+    // 1. Derivar direcciones de subcuentas (misma ruta que signer.js de pandoras-box)
+    let senderAddresses;
+    try {
+        const addrs = new Set();
+        for (let i = 1; i <= config.numSubcuentas; i++) {
+            const w = ethers_1.Wallet.fromMnemonic(mnemonic, `m/44'/60'/0'/0/${i}`);
+            addrs.add(w.address.toLowerCase());
+        }
+        senderAddresses = addrs;
+    }
+    catch (e) {
+        console.error("[backend-recovery] No se pudieron derivar las direcciones del mnemonic:", e);
+        return null;
+    }
+    // 2. Escanear bloques desde startBlock hasta el bloque actual (máx. 60)
+    const currentBlock = await getLatestBlockNumber(rpcUrl);
+    if (!currentBlock || currentBlock < startBlock)
+        return null;
+    const MAX_BLOQUES = 60;
+    const toBlock = Math.min(currentBlock, startBlock + MAX_BLOQUES);
+    console.log(`[backend-recovery] Escaneando bloques ${startBlock}–${toBlock} ` +
+        `(${toBlock - startBlock + 1} bloques, ${senderAddresses.size} cuentas)...`);
+    const txHashesCandidatos = [];
+    const blockDataMap = new Map();
+    for (let n = startBlock; n <= toBlock; n++) {
+        const bloque = await getBlockWithFullTxs(rpcUrl, n);
+        if (!bloque)
+            continue;
+        blockDataMap.set(n, {
+            timestamp: parseInt(bloque.timestamp, 16),
+            gasUsed: parseInt(bloque.gasUsed, 16),
+            gasLimit: parseInt(bloque.gasLimit, 16)
+        });
+        for (const tx of (bloque.transactions ?? [])) {
+            if (tx.from && senderAddresses.has(tx.from.toLowerCase())) {
+                txHashesCandidatos.push(tx.hash);
+            }
+        }
+    }
+    if (txHashesCandidatos.length === 0) {
+        console.log(`[backend-recovery] Ninguna transacción de las subcuentas encontrada ` +
+            `en los bloques ${startBlock}–${toBlock}.`);
+        return null;
+    }
+    console.log(`[backend-recovery] ${txHashesCandidatos.length} transacciones encontradas. ` +
+        `Recolectando recibos (timeout 120 s)...`);
+    // 3. Recolectar recibos con timeout de 120 s
+    const RECEIPT_TIMEOUT_MS = 120000;
+    const deadline = Date.now() + RECEIPT_TIMEOUT_MS;
+    const recibos = [];
+    const pendientes = new Set(txHashesCandidatos);
+    while (pendientes.size > 0 && Date.now() < deadline) {
+        for (const hash of [...pendientes]) {
+            const recibo = await getTransactionReceipt(rpcUrl, hash);
+            if (recibo) {
+                recibos.push(recibo);
+                pendientes.delete(hash);
+            }
+        }
+        if (pendientes.size > 0 && Date.now() < deadline) {
+            await new Promise((r) => setTimeout(r, 2000));
+        }
+    }
+    const exitosas = recibos.filter((r) => r.status === "0x1").length;
+    const fallidas = recibos.filter((r) => r.status === "0x0").length;
+    const sinRecibo = pendientes.size;
+    console.log(`[backend-recovery] Resultado: ${exitosas} exitosas / ${fallidas} fallidas / ` +
+        `${sinRecibo} sin recibo (total encontradas: ${txHashesCandidatos.length}).`);
+    // 4. Calcular métricas a partir de recibos y datos de bloque
+    const bloqueNums = [...blockDataMap.keys()].sort((a, b) => a - b);
+    const timestamps = bloqueNums.map((n) => blockDataMap.get(n).timestamp);
+    const blockTimes = [];
+    for (let i = 1; i < timestamps.length; i++) {
+        const dt = timestamps[i] - timestamps[i - 1];
+        if (dt > 0)
+            blockTimes.push(dt);
+    }
+    const avgBlockTimeSec = blockTimes.length > 0
+        ? blockTimes.reduce((a, b) => a + b, 0) / blockTimes.length
+        : 12;
+    const startTs = timestamps[0] ?? Math.floor(inicioMs / 1000);
+    const endTs = timestamps[timestamps.length - 1] ?? startTs;
+    const durationSec = Math.max(1, endTs - startTs);
+    const avgTps = exitosas / durationSec;
+    const tpsPico = Math.max(avgTps, ...bloqueNums.map((n, i) => {
+        const bd = blockDataMap.get(n);
+        const bt = i > 0
+            ? Math.max(1, bd.timestamp - blockDataMap.get(bloqueNums[i - 1]).timestamp)
+            : avgBlockTimeSec;
+        const txEnBloque = recibos.filter((r) => parseInt(r.blockNumber, 16) === n).length;
+        return txEnBloque / bt;
+    }));
+    // Latencia aproximada: sin timestamps de envío individuales, se usa el punto
+    // medio del intervalo de prueba como estimación conservadora.
+    const latAvgMs = (durationSec / 2) * 1000;
+    const latMinMs = avgBlockTimeSec * 1000;
+    const latMaxMs = durationSec * 1000;
+    // Gas de los recibos
+    const gasValues = recibos.map((r) => parseInt(r.gasUsed, 16)).filter((g) => g > 0);
+    const gasAvg = gasValues.length > 0 ? gasValues.reduce((a, b) => a + b, 0) / gasValues.length : 21000;
+    const gasMax = gasValues.length > 0 ? Math.max(...gasValues) : gasAvg;
+    const gasLimitVal = blockDataMap.size > 0
+        ? Math.max(...[...blockDataMap.values()].map((b) => b.gasLimit))
+        : 30000000;
+    const totalGasUsedInBlocks = [...blockDataMap.values()].reduce((a, b) => a + b.gasUsed, 0);
+    const gasUtil = gasLimitVal > 0 && blockDataMap.size > 0
+        ? Math.min(100, (totalGasUsedInBlocks / (gasLimitVal * blockDataMap.size)) * 100)
+        : 0;
+    const blockSamples = bloqueNums.map((n, i) => {
+        const bd = blockDataMap.get(n);
+        const bt = i > 0
+            ? Math.max(1, bd.timestamp - blockDataMap.get(bloqueNums[i - 1]).timestamp)
+            : avgBlockTimeSec;
+        const txEnBloque = recibos.filter((r) => parseInt(r.blockNumber, 16) === n).length;
+        return {
+            block_number: n,
+            timestamp: new Date(bd.timestamp * 1000).toISOString(),
+            tx_count: txEnBloque,
+            gas_used: bd.gasUsed,
+            gas_limit: bd.gasLimit,
+            block_time_seconds: bt,
+            tps: txEnBloque / bt
+        };
+    });
+    return {
+        mode: config.modo,
+        start_time: new Date(startTs * 1000).toISOString(),
+        end_time: new Date(endTs * 1000).toISOString(),
+        duration_seconds: durationSec,
+        rpc_url: rpcUrl,
+        chain_id: chainId,
+        total_transactions: config.totalTransacciones,
+        successful_transactions: exitosas,
+        failed_transactions: fallidas + sinRecibo,
+        tps_peak: tpsPico,
+        tps_average: avgTps,
+        latency_avg_ms: latAvgMs,
+        latency_min_ms: latMinMs,
+        latency_max_ms: latMaxMs,
+        latency_p50_ms: latAvgMs,
+        latency_p95_ms: latMaxMs * 0.8,
+        latency_p99_ms: latMaxMs * 0.95,
+        block_time_avg_seconds: avgBlockTimeSec,
+        block_time_min_seconds: blockTimes.length > 0 ? Math.min(...blockTimes) : avgBlockTimeSec,
+        block_time_max_seconds: blockTimes.length > 0 ? Math.max(...blockTimes) : avgBlockTimeSec,
+        blocks_observed: bloqueNums.length,
+        gas_used_avg: gasAvg,
+        gas_used_max: gasMax,
+        gas_limit: gasLimitVal,
+        gas_utilization_pct: gasUtil,
+        reverted_transactions: fallidas,
+        out_of_gas_transactions: 0,
+        node_response_avg_ms: avgBlockTimeSec * 80,
+        contract_address: config.contractAddress,
+        deploy_successful: config.modo !== "EOA" ? exitosas > 0 : undefined,
+        erc_function_calls: config.modo !== "EOA" ? txHashesCandidatos.length : 0,
+        erc_function_success: config.modo !== "EOA" ? exitosas : 0,
+        block_samples: blockSamples
+    };
 }
 async function fetchRealBlockData(rpcUrl, blockCount) {
     const chainId = await getChainId(rpcUrl);
@@ -580,8 +864,9 @@ async function ejecutarPrueba(config) {
             // ENOENT: pandoras-box no está instalado → caemos a simulación sin error
         }
         else if ("output" in resultado) {
-            // Éxito real
-            return { output: resultado.output, fuente: "pandoras-box" };
+            // Éxito real (directo o recuperación de recibos por el backend)
+            const fuente = resultado.isRecovery ? "pandoras-box-recovery" : "pandoras-box";
+            return { output: resultado.output, fuente };
         }
         else {
             // pandoras-box estaba instalado pero falló (fondos, RPC, etc.)

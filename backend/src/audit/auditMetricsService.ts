@@ -15,6 +15,11 @@ import { UMBRALES_DEFAULT } from "./auditMetricModel";
 import { obtenerSesionActual } from "./evaluacionSesionService";
 
 const STORE_FILE = "audit-metrics.json";
+const MODO_ORDER: Record<string, number> = {
+  EOA: 0,
+  ERC20: 1,
+  ERC721: 2
+};
 
 // ─── Persistencia ─────────────────────────────────────────────────────────────
 
@@ -144,7 +149,11 @@ function buildInteroperabilityDetails(
 function convertirASalida(
   output: PandorasBoxOutput,
   config: AuditRunConfig,
-  fuente: "pandoras-box" | "simulacion"
+  fuente: "pandoras-box" | "pandoras-box-recovery" | "simulacion",
+  extras?: {
+    batchId?: string;
+    totalTransacciones?: number;
+  }
 ): AuditMetricRecord {
   const tasaExito =
     output.total_transactions > 0
@@ -162,6 +171,7 @@ function convertirASalida(
     id: randomUUID(),
     timestamp: new Date().toISOString(),
     sesionId: sesionActual?.id,
+    batchId: extras?.batchId,
     modo: output.mode,
     rpcUrl: output.rpc_url,
     chainId: output.chain_id,
@@ -169,7 +179,7 @@ function convertirASalida(
 
     tpsPico: output.tps_peak,
     tpsPromedio: output.tps_average,
-    totalTransacciones: output.total_transactions,
+    totalTransacciones: extras?.totalTransacciones ?? output.total_transactions,
     transaccionesExitosas: output.successful_transactions,
     transaccionesFallidas: output.failed_transactions,
     tasaExito,
@@ -238,15 +248,35 @@ export function listarMetricas(opciones?: {
   );
 }
 
+export function listarMetricasComparativas(): AuditMetricRecord[] {
+  return cargarRegistros()
+    .filter((record) => record.batchId && typeof record.totalTransacciones === "number")
+    .sort((a, b) => {
+      const totalA = a.totalTransacciones ?? Number.MAX_SAFE_INTEGER;
+      const totalB = b.totalTransacciones ?? Number.MAX_SAFE_INTEGER;
+      if (totalA !== totalB) return totalA - totalB;
+
+      const modoA = MODO_ORDER[a.modo] ?? Number.MAX_SAFE_INTEGER;
+      const modoB = MODO_ORDER[b.modo] ?? Number.MAX_SAFE_INTEGER;
+      if (modoA !== modoB) return modoA - modoB;
+
+      return new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime();
+    });
+}
+
 export function obtenerMetricaPorId(id: string): AuditMetricRecord | null {
   return cargarRegistros().find((r) => r.id === id) ?? null;
 }
 
 export async function ejecutarEvaluacion(
-  config: AuditRunConfig
-): Promise<{ record: AuditMetricRecord; fuente: "pandoras-box" | "simulacion"; errorPandoras?: string }> {
+  config: AuditRunConfig,
+  extras?: {
+    batchId?: string;
+    totalTransacciones?: number;
+  }
+): Promise<{ record: AuditMetricRecord; fuente: "pandoras-box" | "pandoras-box-recovery" | "simulacion"; errorPandoras?: string }> {
   const { output, fuente, errorPandoras } = await ejecutarPrueba(config);
-  const record = convertirASalida(output, config, fuente);
+  const record = convertirASalida(output, config, fuente, extras);
 
   const registros = cargarRegistros();
   registros.push(record);

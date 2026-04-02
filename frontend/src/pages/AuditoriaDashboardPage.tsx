@@ -10,16 +10,34 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Legend,
+  Line,
+  LineChart,
+  ReferenceLine,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis
+} from "recharts";
 import { useSesion } from "@/shared/auth/SessionContext";
 import {
   listarAuditMetricas,
+  listarAuditMetricasComparativas,
   obtenerAuditMetrica,
   ejecutarAuditRun,
+  ejecutarAuditRunBatch,
   obtenerDashboardEvaluacion,
   iniciarSesionEvaluacion,
   obtenerSesionEvaluacion,
+  type AuditFuente,
   type AuditMetricResumen,
   type AuditMetricDetalle,
+  type AuditBatchResultado,
+  type AuditRunBatchConfigFrontend,
   type AuditRunConfigFrontend,
   type ModoPrueba,
   type BlockSampleFrontend,
@@ -60,6 +78,70 @@ function fChainId(id: number): string {
 }
 
 type Color = "verde" | "amarillo" | "rojo";
+
+
+const MODOS_PRUEBA: ModoPrueba[] = ["EOA", "ERC20", "ERC721"];
+const MODO_ORDER: Record<ModoPrueba, number> = { EOA: 0, ERC20: 1, ERC721: 2 };
+const MODO_COLORS: Record<ModoPrueba, string> = {
+  EOA: "#2563eb",
+  ERC20: "#22c55e",
+  ERC721: "#f97316"
+};
+const SEMAFORO_COLORS: Record<Color, string> = {
+  verde: "#22c55e",
+  amarillo: "#eab308",
+  rojo: "#ef4444"
+};
+const CONFIG_BATCH_DEFAULT: AuditRunBatchConfigFrontend = {
+  rpcUrl: "",
+  totalTransacciones: 100,
+  mnemonic: ""
+};
+
+type ComparativeChartPoint = {
+  totalTransacciones: number;
+  [key: string]: number | undefined;
+};
+
+function ordenarPorModo(a: { modo: ModoPrueba }, b: { modo: ModoPrueba }): number {
+  return MODO_ORDER[a.modo] - MODO_ORDER[b.modo];
+}
+
+function ordenarMetricasComparativas(a: AuditMetricResumen, b: AuditMetricResumen): number {
+  if (a.totalTransacciones !== b.totalTransacciones) {
+    return a.totalTransacciones - b.totalTransacciones;
+  }
+  const ordenModo = ordenarPorModo(a, b);
+  if (ordenModo !== 0) return ordenModo;
+  return new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime();
+}
+
+function formatFuenteAudit(fuente?: AuditFuente): string {
+  if (fuente === "pandoras-box") return "Ejecución real con pandoras-box";
+  if (fuente === "pandoras-box-recovery") return "Ejecución real con recuperación de recibos";
+  return "Simulación con datos del nodo RPC";
+}
+
+function formatFuenteAuditDestacada(fuente?: AuditFuente): string {
+  if (fuente === "pandoras-box") return "🔴 Ejecución real con pandoras-box";
+  if (fuente === "pandoras-box-recovery") return "🟠 Ejecución real con recuperación de recibos";
+  return "🔵 Simulación con datos del nodo RPC";
+}
+
+function recortarTexto(value?: string, max = 44): string {
+  if (!value) return "—";
+  return value.length > max ? value.slice(0, max) + "…" : value;
+}
+
+function descargarArchivoDataUrl(dataUrl: string, nombre: string): void {
+  const link = document.createElement("a");
+  link.href = dataUrl;
+  link.download = nombre;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
 
 // ═════════════════════════════════════════════════════════════════════════════
 // GENERACIÓN DE INFORME PDF
@@ -127,7 +209,7 @@ function descargarInformePDF(r: AuditMetricDetalle): void {
     row("Modo de prueba", r.modo),
     row("Red (chainId)", `${chainName[r.chainId] ?? `Chain ${r.chainId}`} (${r.chainId})`),
     row("Nodo RPC", r.rpcUrl),
-    row("Fuente", r.fuente === "pandoras-box" ? "Ejecución real con pandoras-box" : "Simulación con datos del nodo RPC"),
+    row("Fuente", formatFuenteAudit(r.fuente)),
     row("Contrato", r.contractAddress ?? "N/A"),
   ].join(""))}
 
@@ -212,6 +294,355 @@ function descargarInformePDF(r: AuditMetricDetalle): void {
   setTimeout(() => win.print(), 500);
 }
 
+
+type UltimoBatchRecordState = {
+  modo: ModoPrueba;
+  record?: AuditMetricDetalle;
+  fuente?: AuditFuente;
+  advertencia?: string;
+  error?: string;
+};
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function normalizarResultadosBatch(
+  results?: AuditBatchResultado[],
+  fallbackData?: AuditMetricDetalle[]
+): UltimoBatchRecordState[] {
+  const resultsByModo = new Map<ModoPrueba, AuditBatchResultado>();
+  const fallbackByModo = new Map<ModoPrueba, AuditMetricDetalle>();
+
+  for (const item of results ?? []) {
+    resultsByModo.set(item.modo, item);
+  }
+  for (const item of fallbackData ?? []) {
+    fallbackByModo.set(item.modo, item);
+  }
+
+  return MODOS_PRUEBA.map((modo) => {
+    const result = resultsByModo.get(modo);
+    const record = result?.record ?? fallbackByModo.get(modo);
+    return {
+      modo,
+      record,
+      fuente: result?.fuente ?? result?.record?.fuente ?? record?.fuente,
+      advertencia: result?.advertencia,
+      error: result?.error ?? (!record && !result ? "Sin resultado devuelto por el backend." : undefined)
+    };
+  });
+}
+
+async function capturarGraficasComparativas(
+  objetivos: Array<{ ref: { current: HTMLDivElement | null }; titulo: string; nombre?: string }>
+): Promise<Array<{ titulo: string; dataUrl: string; nombre?: string }>> {
+  const html2canvasModule = await import("html2canvas");
+  const html2canvas = html2canvasModule.default;
+  const capturas: Array<{ titulo: string; dataUrl: string; nombre?: string }> = [];
+
+  for (const objetivo of objetivos) {
+    if (!objetivo.ref.current) continue;
+    const canvas = await html2canvas(objetivo.ref.current, {
+      background: "#ffffff",
+      useCORS: true
+    });
+    capturas.push({
+      titulo: objetivo.titulo,
+      dataUrl: canvas.toDataURL("image/png"),
+      nombre: objetivo.nombre
+    });
+  }
+
+  return capturas;
+}
+
+function renderAuditDetallePdfHtml(r: AuditMetricDetalle): string {
+  const fN = (v?: number, d = 2) =>
+    typeof v === "number" && !isNaN(v) ? v.toFixed(d) : "—";
+  const fP = (v?: number) =>
+    typeof v === "number" && !isNaN(v) ? `${v.toFixed(1)} %` : "—";
+  const fMsR = (v?: number) => {
+    if (typeof v !== "number" || isNaN(v) || v === 0) return "—";
+    return v >= 1000 ? `${(v / 1000).toFixed(2)} s` : `${v.toFixed(0)} ms`;
+  };
+  const chainName: Record<number, string> = {
+    1: "Ethereum",
+    11155111: "Sepolia",
+    137: "Polygon",
+    56: "BSC",
+    42161: "Arbitrum",
+    0: "Local"
+  };
+  const semColor = (s: Color) =>
+    s === "verde" ? "#27ae60" : s === "amarillo" ? "#e67e22" : "#c0392b";
+  const semLabel = (s: Color) =>
+    s === "verde" ? "Óptimo" : s === "amarillo" ? "Aceptable" : "Crítico";
+  const row = (k: string, v: string) =>
+    `<tr><td style="color:#555;padding:3px 8px 3px 0">${escapeHtml(k)}</td><td style="font-weight:500;padding:3px 0">${v}</td></tr>`;
+  const sec = (title: string, rows: string) =>
+    `<div style="margin-bottom:20px"><h3 style="font-size:13px;border-bottom:1px solid #ddd;padding-bottom:4px;margin-bottom:8px">${escapeHtml(title)}</h3><table style="width:100%;border-collapse:collapse;font-size:12px">${rows}</table></div>`;
+  const badge = (s: Color, label: string, val: string) =>
+    `<div style="display:inline-block;margin-right:16px;text-align:center"><div style="background:${semColor(s)};color:#fff;border-radius:12px;padding:2px 10px;font-size:11px">${semLabel(s)}</div><div style="font-size:13px;font-weight:600;margin-top:3px">${escapeHtml(val)}</div><div style="font-size:11px;color:#888">${escapeHtml(label)}</div></div>`;
+
+  const interop = r.interoperabilityDetails;
+  const umbral = "Verde ≤ 15 s · Amarillo ≤ 30 s · Rojo > 30 s (1 bloque EVM ≈ 12–15 s)";
+
+  return `
+    <div style="margin-bottom:20px;padding:12px 14px;background:#f8fbff;border:1px solid #e4eef8;border-radius:10px">
+      <strong style="font-size:14px">${escapeHtml(r.modo)}</strong>
+      <div style="font-size:12px;color:#666;margin-top:4px">
+        ${escapeHtml(formatFuenteAudit(r.fuente))} · ${escapeHtml(new Date(r.timestamp).toLocaleString("es-CO"))} · ID ${escapeHtml(r.id)}
+      </div>
+    </div>
+
+    <div style="margin-bottom:20px">
+      <h3 style="font-size:13px;border-bottom:1px solid #ddd;padding-bottom:4px;margin-bottom:12px">Semáforos de evaluación</h3>
+      ${badge(r.semaforoEficiencia, "Eficiencia", `${fN(r.tpsPromedio)} TPS`)}
+      ${badge(r.semaforoLatencia, "Latencia", fMsR(r.latenciaPromedioMs))}
+      ${badge(r.semaforoSeguridad, "Seguridad", fP(r.tasaExito))}
+      ${badge(r.semaforoInteroperabilidad, "Interop. EVM", interop?.nodoAccesible ? "Nodo OK" : "Sin acceso")}
+    </div>
+
+    ${sec("1. Resumen", [
+      row("ID evaluación", escapeHtml(r.id)),
+      row("Fecha y hora", escapeHtml(new Date(r.timestamp).toLocaleString("es-CO"))),
+      row("Modo de prueba", escapeHtml(r.modo)),
+      row("Red (chainId)", `${escapeHtml(chainName[r.chainId] ?? `Chain ${r.chainId}`)} (${r.chainId})`),
+      row("Nodo RPC", escapeHtml(r.rpcUrl)),
+      row("Fuente", escapeHtml(formatFuenteAudit(r.fuente))),
+      row("Contrato", escapeHtml(r.contractAddress ?? "N/A"))
+    ].join(""))}
+
+    ${sec("2. Métricas de eficiencia (TPS)", [
+      row("TPS promedio", fN(r.tpsPromedio)),
+      row("TPS pico", fN(r.tpsPico)),
+      row("Total transacciones", fN(r.totalTransacciones, 0)),
+      row("Transacciones exitosas", fN(r.transaccionesExitosas, 0)),
+      row("Transacciones fallidas", fN(r.transaccionesFallidas, 0)),
+      row("Umbral verde ≥", "10 TPS · Amarillo ≥ 5 TPS")
+    ].join(""))}
+
+    ${sec("3. Latencia de confirmación", [
+      row("Latencia promedio", fMsR(r.latenciaPromedioMs)),
+      row("Latencia mínima", fMsR(r.latenciaMinMs)),
+      row("Latencia máxima", fMsR(r.latenciaMaxMs)),
+      row("Latencia P95", fMsR(r.latenciaP95Ms)),
+      row("Block time promedio", `${r.blockTimePromedioSeg.toFixed(2)} s`),
+      row("Bloques observados", String(r.bloquesObservados)),
+      row("Umbrales aplicados", escapeHtml(umbral))
+    ].join(""))}
+
+    ${sec("4. Gas", [
+      row("Gas promedio / tx", fN(r.gasUsadoPromedio, 0)),
+      row("Gas máximo / tx", fN(r.gasUsadoMax, 0)),
+      row("Gas limit del bloque", fN(r.gasLimit, 0)),
+      row("Utilización de bloque", fP(r.gasUtilizacionPct))
+    ].join(""))}
+
+    ${sec("5. Seguridad y tasa de éxito", [
+      row("Tasa de éxito", fP(r.tasaExito)),
+      row("Transacciones revertidas", fN(r.transaccionesRevertidas, 0)),
+      row("Out-of-gas", fN(r.transaccionesOutOfGas, 0)),
+      row("Tiempo respuesta nodo bajo carga", fMsR(r.tiempoRespuestaNodoMs)),
+      row("Umbral verde ≥ 95 % · Amarillo ≥ 80 %", "")
+    ].join(""))}
+
+    ${sec("6. Interoperabilidad EVM / HCE", [
+      row("Nodo EVM accesible", interop?.nodoAccesible ? "✓ Sí" : "✗ No"),
+      row("Contrato accesible", interop?.contratoAccesible ? "✓ Sí" : r.modo === "EOA" ? "N/A (sin contrato)" : "✗ No"),
+      row("Llamadas read/view OK", interop?.readCallsOk ? "✓ OK" : "✗ Error"),
+      row("Escrituras OK", interop?.writeCallsOk ? "✓ OK" : "✗ Sin confirmar"),
+      row("Compatibilidad ERC declarada", escapeHtml(interop?.compatibilidadERC ?? r.modo)),
+      row("ChainId verificado", String(interop?.chainId ?? r.chainId)),
+      ...(r.modo !== "EOA" ? [
+        row("Deploy exitoso", r.deployExitoso ? "✓ Sí" : "✗ No"),
+        row("Llamadas ERC exitosas", fN(r.llamadasERCExitosas, 0)),
+        row("Total llamadas ERC", fN(r.llamadasERCTotal, 0)),
+        row("Tasa ERC", r.llamadasERCTotal > 0 ? fP((r.llamadasERCExitosas / r.llamadasERCTotal) * 100) : "—")
+      ] : [])
+    ].join(""))}
+    ${interop?.nota ? `<p style="font-size:11px;color:#555;background:#f5f5f5;padding:8px;border-radius:4px">${escapeHtml(interop.nota)}</p>` : ""}
+  `;
+}
+
+function abrirInformeBatchPdf(options: {
+  batchId: string;
+  generatedAt: string;
+  totalTransacciones: number;
+  records: UltimoBatchRecordState[];
+  graficas: Array<{ titulo: string; dataUrl: string }>;
+}): void {
+  const semColor = (s: Color) =>
+    s === "verde" ? "#27ae60" : s === "amarillo" ? "#e67e22" : "#c0392b";
+  const semLabel = (s: Color) =>
+    s === "verde" ? "Óptimo" : s === "amarillo" ? "Aceptable" : "Crítico";
+  const fN = (v?: number, d = 2) =>
+    typeof v === "number" && !isNaN(v) ? v.toFixed(d) : "—";
+  const fP = (v?: number) =>
+    typeof v === "number" && !isNaN(v) ? `${v.toFixed(1)} %` : "—";
+  const fMsR = (v?: number) => {
+    if (typeof v !== "number" || isNaN(v) || v === 0) return "—";
+    return v >= 1000 ? `${(v / 1000).toFixed(2)} s` : `${v.toFixed(0)} ms`;
+  };
+
+  const resumenRows = options.records.map((item) => {
+    if (!item.record) {
+      return `
+        <tr>
+          <td>${escapeHtml(item.modo)}</td>
+          <td>—</td>
+          <td>—</td>
+          <td>—</td>
+          <td><span class="chip" style="background:${semColor("rojo")}">Crítico</span></td>
+          <td><span class="chip" style="background:${semColor("rojo")}">Crítico</span></td>
+          <td><span class="chip" style="background:${semColor("rojo")}">Crítico</span></td>
+        </tr>`;
+    }
+
+    return `
+      <tr>
+        <td>${escapeHtml(item.record.modo)}</td>
+        <td>${escapeHtml(fN(item.record.tpsPromedio))}</td>
+        <td>${escapeHtml(fMsR(item.record.latenciaPromedioMs))}</td>
+        <td>${escapeHtml(fP(item.record.tasaExito))}</td>
+        <td><span class="chip" style="background:${semColor(item.record.semaforoEficiencia)}">${escapeHtml(semLabel(item.record.semaforoEficiencia))}</span></td>
+        <td><span class="chip" style="background:${semColor(item.record.semaforoLatencia)}">${escapeHtml(semLabel(item.record.semaforoLatencia))}</span></td>
+        <td><span class="chip" style="background:${semColor(item.record.semaforoSeguridad)}">${escapeHtml(semLabel(item.record.semaforoSeguridad))}</span></td>
+      </tr>`;
+  }).join("");
+
+  const graficasHtml = options.graficas.length > 0
+    ? `
+      <div style="margin-top:18px">
+        <h3 style="font-size:13px;border-bottom:1px solid #ddd;padding-bottom:4px;margin-bottom:10px">Gráficas comparativas</h3>
+        <div class="chart-grid">
+          ${options.graficas.map((grafica) => `
+            <figure class="chart-card">
+              <img src="${grafica.dataUrl}" alt="${escapeHtml(grafica.titulo)}" />
+              <figcaption>${escapeHtml(grafica.titulo)}</figcaption>
+            </figure>
+          `).join("")}
+        </div>
+      </div>`
+    : "";
+
+  const detalleHtml = options.records.map((item, index) => {
+    const heading = `Sección ${index + 3} — Detalle ${item.modo}`;
+    if (!item.record) {
+      return `
+        <section class="page page-break">
+          <h1>${escapeHtml(heading)}</h1>
+          <p style="color:#666;font-size:12px;margin-top:0">Batch ${escapeHtml(options.batchId)} · ${escapeHtml(new Date(options.generatedAt).toLocaleString("es-CO"))}</p>
+          <div style="background:#fff1f2;border:1px solid #fecdd3;border-radius:10px;padding:18px 20px;font-size:13px;color:#9f1239">
+            <strong>${escapeHtml(item.modo)}</strong><br/>
+            ${escapeHtml(item.error ?? "Este modo no generó un registro de auditoría.")}
+          </div>
+        </section>`;
+    }
+
+    return `
+      <section class="page page-break">
+        <h1>${escapeHtml(heading)}</h1>
+        <p style="color:#666;font-size:12px;margin-top:0">Batch ${escapeHtml(options.batchId)} · ${escapeHtml(new Date(item.record.timestamp).toLocaleString("es-CO"))}</p>
+        ${item.advertencia ? `<div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:10px 12px;font-size:12px;color:#9a3412;margin-bottom:14px">${escapeHtml(item.advertencia)}</div>` : ""}
+        ${renderAuditDetallePdfHtml(item.record)}
+      </section>`;
+  }).join("");
+
+  const html = `<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8"/>
+  <title>Informe Comparativo de Evaluación Blockchain</title>
+  <style>
+    body{font-family:Arial,sans-serif;font-size:13px;color:#222;margin:32px;line-height:1.5;background:#fff}
+    h1{font-size:18px;margin-bottom:4px}
+    h2{font-size:15px;margin:18px 0 8px;border-bottom:2px solid #4f8ef7;padding-bottom:4px;color:#4f8ef7}
+    h3{margin-top:0}
+    table{width:100%;border-collapse:collapse;font-size:12px}
+    th{background:#f0f4ff;padding:6px;text-align:left;border-bottom:1px solid #dbe4f0}
+    td{padding:6px;border-bottom:1px solid #edf2f7;vertical-align:top}
+    .page{page-break-after:always;break-after:page}
+    .page:last-of-type{page-break-after:auto;break-after:auto}
+    .hero{background:linear-gradient(135deg,#eef6ff,#f8fbff);border:1px solid #dbeafe;border-radius:18px;padding:32px}
+    .hero h1{font-size:24px;margin-bottom:6px}
+    .hero h2{border:none;color:#1d4ed8;margin:0 0 20px;padding:0;font-size:18px}
+    .meta-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:22px}
+    .meta-card{background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:12px 14px}
+    .meta-card strong{display:block;font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px}
+    .chip{display:inline-block;color:#fff;border-radius:999px;padding:2px 10px;font-size:11px}
+    .chart-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+    .chart-card{border:1px solid #e2e8f0;border-radius:10px;padding:10px;margin:0;background:#fff}
+    .chart-card img{width:100%;height:auto;display:block}
+    .chart-card figcaption{font-size:11px;color:#64748b;margin-top:8px;text-align:center}
+    @media print{body{margin:18px}.no-print{display:none}}
+  </style>
+</head>
+<body>
+  <div class="no-print" style="background:#eef4ff;padding:10px 16px;border-radius:8px;margin-bottom:20px;font-size:12px">
+    <strong>Imprimir como PDF:</strong> Usa Ctrl+P (o Cmd+P) → selecciona "Guardar como PDF" → Guardar.
+  </div>
+
+  <section class="page">
+    <div class="hero">
+      <h1>Informe Comparativo de Evaluación Blockchain</h1>
+      <h2>InterHCE Ledger</h2>
+      <p style="font-size:13px;color:#475569;max-width:680px">
+        Documento consolidado del último batch comparativo ejecutado sobre la red Sepolia.
+        Incluye portada, resumen comparativo, gráficas y detalle completo por modo.
+      </p>
+      <div class="meta-grid">
+        <div class="meta-card"><strong>Batch ID</strong>${escapeHtml(options.batchId)}</div>
+        <div class="meta-card"><strong>Fecha y hora</strong>${escapeHtml(new Date(options.generatedAt).toLocaleString("es-CO"))}</div>
+        <div class="meta-card"><strong>Total transacciones evaluadas</strong>${escapeHtml(String(options.totalTransacciones))}</div>
+        <div class="meta-card"><strong>Red</strong>Sepolia (11155111)</div>
+        <div class="meta-card"><strong>Modos evaluados</strong>EOA, ERC20, ERC721</div>
+        <div class="meta-card"><strong>Registros en el batch</strong>${escapeHtml(String(options.records.length))}</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="page">
+    <h1>Sección 2 — Resumen comparativo</h1>
+    <p style="color:#666;font-size:12px;margin-top:0">Batch ${escapeHtml(options.batchId)} · ${escapeHtml(new Date(options.generatedAt).toLocaleString("es-CO"))}</p>
+    <table>
+      <thead>
+        <tr>
+          <th>Modo</th>
+          <th>TPS Prom</th>
+          <th>Latencia Prom</th>
+          <th>Tasa Éxito</th>
+          <th>Semáforo Eficiencia</th>
+          <th>Semáforo Latencia</th>
+          <th>Semáforo Seguridad</th>
+        </tr>
+      </thead>
+      <tbody>${resumenRows}</tbody>
+    </table>
+    ${graficasHtml}
+  </section>
+
+  ${detalleHtml}
+</body>
+</html>`;
+
+  const win = window.open("", "_blank", "width=1100,height=800");
+  if (!win) {
+    alert("No se pudo abrir la ventana del informe. Desbloquea las ventanas emergentes para este sitio.");
+    return;
+  }
+  win.document.write(html);
+  win.document.close();
+  setTimeout(() => win.print(), 500);
+}
+
+
 // ═════════════════════════════════════════════════════════════════════════════
 // COMPONENTES BASE
 // ═════════════════════════════════════════════════════════════════════════════
@@ -231,6 +662,28 @@ function SemaforoBadge({
       </div>
       <div style={{ fontSize: "0.85rem", fontWeight: 600 }}>{valor}</div>
       <div style={{ fontSize: "0.72rem", color: "#888", marginTop: 2 }}>{label}</div>
+    </div>
+  );
+}
+
+function SpinnerInline({ label }: { label: string }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: "0.82rem" }}>
+      <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
+        <circle cx="12" cy="12" r="9" fill="none" stroke="#cbd5e1" strokeWidth="3" />
+        <path d="M12 3a9 9 0 0 1 9 9" fill="none" stroke="#2563eb" strokeWidth="3" strokeLinecap="round">
+          <animateTransform
+            attributeName="transform"
+            attributeType="XML"
+            type="rotate"
+            from="0 12 12"
+            to="360 12 12"
+            dur="0.9s"
+            repeatCount="indefinite"
+          />
+        </path>
+      </svg>
+      <span>{label}</span>
     </div>
   );
 }
@@ -296,7 +749,7 @@ function PanelDetalle({ r }: { r: AuditMetricDetalle }) {
         marginBottom: 14, alignItems: "center" }}>
         <div style={{ fontSize: "0.78rem", color: "#555", flex: 1, minWidth: 160 }}>
           <strong>{r.modo}</strong> · {fChainId(r.chainId)} · {fDate(r.timestamp)}<br/>
-          <span style={{ color: "#aaa", fontSize: "0.7rem" }}>{r.fuente === "pandoras-box" ? "🔴 Ejecución real con pandoras-box" : "🔵 Simulación con datos del nodo RPC"}</span>
+          <span style={{ color: "#aaa", fontSize: "0.7rem" }}>{formatFuenteAuditDestacada(r.fuente)}</span>
         </div>
         <SemaforoBadge color={r.semaforoEficiencia}   label="Eficiencia"      valor={`${fNum(r.tpsPromedio)} TPS`} />
         <SemaforoBadge color={r.semaforoLatencia}     label="Latencia"        valor={fMs(r.latenciaPromedioMs)} />
@@ -404,7 +857,7 @@ function PanelDetalle({ r }: { r: AuditMetricDetalle }) {
 //   Verde ≤ 15 000 ms (1 bloque típico), Amarillo ≤ 30 000 ms (≤ 2 bloques).
 const CONFIG_DEFAULT: AuditRunConfigFrontend = {
   rpcUrl: "", modo: "EOA", totalTransacciones: 100, numSubcuentas: 5,
-  contractAddress: "", mnemonic: "", batchSize: 20,
+  contractAddress: "", mnemonic: "", batchSize: 10,
   umbralTpsVerde: 10, umbralTpsAmarillo: 5,
   umbralLatenciaVerdeMs: 15_000, umbralLatenciaAmarilloMs: 30_000,
   umbralTasaExitoVerde: 95
@@ -684,9 +1137,7 @@ function SeccionRedBlockchain() {
     const r = await ejecutarAuditRun(cfg, sesion);
     setRunning(false);
     if (!r.ok) { setRunError(r.message); return; }
-    const fuenteLabel = r.fuente === "pandoras-box"
-      ? "🔴 ejecución real con pandoras-box"
-      : "🔵 simulación (datos del nodo RPC)";
+    const fuenteLabel = formatFuenteAuditDestacada(r.fuente);
     const advertenciaMsg = r.advertencia
       ? `\n⚠️ pandoras-box no pudo ejecutarse → se usó simulación.\nDetalle: ${r.advertencia}`
       : "";
@@ -706,7 +1157,7 @@ function SeccionRedBlockchain() {
   // Aplicar filtro de sesión sobre la lista cargada
   const listaFiltrada = filtroSesion === "actual" && sesionActual
     ? lista.filter((r) =>
-        (r as AuditMetricResumen & { sesionId?: string }).sesionId === sesionActual.id ||
+        r.sesionId === sesionActual.id ||
         new Date(r.timestamp) >= new Date(sesionActual.startedAt)
       )
     : lista;
@@ -774,7 +1225,7 @@ function SeccionRedBlockchain() {
             style={{ padding: "2px 10px", fontSize: "0.78rem" }}
             onClick={() => setFiltroSesion("actual")}>
             Sesión actual ({lista.filter((r) =>
-              (r as AuditMetricResumen & { sesionId?: string }).sesionId === sesionActual.id ||
+              r.sesionId === sesionActual.id ||
               new Date(r.timestamp) >= new Date(sesionActual.startedAt)
             ).length})
           </button>
@@ -884,6 +1335,738 @@ function SeccionRedBlockchain() {
     </section>
   );
 }
+
+
+function SeccionComparativa() {
+  const { sesion } = useSesion();
+  const [registros, setRegistros] = useState<AuditMetricResumen[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [running, setRunning] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [exportingPdfBatch, setExportingPdfBatch] = useState(false);
+  const [mensaje, setMensaje] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [cfg, setCfg] = useState<AuditRunBatchConfigFrontend>({ ...CONFIG_BATCH_DEFAULT });
+  const [ultimoBatchRecords, setUltimoBatchRecords] = useState<UltimoBatchRecordState[]>([]);
+  const [ultimoBatchId, setUltimoBatchId] = useState<string | null>(null);
+  const [ultimoBatchFecha, setUltimoBatchFecha] = useState<string | null>(null);
+  const [ultimoBatchTotalTransacciones, setUltimoBatchTotalTransacciones] = useState<number | null>(null);
+  const graficaTpsRef = useRef<HTMLDivElement>(null);
+  const graficaLatenciaRef = useRef<HTMLDivElement>(null);
+  const graficaExitoRef = useRef<HTMLDivElement>(null);
+  const graficaGasRef = useRef<HTMLDivElement>(null);
+
+  function setCampo<K extends keyof AuditRunBatchConfigFrontend>(
+    key: K,
+    value: AuditRunBatchConfigFrontend[K]
+  ) {
+    setCfg((prev) => ({ ...prev, [key]: value }));
+  }
+
+  async function cargarMetricasComparativas(): Promise<AuditMetricResumen[]> {
+    const comparativas = await listarAuditMetricasComparativas(sesion);
+    if (comparativas.ok) {
+      const todos = [...(comparativas.data ?? [])].sort(ordenarMetricasComparativas);
+      setRegistros(todos);
+      return todos;
+    }
+    setRegistros([]);
+    setError(comparativas.message);
+    return [];
+  }
+
+  async function hidratarUltimoBatchDesdeHistorico(comparativasData: AuditMetricResumen[]) {
+    let latestId: string | undefined;
+    let latestTimestamp = -1;
+
+    for (const record of comparativasData) {
+      if (!record.batchId) continue;
+      const timestamp = new Date(record.timestamp).getTime();
+      if (timestamp >= latestTimestamp) {
+        latestTimestamp = timestamp;
+        latestId = record.batchId;
+      }
+    }
+
+    if (!latestId) {
+      setUltimoBatchRecords([]);
+      setUltimoBatchId(null);
+      setUltimoBatchFecha(null);
+      setUltimoBatchTotalTransacciones(null);
+      return;
+    }
+
+    const registrosBatch = comparativasData
+      .filter((record) => record.batchId === latestId)
+      .sort(ordenarMetricasComparativas);
+
+    const detalles = await Promise.all(
+      registrosBatch.map(async (record) => {
+        const detalle = await obtenerAuditMetrica(record.id, sesion);
+        if (detalle.ok && detalle.data) {
+          return {
+            modo: record.modo,
+            record: detalle.data,
+            fuente: detalle.data.fuente
+          } satisfies UltimoBatchRecordState;
+        }
+        return {
+          modo: record.modo,
+          fuente: record.fuente,
+          error: detalle.message
+        } satisfies UltimoBatchRecordState;
+      })
+    );
+
+    setUltimoBatchRecords(detalles.sort(ordenarPorModo));
+    setUltimoBatchId(latestId);
+    setUltimoBatchFecha(registrosBatch[registrosBatch.length - 1]?.timestamp ?? null);
+    setUltimoBatchTotalTransacciones(registrosBatch[0]?.totalTransacciones ?? null);
+  }
+
+  async function cargar() {
+    setLoading(true);
+    setError(null);
+
+    const comparativasData = await cargarMetricasComparativas();
+    const metricas = await listarAuditMetricas(sesion);
+    await hidratarUltimoBatchDesdeHistorico(comparativasData);
+
+    const ultimaComparativa = comparativasData.length > 0
+      ? comparativasData[comparativasData.length - 1]
+      : undefined;
+    const rpcSugerida =
+      ultimaComparativa?.rpcUrl ??
+      metricas.data?.[0]?.rpcUrl ??
+      "";
+
+    if (rpcSugerida) {
+      setCfg((prev) => (prev.rpcUrl.trim() ? prev : { ...prev, rpcUrl: rpcSugerida }));
+    }
+
+    setLoading(false);
+  }
+
+  async function handleRunBatch() {
+    setRunning(true);
+    setMensaje(null);
+    setError(null);
+
+    const response = await ejecutarAuditRunBatch(
+      {
+        rpcUrl: cfg.rpcUrl.trim(),
+        totalTransacciones: cfg.totalTransacciones,
+        mnemonic: cfg.mnemonic?.trim() ? cfg.mnemonic.trim() : undefined
+      },
+      sesion
+    );
+
+    console.log("BATCH response:", JSON.stringify(response, null, 2));
+
+    setRunning(false);
+
+    if (!response.ok) {
+      setError(response.message);
+      return;
+    }
+
+    const advertencias = response.advertencias ?? [];
+    const errores = response.errores ?? [];
+    const detalleAdvertencias = advertencias.length > 0
+      ? " Algunas corridas requirieron fallback: " + advertencias
+        .map((item) => item.modo + " (" + formatFuenteAudit(item.fuente) + ")")
+        .join(" · ")
+      : "";
+
+    const detalleErrores = errores.length > 0
+      ? " Errores por modo: " + errores.map((item) => item.modo + " (" + item.error + ")").join(" · ")
+      : "";
+
+    const resultadosNormalizados = normalizarResultadosBatch(response.results, response.data);
+    const timestamps = resultadosNormalizados
+      .flatMap((item) => item.record ? [new Date(item.record.timestamp).getTime()] : []);
+
+    setUltimoBatchRecords(resultadosNormalizados);
+    setUltimoBatchId(response.batchId ?? null);
+    setUltimoBatchFecha(
+      timestamps.length > 0
+        ? new Date(Math.max(...timestamps)).toISOString()
+        : new Date().toISOString()
+    );
+    setUltimoBatchTotalTransacciones(cfg.totalTransacciones);
+
+    setMensaje(
+      "Prueba comparativa completada. Batch " +
+      (response.batchId ? response.batchId.slice(0, 8) + "…" : "sin ID") +
+      "." +
+      detalleAdvertencias +
+      detalleErrores
+    );
+
+    await cargarMetricasComparativas();
+  }
+
+  async function handleExportarGraficas() {
+    const objetivos = [
+      { ref: graficaTpsRef, nombre: "grafica_tps_comparativa.png", titulo: "Gráfica 1 — TPS Promedio vs Transacciones" },
+      { ref: graficaLatenciaRef, nombre: "grafica_latencia_comparativa.png", titulo: "Gráfica 2 — Latencia Promedio vs Transacciones" },
+      { ref: graficaExitoRef, nombre: "grafica_tasa_exito_comparativa.png", titulo: "Gráfica 3 — Tasa de Éxito vs Transacciones" },
+      { ref: graficaGasRef, nombre: "grafica_gas_comparativa.png", titulo: "Gráfica 4 — Gas Promedio vs Transacciones" }
+    ];
+
+    setExporting(true);
+    setError(null);
+
+    try {
+      const capturas = await capturarGraficasComparativas(objetivos);
+      for (const captura of capturas) {
+        if (!captura.nombre) continue;
+        descargarArchivoDataUrl(captura.dataUrl, captura.nombre);
+      }
+    } catch {
+      setError("No se pudieron exportar las gráficas PNG.");
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  async function handleExportarPdfBatch() {
+    if (ultimoBatchRecords.length !== 3) return;
+
+    const batchId = ultimoBatchId
+      ?? ultimoBatchRecords.find((item) => item.record?.batchId)?.record?.batchId
+      ?? null;
+
+    if (!batchId) {
+      setError("No se encontró el Batch ID del último lote para generar el PDF.");
+      return;
+    }
+
+    setExportingPdfBatch(true);
+    setError(null);
+
+    try {
+      const graficas = await capturarGraficasComparativas([
+        { ref: graficaTpsRef, titulo: "Gráfica 1 — TPS Promedio vs Transacciones" },
+        { ref: graficaLatenciaRef, titulo: "Gráfica 2 — Latencia Promedio vs Transacciones" },
+        { ref: graficaExitoRef, titulo: "Gráfica 3 — Tasa de Éxito vs Transacciones" },
+        { ref: graficaGasRef, titulo: "Gráfica 4 — Gas Promedio vs Transacciones" }
+      ]);
+
+      abrirInformeBatchPdf({
+        batchId,
+        generatedAt: ultimoBatchFecha ?? new Date().toISOString(),
+        totalTransacciones: ultimoBatchTotalTransacciones
+          ?? ultimoBatchRecords.find((item) => item.record)?.record?.totalTransacciones
+          ?? cfg.totalTransacciones,
+        records: ultimoBatchRecords,
+        graficas: graficas.map(({ titulo, dataUrl }) => ({ titulo, dataUrl }))
+      });
+    } catch {
+      setError("No se pudo generar el PDF consolidado del batch.");
+    } finally {
+      setExportingPdfBatch(false);
+    }
+  }
+
+  useEffect(() => {
+    void cargar();
+  }, [sesion]);
+
+  const registrosOrdenados = [...registros].sort(ordenarMetricasComparativas);
+  const agrupados = new Map<number, ComparativeChartPoint>();
+
+  for (const record of registrosOrdenados) {
+    const total = record.totalTransacciones;
+    const point = agrupados.get(total) ?? { totalTransacciones: total };
+    point["tps_" + record.modo] = record.tpsPromedio;
+    point["latencia_" + record.modo] = Number((record.latenciaPromedioMs / 1000).toFixed(2));
+    point["tasa_" + record.modo] = Number(record.tasaExito.toFixed(2));
+    point["gas_" + record.modo] = Number(record.gasUsadoPromedio.toFixed(2));
+    agrupados.set(total, point);
+  }
+
+  const chartData = Array.from(agrupados.values()).sort(
+    (a, b) => a.totalTransacciones - b.totalTransacciones
+  );
+  const batchIds = Array.from(
+    new Set(registrosOrdenados.map((record) => record.batchId).filter((id): id is string => Boolean(id)))
+  );
+
+  let latestHistoricalBatchId: string | undefined;
+  let latestHistoricalTimestamp = -1;
+  for (const record of registrosOrdenados) {
+    if (!record.batchId) continue;
+    const timestamp = new Date(record.timestamp).getTime();
+    if (timestamp >= latestHistoricalTimestamp) {
+      latestHistoricalTimestamp = timestamp;
+      latestHistoricalBatchId = record.batchId;
+    }
+  }
+
+  const resumenUltimoBatch: Array<{
+    modo: ModoPrueba;
+    record?: AuditMetricResumen;
+    fuente?: AuditFuente;
+    advertencia?: string;
+    error?: string;
+  }> = ultimoBatchRecords.length > 0
+    ? ultimoBatchRecords
+    : latestHistoricalBatchId
+      ? registrosOrdenados
+        .filter((record) => record.batchId === latestHistoricalBatchId)
+        .sort(ordenarMetricasComparativas)
+        .map((record) => ({ modo: record.modo, record, fuente: record.fuente }))
+      : [];
+
+  const latestBatchId = ultimoBatchId ?? latestHistoricalBatchId;
+  const latestBatchTimestamp = ultimoBatchFecha
+    ? new Date(ultimoBatchFecha).getTime()
+    : latestHistoricalTimestamp;
+  const latestBatchRecords = resumenUltimoBatch
+    .flatMap((item) => item.record ? [item.record] : [])
+    .sort(ordenarMetricasComparativas);
+  const tieneDatos = chartData.length > 0;
+  const resumenPuntos = chartData.map((point) => String(point.totalTransacciones)).join(", ");
+  const ultimaMuestra = latestBatchRecords[0];
+  const tieneBatchCompleto = ultimoBatchRecords.length === 3;
+
+  return (
+    <section className="card card--elevated" style={{ marginBottom: 16 }}>
+      <div className="section-head section-head--tight" style={{ marginBottom: 0 }}>
+        <div>
+          <h2 className="section-title">Sección comparativa — Batch EOA / ERC20 / ERC721</h2>
+          <p className="section-copy" style={{ maxWidth: 720 }}>
+            Ejecuta una <strong>prueba comparativa secuencial</strong> sobre Sepolia con el mismo
+            volumen de transacciones para los tres modos de auditoría. La salida se consolida en
+            gráficas listas para análisis y exportación en la monografía.
+          </p>
+        </div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignSelf: "flex-start" }}>
+          {tieneDatos && (
+            <button
+              type="button"
+              className="btn btn--ghost"
+              style={{ fontSize: "0.8rem", padding: "4px 12px", whiteSpace: "nowrap" }}
+              onClick={() => void handleExportarGraficas()}
+              disabled={exporting}
+            >
+              {exporting ? "Exportando PNG…" : "Exportar gráficas PNG"}
+            </button>
+          )}
+          <button type="button" className="btn btn--secondary" onClick={() => void cargar()} disabled={loading}>
+            {loading ? "Actualizando…" : "Actualizar"}
+          </button>
+        </div>
+      </div>
+
+      <hr style={{ border: "none", borderTop: "1px solid #eee", margin: "14px 0" }} />
+
+      <section className="card" style={{ background: "#f8fbff", border: "1px solid #e1ebf5", marginBottom: 16 }}>
+        <div style={{ background: "#eef6ff", borderRadius: 8, padding: "10px 14px", marginBottom: 14, fontSize: "0.83rem", lineHeight: 1.55 }}>
+          <strong>¿Qué hace esta sección?</strong><br />
+          Ejecuta la misma carga de trabajo en <strong>EOA, ERC20 y ERC721</strong> para comparar
+          TPS, latencia, tasa de éxito y gas promedio con el mismo tamaño de muestra.
+        </div>
+
+        <form onSubmit={(e) => { e.preventDefault(); void handleRunBatch(); }}>
+          <h3 style={{ fontSize: "0.92rem", fontWeight: 600, marginBottom: 12 }}>
+            Formulario de batch comparativo
+          </h3>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
+            <label className="form-field">
+              <span className="form-label">Total de transacciones</span>
+              <input
+                className="form-input"
+                type="number"
+                min={1}
+                max={10000}
+                step={1}
+                required
+                value={cfg.totalTransacciones}
+                onChange={(e) => setCampo("totalTransacciones", Number(e.target.value))}
+              />
+              <small style={{ color: "#888", fontSize: "0.72rem" }}>
+                Valores típicos: 50, 100, 150, 200… hasta 500 o más.
+              </small>
+            </label>
+
+            <label className="form-field">
+              <span className="form-label">RPC URL</span>
+              <input
+                className="form-input"
+                type="url"
+                required
+                placeholder="https://eth-sepolia.g.alchemy.com/v2/&lt;key&gt;"
+                value={cfg.rpcUrl}
+                onChange={(e) => setCampo("rpcUrl", e.target.value)}
+              />
+              <small style={{ color: "#888", fontSize: "0.72rem" }}>
+                Se precarga con la última RPC usada en auditoría cuando existe historial.
+              </small>
+            </label>
+
+            <label className="form-field" style={{ gridColumn: "1 / -1" }}>
+              <span className="form-label">Mnemonic BIP-39 (opcional)</span>
+              <input
+                className="form-input"
+                type="password"
+                placeholder="word1 word2 word3 … word12"
+                value={cfg.mnemonic ?? ""}
+                onChange={(e) => setCampo("mnemonic", e.target.value)}
+              />
+              <small style={{ color: "#888", fontSize: "0.72rem" }}>
+                Si no se envía, el backend puede caer en simulación con datos del nodo RPC.
+              </small>
+            </label>
+          </div>
+
+          <div className="btn-group">
+            <button type="submit" className="btn btn--primary" disabled={running}>
+              {running
+                ? "Ejecutando prueba comparativa…"
+                : "Ejecutar prueba comparativa (3 modos)"}
+            </button>
+          </div>
+        </form>
+      </section>
+
+      {running && (
+        <div className="alert alert--info" style={{ marginBottom: 12 }}>
+          <SpinnerInline label="Ejecutando EOA... ERC20... ERC721... (puede tardar varios minutos)" />
+        </div>
+      )}
+      {mensaje && <div className="alert alert--info" style={{ marginBottom: 12 }}>{mensaje}</div>}
+      {error && <div className="alert alert--error" style={{ marginBottom: 12 }}>{error}</div>}
+
+      {loading && !registrosOrdenados.length ? (
+        <div style={{ color: "#888", fontSize: "0.85rem" }}>Cargando métricas comparativas…</div>
+      ) : !tieneDatos ? (
+        <div className="result-panel" style={{ marginBottom: 16 }}>
+          <div>
+            <strong>Ejecuta tu primera prueba comparativa</strong>
+            <span>No hay datos batch con batchId disponibles todavía para construir las gráficas.</span>
+          </div>
+        </div>
+      ) : (
+        <>
+          <div className="dashboard-grid" style={{ marginBottom: 14 }}>
+            <MetricCard
+              title="Cobertura comparativa"
+              rows={[
+                ["Batches ejecutados", String(batchIds.length)],
+                ["Registros comparativos", String(registrosOrdenados.length)],
+                ["Puntos del eje X", resumenPuntos || "—"]
+              ]}
+            />
+            <MetricCard
+              title="Último batch"
+              rows={[
+                ["Batch ID", latestBatchId ? latestBatchId.slice(0, 8) + "…" : "—"],
+                ["Fecha", latestBatchTimestamp > 0 ? fDate(new Date(latestBatchTimestamp).toISOString()) : "—"],
+                ["RPC", recortarTexto(ultimaMuestra?.rpcUrl ?? cfg.rpcUrl)]
+              ]}
+            />
+            <MetricCard
+              title="Última muestra"
+              rows={[
+                ["Transacciones", ultimaMuestra ? String(ultimaMuestra.totalTransacciones) : "—"],
+                ["Modos presentes", resumenUltimoBatch.map((item) => item.modo).join(", ") || "—"],
+                ["Fuente", ultimaMuestra ? formatFuenteAudit(ultimaMuestra.fuente) : "—"]
+              ]}
+            />
+          </div>
+
+          {!!resumenUltimoBatch.length && (
+            <div style={{
+              display: "flex",
+              gap: 24,
+              flexWrap: "wrap",
+              background: "#f8fbff",
+              border: "1px solid #e4eef8",
+              borderRadius: 10,
+              padding: "12px 18px",
+              marginBottom: 16,
+              alignItems: "center"
+            }}>
+              <div style={{ minWidth: 150, color: "#556", fontSize: "0.8rem" }}>
+                <strong>Semáforos del último batch</strong><br />
+                <span style={{ color: "#889", fontSize: "0.72rem" }}>Eficiencia por modo</span>
+              </div>
+              {resumenUltimoBatch.map((item) => (
+                <SemaforoBadge
+                  key={item.modo}
+                  color={item.record?.semaforoEficiencia ?? "rojo"}
+                  label={item.modo + " · eficiencia"}
+                  valor={item.record ? fNum(item.record.tpsPromedio) + " TPS" : "Error"}
+                />
+              ))}
+            </div>
+          )}
+
+          {!!ultimoBatchRecords.length && (
+            <section className="card" style={{ background: "#f8fbff", border: "1px solid #dbeafe", marginBottom: 16 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center", marginBottom: 12 }}>
+                <div>
+                  <h3 style={{ fontSize: "0.92rem", fontWeight: 600, marginBottom: 4 }}>
+                    Detalle por modo — Último batch
+                  </h3>
+                  <p style={{ fontSize: "0.78rem", color: "#667085", margin: 0 }}>
+                    Vista consolidada del último batch con el mismo detalle técnico de la Sección A.
+                  </p>
+                </div>
+                {tieneBatchCompleto && (
+                  <button
+                    type="button"
+                    className="btn btn--ghost"
+                    style={{ fontSize: "0.8rem", padding: "4px 12px", whiteSpace: "nowrap" }}
+                    onClick={() => void handleExportarPdfBatch()}
+                    disabled={exportingPdfBatch}
+                  >
+                    {exportingPdfBatch ? "Preparando PDF…" : "Exportar PDF del batch"}
+                  </button>
+                )}
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 14 }}>
+                {ultimoBatchRecords.map((item) => (
+                  <article
+                    key={item.modo}
+                    style={{
+                      background: "#fff",
+                      border: "1px solid #e5eef5",
+                      borderRadius: 10,
+                      overflow: "hidden"
+                    }}
+                  >
+                    {item.advertencia && (
+                      <div style={{
+                        background: "#fff7ed",
+                        borderBottom: "1px solid #fed7aa",
+                        color: "#9a3412",
+                        fontSize: "0.76rem",
+                        padding: "10px 14px"
+                      }}>
+                        {item.advertencia}
+                      </div>
+                    )}
+                    {item.record ? (
+                      <PanelDetalle r={item.record} />
+                    ) : (
+                      <div style={{ padding: "16px 18px" }}>
+                        <div style={{ display: "flex", gap: 18, flexWrap: "wrap", marginBottom: 14, alignItems: "center" }}>
+                          <div style={{ fontSize: "0.78rem", color: "#555", flex: 1, minWidth: 160 }}>
+                            <strong>{item.modo}</strong> · Sepolia<br />
+                            <span style={{ color: "#aa6f00", fontSize: "0.7rem" }}>{item.fuente ? formatFuenteAuditDestacada(item.fuente) : "Sin fuente disponible"}</span>
+                          </div>
+                          <SemaforoBadge color="rojo" label="Estado" valor="Error" />
+                        </div>
+                        <div className="alert alert--error" style={{ marginBottom: 0 }}>
+                          {item.error ?? "No se generó un registro para este modo en el último batch."}
+                        </div>
+                      </div>
+                    )}
+                  </article>
+                ))}
+              </div>
+            </section>
+          )}
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 14, marginBottom: 16 }}>
+            <article ref={graficaTpsRef} style={{ background: "#fff", border: "1px solid #e5eef5", borderRadius: 10, padding: 16 }}>
+              <strong style={{ display: "block", marginBottom: 4 }}>Gráfica 1 — TPS Promedio vs Transacciones</strong>
+              <p style={{ fontSize: "0.76rem", color: "#778", margin: "0 0 12px" }}>
+                Compara el throughput promedio por modo a medida que aumenta el volumen transaccional.
+              </p>
+              <div style={{ width: "100%", height: 280 }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={chartData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e5eef5" />
+                    <XAxis dataKey="totalTransacciones" tick={{ fontSize: 12 }} />
+                    <YAxis tick={{ fontSize: 12 }} />
+                    <Tooltip
+                      labelFormatter={(value) => String(value) + " transacciones"}
+                      formatter={(value, name) => [fNum(Number(value)) + " TPS", String(name)]}
+                    />
+                    <Legend />
+                    {MODOS_PRUEBA.map((modo) => (
+                      <Line
+                        key={modo}
+                        type="monotone"
+                        dataKey={"tps_" + modo}
+                        name={modo}
+                        stroke={MODO_COLORS[modo]}
+                        strokeWidth={2.5}
+                        dot={{ r: 4 }}
+                        activeDot={{ r: 6 }}
+                      />
+                    ))}
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </article>
+
+            <article ref={graficaLatenciaRef} style={{ background: "#fff", border: "1px solid #e5eef5", borderRadius: 10, padding: 16 }}>
+              <strong style={{ display: "block", marginBottom: 4 }}>Gráfica 2 — Latencia Promedio vs Transacciones</strong>
+              <p style={{ fontSize: "0.76rem", color: "#778", margin: "0 0 12px" }}>
+                Latencia promedio en segundos por modo con referencia objetivo de 15 s.
+              </p>
+              <div style={{ width: "100%", height: 280 }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={chartData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e5eef5" />
+                    <XAxis dataKey="totalTransacciones" tick={{ fontSize: 12 }} />
+                    <YAxis tick={{ fontSize: 12 }} tickFormatter={(value) => String(value) + " s"} />
+                    <Tooltip
+                      labelFormatter={(value) => String(value) + " transacciones"}
+                      formatter={(value, name) => [Number(value).toFixed(2) + " s", String(name)]}
+                    />
+                    <Legend />
+                    <ReferenceLine
+                      y={15}
+                      stroke={SEMAFORO_COLORS.verde}
+                      strokeDasharray="6 4"
+                      label={{ value: "15 s", fill: SEMAFORO_COLORS.verde, fontSize: 12, position: "insideTopRight" }}
+                    />
+                    {MODOS_PRUEBA.map((modo) => (
+                      <Line
+                        key={modo}
+                        type="monotone"
+                        dataKey={"latencia_" + modo}
+                        name={modo}
+                        stroke={MODO_COLORS[modo]}
+                        strokeWidth={2.5}
+                        dot={{ r: 4 }}
+                        activeDot={{ r: 6 }}
+                      />
+                    ))}
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </article>
+
+            <article ref={graficaExitoRef} style={{ background: "#fff", border: "1px solid #e5eef5", borderRadius: 10, padding: 16 }}>
+              <strong style={{ display: "block", marginBottom: 4 }}>Gráfica 3 — Tasa de Éxito vs Transacciones</strong>
+              <p style={{ fontSize: "0.76rem", color: "#778", margin: "0 0 12px" }}>
+                Tasa de éxito por modo, con línea de referencia de 95 % para desempeño óptimo.
+              </p>
+              <div style={{ width: "100%", height: 280 }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={chartData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e5eef5" />
+                    <XAxis dataKey="totalTransacciones" tick={{ fontSize: 12 }} />
+                    <YAxis tick={{ fontSize: 12 }} domain={[0, 100]} tickFormatter={(value) => String(value) + "%"} />
+                    <Tooltip
+                      labelFormatter={(value) => String(value) + " transacciones"}
+                      formatter={(value, name) => [Number(value).toFixed(1) + " %", String(name)]}
+                    />
+                    <Legend />
+                    <ReferenceLine
+                      y={95}
+                      stroke={SEMAFORO_COLORS.verde}
+                      strokeDasharray="6 4"
+                      label={{ value: "95 %", fill: SEMAFORO_COLORS.verde, fontSize: 12, position: "insideTopRight" }}
+                    />
+                    {MODOS_PRUEBA.map((modo) => (
+                      <Line
+                        key={modo}
+                        type="monotone"
+                        dataKey={"tasa_" + modo}
+                        name={modo}
+                        stroke={MODO_COLORS[modo]}
+                        strokeWidth={2.5}
+                        dot={{ r: 4 }}
+                        activeDot={{ r: 6 }}
+                      />
+                    ))}
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </article>
+
+            <article ref={graficaGasRef} style={{ background: "#fff", border: "1px solid #e5eef5", borderRadius: 10, padding: 16 }}>
+              <strong style={{ display: "block", marginBottom: 4 }}>Gráfica 4 — Gas Promedio vs Transacciones</strong>
+              <p style={{ fontSize: "0.76rem", color: "#778", margin: "0 0 12px" }}>
+                Consumo promedio de gas por modo para cada tamaño de prueba comparativa.
+              </p>
+              <div style={{ width: "100%", height: 280 }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={chartData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e5eef5" />
+                    <XAxis dataKey="totalTransacciones" tick={{ fontSize: 12 }} />
+                    <YAxis tick={{ fontSize: 12 }} tickFormatter={(value) => fNum(Number(value), 0)} />
+                    <Tooltip
+                      labelFormatter={(value) => String(value) + " transacciones"}
+                      formatter={(value, name) => [fNum(Number(value), 0) + " gas", String(name)]}
+                    />
+                    <Legend />
+                    {MODOS_PRUEBA.map((modo) => (
+                      <Bar key={modo} dataKey={"gas_" + modo} name={modo} fill={MODO_COLORS[modo]} radius={[4, 4, 0, 0]} />
+                    ))}
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </article>
+          </div>
+
+          <div>
+            <div style={{ fontSize: "0.82rem", fontWeight: 600, marginBottom: 8, color: "#555" }}>
+              Tabla resumen de corridas batch
+            </div>
+            <div className="table-wrapper">
+              <table className="tabla-clinica">
+                <thead>
+                  <tr>
+                    <th>Transacciones</th>
+                    <th>Modo</th>
+                    <th>TPS Prom</th>
+                    <th>TPS Pico</th>
+                    <th>Latencia Prom</th>
+                    <th>P95</th>
+                    <th>Tasa Éxito</th>
+                    <th>Semáforo Eficiencia</th>
+                    <th>Semáforo Latencia</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {registrosOrdenados.map((record) => (
+                    <tr key={record.id}>
+                      <td>{record.totalTransacciones}</td>
+                      <td><code>{record.modo}</code></td>
+                      <td>{fNum(record.tpsPromedio)}</td>
+                      <td>{fNum(record.tpsPico)}</td>
+                      <td>{fMs(record.latenciaPromedioMs)}</td>
+                      <td>{fMs(record.latenciaP95Ms)}</td>
+                      <td>{fPct(record.tasaExito)}</td>
+                      <td><Pill color={record.semaforoEficiencia} /></td>
+                      <td><Pill color={record.semaforoLatencia} /></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {tieneBatchCompleto && (
+            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 14 }}>
+              <button
+                type="button"
+                className="btn btn--ghost"
+                style={{ fontSize: "0.8rem", padding: "4px 12px", whiteSpace: "nowrap" }}
+                onClick={() => void handleExportarPdfBatch()}
+                disabled={exportingPdfBatch}
+              >
+                {exportingPdfBatch ? "Preparando PDF…" : "Exportar PDF del batch"}
+              </button>
+            </div>
+          )}
+        </>
+      )}
+    </section>
+  );
+}
+
 
 // ═════════════════════════════════════════════════════════════════════════════
 // SECCIÓN B — INTEROPERABILIDAD CLÍNICA (HU0-HU5)
@@ -1571,6 +2754,7 @@ export function AuditoriaDashboardPage() {
       </div>
 
       <SeccionRedBlockchain />
+      <SeccionComparativa />
       <SeccionInteroperabilidadClinica />
     </>
   );

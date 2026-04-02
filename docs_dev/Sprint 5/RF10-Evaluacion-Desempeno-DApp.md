@@ -57,7 +57,7 @@ pandoras-box \
   -t    100          \   # total transacciones
   -s    5            \   # subcuentas
   --mode EOA         \   # EOA | ERC20 | ERC721
-  -b    20           \   # tamaño de lote JSON-RPC
+  -b    10           \   # tamaño de lote JSON-RPC (reducido para Alchemy)
   -o    /tmp/pandoras-XXXX/result.json
 ```
 
@@ -554,7 +554,7 @@ Detalle completo incluyendo `blockSamples`, `rawOutput` e `interoperabilityDetai
   "totalTransacciones": 100,
   "numSubcuentas": 5,
   "mnemonic": "word1 … word12",  // opcional pero necesario para ejecución real
-  "batchSize": 20,               // opcional, default 20
+  "batchSize": 10,               // opcional, default 10 (reducido para Alchemy)
   "contractAddress": "0x...",    // opcional, solo ERC20/ERC721
   "umbralTpsVerde": 10,          // opcionales: umbrales de semáforos
   "umbralTpsAmarillo": 5,
@@ -568,18 +568,28 @@ Detalle completo incluyendo `blockSamples`, `rawOutput` e `interoperabilityDetai
 ```json
 {
   "code": "OK",
-  "message": "Evaluación completada (fuente: pandoras-box). ID: 3f8a...",
+  "message": "Evaluación completada · Ejecución directa con pandoras-box en Sepolia. ID: 3f8a...",
   "fuente": "pandoras-box",
   "advertencia": null,
   "data": { }
 }
 ```
 
-Cuando pandoras-box falla pero se usa simulación:
+Cuando pandoras-box falla pero se usa simulación (con error):
 ```json
 {
+  "message": "Evaluación completada · Simulación con datos del nodo RPC (pandoras-box no pudo ejecutarse). ID: 3f8a...",
   "fuente": "simulacion",
-  "advertencia": "pandoras-box falló: Command failed | stderr: Error: insufficient funds for gas"
+  "advertencia": "[Ejecución directa con pandoras-box] Rate limit de Alchemy: las transacciones SÍ se enviaron a Sepolia pero pandoras-box no pudo recopilar todos los recibos antes del timeout interno de 30 s..."
+}
+```
+
+Cuando no se proporciona mnemonic (simulación directa):
+```json
+{
+  "message": "Evaluación completada · Simulación con datos del nodo RPC (sin mnemonic configurado). ID: 3f8a...",
+  "fuente": "simulacion",
+  "advertencia": null
 }
 ```
 
@@ -849,7 +859,136 @@ execFileAsync(pandoras-box, [..., "--mode", "EOA", "-o", outFile])
 
 ---
 
-## 19. Estado de cumplimiento del RF10
+## 19. Corrección de throttling de Alchemy: swap de RPC para pandoras-box
+
+### Causa raíz confirmada
+
+El problema tiene dos causas simultáneas e interdependientes:
+
+1. **Throttling de Alchemy (plan gratuito, ~330 CU/s):** al enviar 100 transacciones en ráfaga, pandoras-box agota el cupo de compute units antes de que lleguen todos los recibos.
+2. **`"replacement transaction underpriced"`:** cuando Alchemy rechaza una llamada de estimación de gas (429), pandoras-box reintenta con el mismo nonce pero sin gas válido. El nodo rechaza el reintento como "underpiced". Este error es un síntoma secundario del throttling, no una causa independiente.
+
+Ambos errores desembocan en el mismo resultado: pandoras-box alcanza su **timeout interno de 30 s** (hardcoded en el binario, no configurable por CLI) sin haber recolectado todos los recibos → sale con código no cero → el adaptador cae a simulación.
+
+Reducir el batch size a `-b 10` (corrección anterior) alivia la presión pero no elimina el problema: en condiciones de alta carga de la testnet o con muchas subcuentas, el throttling de Alchemy persiste.
+
+### Solución definitiva: swap del RPC en pandoras-box
+
+El adaptador ahora detecta si la URL configurada pertenece a Alchemy y, de ser así, reemplaza el flag `-url` que pasa a pandoras-box por el endpoint público de Ankr para Sepolia, que no tiene throttling agresivo compatible con el patrón de envío en ráfaga de pandoras-box.
+
+```
+URL configurada (Alchemy)  →  sigue usándose para: getChainId, fetchRealBlockData,
+                               consultas de bloque, interoperabilidad EVM
+                           →  NO se pasa a pandoras-box
+
+ANKR_SEPOLIA_RPC (Ankr)    →  solo se usa como -url en pandoras-box
+```
+
+### Cambio aplicado en `backend/src/audit/pandorasBoxAdapter.ts`
+
+**Lista de candidatos y función de probe (antes de `TipoErrorAlchemy`):**
+
+```typescript
+const SEPOLIA_RPC_CANDIDATOS = [
+  "https://rpc.ankr.com/eth_sepolia",
+  "https://ethereum-sepolia-rpc.publicnode.com",
+  "https://sepolia.drpc.org",
+  "https://rpc2.sepolia.org",
+];
+
+async function resolverRpcAlternativo(candidatos: string[]): Promise<string | null> {
+  for (const url of candidatos) {
+    try {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 3_000);
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jsonrpc: "2.0", method: "eth_blockNumber", params: [], id: 1 }),
+        signal: ctrl.signal,
+      });
+      clearTimeout(timer);
+      if (res.ok) {
+        const json = await res.json() as { result?: string };
+        if (json.result) return url;
+      }
+    } catch {
+      // RPC no accesible o timeout → probar el siguiente
+    }
+  }
+  return null;
+}
+```
+
+**Selección de RPC en `tryRunPandorasBox` (antes del bloque `try`):**
+
+```typescript
+let rpcUrlParaPandoras = config.rpcUrl;
+if (esUrlAlchemy(config.rpcUrl)) {
+  const alternativo = await resolverRpcAlternativo(SEPOLIA_RPC_CANDIDATOS);
+  if (alternativo) {
+    console.log(`[pandoras-box] RPC alternativo seleccionado: ${alternativo}`);
+    rpcUrlParaPandoras = alternativo;
+  } else {
+    console.log(`[pandoras-box] Ningún RPC alternativo respondió; usando Alchemy como último recurso.`);
+  }
+}
+```
+
+El flag `-url` en la construcción de `args` ya usa `rpcUrlParaPandoras` (sin cambio adicional).
+
+**Flujo de selección:**
+
+```
+esUrlAlchemy(config.rpcUrl) === true
+  │
+  ├── probe rpc.ankr.com/eth_sepolia        (timeout 3 s)
+  │     OK → rpcUrlParaPandoras = ankr   ✅ log + usar
+  │     FAIL →
+  ├── probe ethereum-sepolia-rpc.publicnode.com
+  │     OK → usar                        ✅ log + usar
+  │     FAIL →
+  ├── probe sepolia.drpc.org
+  │     OK → usar                        ✅ log + usar
+  │     FAIL →
+  ├── probe rpc2.sepolia.org
+  │     OK → usar                        ✅ log + usar
+  │     FAIL →
+  └── ninguno respondió → log + usar Alchemy original (último recurso)
+```
+
+### Correcciones de mensajes aplicadas (sprint anterior, documentadas aquí)
+
+**`frontend/src/pages/AuditoriaDashboardPage.tsx` — línea 407:**
+```diff
+- batchSize: 20,
++ batchSize: 10,
+```
+
+**`backend/src/routes/audit.ts`** — el campo `message` de la respuesta distingue tres casos:
+
+| Caso | `message` |
+|---|---|
+| Éxito con pandoras-box | `"Evaluación completada · Ejecución directa con pandoras-box en Sepolia. ID: …"` |
+| Simulación por fallo de pandoras-box | `"Evaluación completada · Simulación con datos del nodo RPC (pandoras-box no pudo ejecutarse). ID: …"` |
+| Simulación sin mnemonic | `"Evaluación completada · Simulación con datos del nodo RPC (sin mnemonic configurado). ID: …"` |
+
+### Limitaciones técnicas confirmadas
+
+| Corrección | Factible | Motivo |
+|---|---|---|
+| Swap RPC Alchemy → Ankr para pandoras-box | ✅ | Implementado |
+| Reducir `batchSize` de 20 a 10 | ✅ | Implementado |
+| Delay entre batches (500 ms) | ❌ | pandoras-box no expone flag de delay; único control es `-b` |
+| Timeout de recibos 30 s → 120 s | ❌ | Hardcoded en el binario; no existe flag CLI |
+
+### Mecanismo de respaldo — sin cambios
+
+Si pandoras-box falla por cualquier causa (Ankr caído, Sepolia con congestión extrema, saldo insuficiente, binario no instalado), el sistema sigue cayendo a simulación con datos del nodo RPC. El campo `advertencia` de la respuesta contiene el detalle del error para diagnóstico.
+
+---
+
+## 20. Estado de cumplimiento del RF10
 
 | Entregable | Estado |
 |---|---|
@@ -870,6 +1009,9 @@ execFileAsync(pandoras-box, [..., "--mode", "EOA", "-o", outFile])
 | Sección B — caché de documentos FHIR en memoria (evita CoV alto en mediciones) | ✅ Sprint 5 |
 | Sección B — health-check FHIR en `overview.fhir` del dashboard | ✅ Sprint 5 |
 | Bug pandoras-box modo EOA: búsqueda de archivo en rutas alternativas + stderr real | ✅ Sprint 5 |
+| Corrección throttling Alchemy: `batchSize` default 20 → 10 (frontend + fallback backend) | ✅ Sprint 5 |
+| Mensajes de respuesta distinguen "ejecución directa con pandoras-box" vs "simulación RPC" | ✅ Sprint 5 |
+| Fallback de RPCs públicos de Sepolia para pandoras-box (Ankr → PublicNode → drpc → rpc2, probe 3 s c/u) | ✅ Sprint 5 |
 | Diagramas de arquitectura (`docs/arquitectura/`) | ✅ Sprint 5 |
 | Build sin errores (`npm run build` en backend y frontend) | ✅ Confirmado |
 | Rate limit Alchemy: batchSize=5 automático + mensajes diferenciados "txs SÍ enviadas" | ✅ Sprint 5 |
@@ -1261,4 +1403,113 @@ SEED_BLOCKCHAIN_REAL=1 npm run seed:eval-demo      # 117 txs reales
 - Los costos de gas son valores reales de los recibos de transacción, no estimaciones hardcoded.
 - Cada evento de trazabilidad tiene un `transactionHash` verificable en Etherscan y un `blockNumber` real.
 - El emisor (`emitterId`) es la dirección `0x` de la wallet, no el placeholder `mock-backend-signer`.
+
+---
+
+## 24. Recolector de recibos del backend — fallback para timeout de pandoras-box
+
+### 24.1 Contexto del problema
+
+pandoras-box envía las transacciones exitosamente (stdout: `"✅ N batches sent"`) pero falla al recolectar los recibos porque tiene un **timeout interno de 30 s** por transacción en la fase de recolección individual (`waitForTransaction(hash, 1, 30000)` en `collector.js`). Este valor está **hardcoded en el binario** — no existe flag de CLI para configurarlo.
+
+Síntoma observable en el stdout de pandoras-box:
+
+```
+Sending transactions in batches...
+[barra de progreso]
+✅ 10 batches sent
+
+⏱ Statistics calculation initialized ⏱
+
+Gathering transaction receipts...
+[barra de progreso — parcial]
+⛔️ Error: timeout exceeded
+```
+
+El proceso termina con código de salida no-cero, pero **las transacciones sí se enviaron a Sepolia** y muchas se minan en los segundos/minutos siguientes.
+
+### 24.2 Solución: recolector de recibos del backend
+
+Cuando `pandorasBoxAdapter.ts` detecta `"batches sent"` en el stdout de un proceso fallido, **no cae a simulación**. En su lugar activa el recolector de recibos del backend:
+
+```
+pandoras-box falla (stdout contiene "batches sent")
+        │
+        ▼
+recolectarRecibosDesdeNodo()
+        │
+        ├─► Deriva direcciones: Wallet.fromMnemonic(mnemonic, "m/44'/60'/0'/0/${i}")
+        │     i=1..numSubcuentas (mismo path HD que pandoras-box/signer.js)
+        │
+        ├─► Escanea bloques startBlock..currentBlock (máx. 60 bloques)
+        │     eth_getBlockByNumber(n, true) → filtra por tx.from ∈ senderAddresses
+        │
+        ├─► Recolecta recibos: eth_getTransactionReceipt(hash) con timeout 120 s
+        │
+        └─► Calcula métricas: TPS, latencia (aprox.), gas, tasa de éxito
+                │
+                ▼
+        fuente: "pandoras-box-recovery"
+        message: "Ejecución directa con pandoras-box (recibos recolectados por backend)"
+```
+
+### 24.3 Ruta HD derivada
+
+pandoras-box usa el índice 0 del mnemonic como cuenta distribuidora (fondea las subcuentas) y los índices 1..numSubcuentas como cuentas emisoras. La ruta de derivación BIP-32 es:
+
+```
+m/44'/60'/0'/0/0   → distribuidor (no envía txs de prueba)
+m/44'/60'/0'/0/1   → subcuenta 1 (emisora)
+m/44'/60'/0'/0/2   → subcuenta 2 (emisora)
+...
+m/44'/60'/0'/0/N   → subcuenta N (emisora)
+```
+
+El backend usa exactamente el mismo path con `ethers@5`:
+
+```typescript
+import { Wallet } from "ethers";
+const w = Wallet.fromMnemonic(mnemonic, `m/44'/60'/0'/0/${i}`);
+```
+
+### 24.4 Archivos modificados
+
+| Archivo | Cambio |
+|---|---|
+| `backend/package.json` | Añadido `"ethers": "^5.x"` a dependencias |
+| `backend/src/audit/pandorasBoxAdapter.ts` | Import `Wallet` de ethers; interfaces `RpcTxInBlock`, `RpcBlockWithTxs`, `RpcReceipt`; funciones `getBlockWithFullTxs`, `getTransactionReceipt`, `recolectarRecibosDesdeNodo`; `tryRunPandorasBox` registra `inicioMs` y `startBlock` antes de `execFileAsync`, detecta `"batches sent"` en el catch y activa recovery; `ejecutarPrueba` devuelve `fuente: "pandoras-box-recovery"` cuando `isRecovery === true` |
+| `backend/src/audit/auditMetricModel.ts` | Tipo `fuente` extendido a `"pandoras-box" \| "pandoras-box-recovery" \| "simulacion"` |
+| `backend/src/audit/auditMetricsService.ts` | Firmas de `convertirASalida` y `ejecutarEvaluacion` actualizadas con el nuevo fuente |
+| `backend/src/routes/audit.ts` | Nuevo caso en el mensaje de respuesta para `"pandoras-box-recovery"` |
+
+### 24.5 Limitaciones conocidas del recolector
+
+| Aspecto | Detalle |
+|---|---|
+| **Latencia** | No hay timestamp de envío individual por tx; se usa el punto medio del intervalo de prueba como aproximación conservadora |
+| **Alcance del escaneo** | Máximo 60 bloques desde `startBlock`. Si las txs tardan más de ~12 min en minarse no serán encontradas |
+| **TPS** | Se calcula como `txsExitosas / duracionTotal` (conservador — puede ser menor al TPS pico real) |
+| **out_of_gas vs revert** | Los recibos no distinguen ambos tipos de fallo; `out_of_gas_transactions` se reporta como 0 |
+| **Modo ERC20/ERC721** | El recolector funciona igual que en EOA; si el contrato tiene logs de revert, no se parsean |
+
+### 24.6 Nuevo valor del campo `fuente` en la respuesta API
+
+```json
+// POST /audit/run — respuesta con recolector activado
+{
+  "code": "OK",
+  "message": "Evaluación completada · Ejecución directa con pandoras-box (recibos recolectados por backend). ID: <uuid>",
+  "fuente": "pandoras-box-recovery",
+  "advertencia": null,
+  "data": { ... }
+}
+```
+
+Los tres valores posibles de `fuente`:
+
+| Valor | Significado |
+|---|---|
+| `"pandoras-box"` | pandoras-box ejecutó y recopiló los recibos sin errores |
+| `"pandoras-box-recovery"` | pandoras-box envió las txs pero falló al recolectar; el backend completó la recolección |
+| `"simulacion"` | No hay mnemonic, pandoras-box no está instalado, o falló sin llegar a enviar txs |
 

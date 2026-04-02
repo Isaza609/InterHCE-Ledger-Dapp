@@ -5,6 +5,7 @@
  */
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.listarMetricas = listarMetricas;
+exports.listarMetricasComparativas = listarMetricasComparativas;
 exports.obtenerMetricaPorId = obtenerMetricaPorId;
 exports.ejecutarEvaluacion = ejecutarEvaluacion;
 exports.eliminarMetrica = eliminarMetrica;
@@ -14,6 +15,11 @@ const pandorasBoxAdapter_1 = require("./pandorasBoxAdapter");
 const auditMetricModel_1 = require("./auditMetricModel");
 const evaluacionSesionService_1 = require("./evaluacionSesionService");
 const STORE_FILE = "audit-metrics.json";
+const MODO_ORDER = {
+    EOA: 0,
+    ERC20: 1,
+    ERC721: 2
+};
 // ─── Persistencia ─────────────────────────────────────────────────────────────
 function cargarRegistros() {
     return (0, jsonFileStore_1.loadJsonFile)(STORE_FILE, []);
@@ -120,7 +126,7 @@ function buildInteroperabilityDetails(output, config, chainId) {
     };
 }
 // ─── Conversión PandorasBoxOutput → AuditMetricRecord ─────────────────────────
-function convertirASalida(output, config, fuente) {
+function convertirASalida(output, config, fuente, extras) {
     const tasaExito = output.total_transactions > 0
         ? (output.successful_transactions / output.total_transactions) * 100
         : 0;
@@ -133,13 +139,14 @@ function convertirASalida(output, config, fuente) {
         id: (0, crypto_1.randomUUID)(),
         timestamp: new Date().toISOString(),
         sesionId: sesionActual?.id,
+        batchId: extras?.batchId,
         modo: output.mode,
         rpcUrl: output.rpc_url,
         chainId: output.chain_id,
         contractAddress: output.contract_address ?? config.contractAddress,
         tpsPico: output.tps_peak,
         tpsPromedio: output.tps_average,
-        totalTransacciones: output.total_transactions,
+        totalTransacciones: extras?.totalTransacciones ?? output.total_transactions,
         transaccionesExitosas: output.successful_transactions,
         transaccionesFallidas: output.failed_transactions,
         tasaExito,
@@ -187,12 +194,27 @@ function listarMetricas(opciones) {
     }
     return registros.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 }
+function listarMetricasComparativas() {
+    return cargarRegistros()
+        .filter((record) => record.batchId && typeof record.totalTransacciones === "number")
+        .sort((a, b) => {
+        const totalA = a.totalTransacciones ?? Number.MAX_SAFE_INTEGER;
+        const totalB = b.totalTransacciones ?? Number.MAX_SAFE_INTEGER;
+        if (totalA !== totalB)
+            return totalA - totalB;
+        const modoA = MODO_ORDER[a.modo] ?? Number.MAX_SAFE_INTEGER;
+        const modoB = MODO_ORDER[b.modo] ?? Number.MAX_SAFE_INTEGER;
+        if (modoA !== modoB)
+            return modoA - modoB;
+        return new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime();
+    });
+}
 function obtenerMetricaPorId(id) {
     return cargarRegistros().find((r) => r.id === id) ?? null;
 }
-async function ejecutarEvaluacion(config) {
+async function ejecutarEvaluacion(config, extras) {
     const { output, fuente, errorPandoras } = await (0, pandorasBoxAdapter_1.ejecutarPrueba)(config);
-    const record = convertirASalida(output, config, fuente);
+    const record = convertirASalida(output, config, fuente, extras);
     const registros = cargarRegistros();
     registros.push(record);
     guardarRegistros(registros);
