@@ -32,6 +32,7 @@ import type {
   BlockSample,
   PandorasBoxOutput
 } from "./auditMetricModel";
+import { tryRunPandorasMeasured } from "./pandorasRealMetricsRunner";
 
 const execFileAsync = promisify(execFile);
 const requireFromBackend = createRequire(__filename);
@@ -42,7 +43,7 @@ function sleep(ms: number): Promise<void> {
 
 const DEFAULT_BATCH_SIZE = 10;
 const SAFE_DEFAULT_TOTAL_TRANSACCIONES = 30;
-const SAFE_DEFAULT_NUM_SUBCUENTAS = 3;
+const SAFE_DEFAULT_NUM_SUBCUENTAS = 8;
 const PANDORAS_PROCESS_TIMEOUT_MS = 180_000;
 const PANDORAS_UNDERPRICED_RETRY_DELAY_MS = 15_000;
 const FALLBACK_RPC_URL = "no-configurado";
@@ -1446,26 +1447,25 @@ export async function ejecutarPrueba(config: AuditRunConfig): Promise<{
   const chainId = await getChainId(configUsada.rpcUrl).catch(() => 0);
 
   if (hasRunnableConfig) {
-    const resultado = await tryRunPandorasBox(configUsada, chainId);
+    const resultadoMedido = await tryRunPandorasMeasured(configUsada, chainId);
 
-    if (resultado === null) {
-      // pandoras-box no está instalado; se cae a simulación sin romper el backend.
-    } else if ("output" in resultado) {
+    if (resultadoMedido && "output" in resultadoMedido) {
       return {
-        output: resultado.output,
+        output: resultadoMedido.output,
         fuente: "pandoras-box",
         configUsada
       };
-    } else {
-      const { samples } = await fetchRealBlockData(configUsada.rpcUrl, 10);
-      const sim = buildSimulation(configUsada, samples, chainId);
-      return {
-        output: sim,
-        fuente: "simulacion",
-        errorPandoras: resultado.error,
-        configUsada
-      };
     }
+
+    const { samples } = await fetchRealBlockData(configUsada.rpcUrl, 10);
+    const sim = buildSimulation(configUsada, samples, chainId);
+    return {
+      output: sim,
+      fuente: "simulacion",
+      errorPandoras: resultadoMedido?.error ??
+        "No fue posible inicializar la capa externa de medición real para Pandora.",
+      configUsada
+    };
   }
 
   const { samples } = await fetchRealBlockData(configUsada.rpcUrl, 10);

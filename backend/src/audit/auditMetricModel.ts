@@ -4,6 +4,92 @@
  */
 
 export type ModoPrueba = "EOA" | "ERC20" | "ERC721";
+export type TipoOperacionAudit =
+  | "EOA_TRANSFER"
+  | "ERC20_TRANSFER"
+  | "ERC20_APPROVE"
+  | "ERC721_MINT"
+  | "ERC721_TRANSFER"
+  | "DESCONOCIDA";
+
+export type CategoriaErrorEnvio =
+  | "nonce_too_low"
+  | "replacement_underpriced"
+  | "already_known"
+  | "rate_limit"
+  | "rpc_transport"
+  | "unknown_send";
+
+export type CategoriaErrorEjecucion =
+  | "revert"
+  | "out_of_gas"
+  | "execution_failed_unknown"
+  | "receipt_timeout";
+
+export interface AuditTxMetric {
+  tx_hash?: string;
+  local_hash?: string;
+  from: string;
+  to?: string;
+  nonce: number;
+  operation_type: TipoOperacionAudit;
+  sent_at?: string;
+  block_number?: number;
+  block_timestamp?: string;
+  latency_ms?: number;
+  receipt_status?: number;
+  gas_used?: number;
+  effective_gas_price_wei?: string;
+  rpc_response_ms?: number;
+  status: "failed_send" | "sent" | "confirmed" | "failed_execution" | "receipt_timeout";
+  send_error_type?: CategoriaErrorEnvio;
+  send_error_message?: string;
+  execution_error_type?: CategoriaErrorEjecucion;
+  execution_error_message?: string;
+  event_valid?: boolean;
+  state_valid?: boolean;
+}
+
+export interface OperationMetricsBreakdown {
+  operation_type: TipoOperacionAudit;
+  total_transactions: number;
+  confirmed_transactions: number;
+  successful_transactions: number;
+  success_rate: number;
+  latency_avg_ms: number;
+  latency_p95_ms: number;
+  gas_used_avg: number;
+  gas_used_max: number;
+}
+
+export interface AuditErrorBreakdown {
+  send: Record<CategoriaErrorEnvio, number>;
+  execution: Record<CategoriaErrorEjecucion, number>;
+}
+
+export interface PandoraReportedMetrics {
+  tps_average: number;
+  blocks_observed: number;
+  average_block_gas_utilization_pct: number;
+  notes: string[];
+}
+
+export interface MeasurementComparison {
+  real_tps_average: number;
+  pandora_tps_average: number;
+  tps_delta: number;
+  tps_delta_pct: number | null;
+  no_usar_metricas_pandora: string[];
+}
+
+export interface InteroperabilityChecks {
+  total_contract_calls: number;
+  successful_contract_calls: number;
+  event_checks_ok: number;
+  state_checks_ok: number;
+  unsupported_operations: TipoOperacionAudit[];
+  notes: string[];
+}
 
 /** Salida JSON que produce pandoras-box al finalizar una prueba de estrés */
 export interface PandorasBoxOutput {
@@ -52,6 +138,13 @@ export interface PandorasBoxOutput {
   deploy_successful?: boolean;
   erc_function_calls?: number;
   erc_function_success?: number;
+  operation_breakdown?: OperationMetricsBreakdown[];
+  tx_metrics?: AuditTxMetric[];
+  error_breakdown?: AuditErrorBreakdown;
+  pandora_reported_metrics?: PandoraReportedMetrics;
+  measurement_comparison?: MeasurementComparison;
+  interoperability_checks?: InteroperabilityChecks;
+  metric_notes?: string[];
 
   // Datos por bloque para gráficas
   block_samples: BlockSample[];
@@ -92,7 +185,9 @@ export interface AuditMetricRecord {
   latenciaPromedioMs: number;
   latenciaMinMs: number;
   latenciaMaxMs: number;
+  latenciaP50Ms?: number;
   latenciaP95Ms: number;
+  latenciaP99Ms?: number;
 
   // Bloques
   blockTimePromedioSeg: number;

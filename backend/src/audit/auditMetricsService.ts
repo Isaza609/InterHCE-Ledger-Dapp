@@ -195,7 +195,9 @@ function convertirASalida(
     latenciaPromedioMs: output.latency_avg_ms,
     latenciaMinMs: output.latency_min_ms,
     latenciaMaxMs: output.latency_max_ms,
+    latenciaP50Ms: output.latency_p50_ms,
     latenciaP95Ms: output.latency_p95_ms,
+    latenciaP99Ms: output.latency_p99_ms,
 
     blockTimePromedioSeg: output.block_time_avg_seconds,
     bloquesObservados: output.blocks_observed,

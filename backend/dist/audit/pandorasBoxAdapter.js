@@ -32,6 +32,7 @@ const path_1 = __importDefault(require("path"));
 const https_1 = __importDefault(require("https"));
 const http_1 = __importDefault(require("http"));
 const module_1 = require("module");
+const pandorasRealMetricsRunner_1 = require("./pandorasRealMetricsRunner");
 const execFileAsync = (0, util_1.promisify)(child_process_1.execFile);
 const requireFromBackend = (0, module_1.createRequire)(__filename);
 function sleep(ms) {
@@ -1154,27 +1155,23 @@ async function ejecutarPrueba(config) {
         !!configUsada.mnemonic?.trim();
     const chainId = await getChainId(configUsada.rpcUrl).catch(() => 0);
     if (hasRunnableConfig) {
-        const resultado = await tryRunPandorasBox(configUsada, chainId);
-        if (resultado === null) {
-            // pandoras-box no está instalado; se cae a simulación sin romper el backend.
-        }
-        else if ("output" in resultado) {
+        const resultadoMedido = await (0, pandorasRealMetricsRunner_1.tryRunPandorasMeasured)(configUsada, chainId);
+        if (resultadoMedido && "output" in resultadoMedido) {
             return {
-                output: resultado.output,
+                output: resultadoMedido.output,
                 fuente: "pandoras-box",
                 configUsada
             };
         }
-        else {
-            const { samples } = await fetchRealBlockData(configUsada.rpcUrl, 10);
-            const sim = buildSimulation(configUsada, samples, chainId);
-            return {
-                output: sim,
-                fuente: "simulacion",
-                errorPandoras: resultado.error,
-                configUsada
-            };
-        }
+        const { samples } = await fetchRealBlockData(configUsada.rpcUrl, 10);
+        const sim = buildSimulation(configUsada, samples, chainId);
+        return {
+            output: sim,
+            fuente: "simulacion",
+            errorPandoras: resultadoMedido?.error ??
+                "No fue posible inicializar la capa externa de medición real para Pandora.",
+            configUsada
+        };
     }
     const { samples } = await fetchRealBlockData(configUsada.rpcUrl, 10);
     const sim = buildSimulation(configUsada, samples, chainId);

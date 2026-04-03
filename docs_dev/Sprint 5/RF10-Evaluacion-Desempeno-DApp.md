@@ -11,6 +11,8 @@ La evaluación se divide en dos capas complementarias:
 | **Sección A — Pruebas de estrés de red** | `GET /audit/metrics`, `POST /audit/run` | Rendimiento de la red blockchain: TPS, latencia, gas, seguridad, ERC deploy |
 | **Sección B — Interoperabilidad clínica (HU0-HU5)** | `GET /evaluation/dashboard` | Episodios entre IPS, continuidad asistencial, integridad, tiempos de acceso off-chain |
 
+En la Sección A, la arquitectura actual separa explícitamente la **ejecución de carga** de la **medición formal de métricas**: pandoras-box conserva el rol de generador de carga, mientras una capa externa del backend consolida la medición real a nivel de transacción.
+
 Ambas secciones viven en una sola página (`/auditoria/metricas`) organizada con encabezados que explican claramente qué mide cada una.
 
 ---
@@ -28,9 +30,9 @@ backend/src/routes/audit.ts
         │
         ├─► backend/src/audit/auditMetricsService.ts   ← lógica de negocio
         │         │
-        │         ├─► pandorasBoxAdapter.ts             ← ejecuta pandoras-box CLI
-        │         │         ├─► ejecución real           (si hay mnemonic con fondos)
-        │         │         └─► simulación realista      (fallback vía JSON-RPC)
+        │         ├─► pandorasBoxAdapter.ts             ← coordina ejecución real o simulación
+        │         │         ├─► pandorasRealMetricsRunner.ts  ← pandoras-box + medición tx-level
+        │         │         └─► simulación realista          ← fallback vía JSON-RPC
         │         │
         │         └─► shared/jsonFileStore.ts           ← persistencia
         │                   └─► backend/data/audit-metrics.json
@@ -42,13 +44,17 @@ backend/src/routes/audit.ts
 
 ## 3. ¿Qué es pandoras-box?
 
-**pandoras-box** ([github.com/sig-0/pandoras-box](https://github.com/sig-0/pandoras-box)) es una herramienta CLI de stress-testing para redes compatibles con Ethereum (EVM). Fue creada para que los desarrolladores de clientes Ethereum puedan medir el rendimiento de un nodo bajo carga real.
+**pandoras-box** ([github.com/sig-0/pandoras-box](https://github.com/sig-0/pandoras-box)) es una herramienta de stress-testing para redes compatibles con Ethereum (EVM), orientada a la **generación de carga** y a la **ejecución de pruebas concurrentes** sobre un nodo real.
+
+En la arquitectura vigente del RF10, pandoras-box no se interpreta como la fuente de verdad de todas las métricas, sino como el **motor de ejecución del workload**. Su aporte principal es construir, distribuir y enviar transacciones reales de forma controlada; la medición formal del desempeño se completa posteriormente con una capa externa de observación a nivel de transacción.
 
 ### ¿Cómo funciona por dentro?
 
-pandoras-box genera un conjunto de **cuentas (subcuentas)** a partir de un mnemonic BIP-39, las financia desde la cuenta principal (índice 0 del mnemonic), y luego envía transacciones en paralelo desde esas subcuentas. Al terminar, recopila los recibos de las transacciones, consulta los bloques donde quedaron incluidas, y calcula el TPS promedio y los datos por bloque.
+pandoras-box genera un conjunto de **cuentas (subcuentas)** a partir de un mnemonic BIP-39, las financia desde la cuenta principal (índice 0 del mnemonic), y luego construye y envía transacciones en paralelo desde esas subcuentas. El modelo nativo de salida de pandoras-box está orientado a **agregados por bloque**: TPS promedio observado, bloques incluidos, `gasUsed`, `gasLimit` y utilización de gas por bloque.
 
-### Comando real que ejecuta el adaptador
+Esto significa que pandoras-box resulta técnicamente adecuado para **estresar la red y ejecutar la carga**, pero no para constituirse por sí solo en la fuente definitiva de métricas como latencia real por transacción, gas exacto por transacción o interoperabilidad validada por evento/estado.
+
+### Comando equivalente de la CLI original
 
 ```bash
 pandoras-box \
@@ -61,7 +67,7 @@ pandoras-box \
   -o    /tmp/pandoras-XXXX/result.json
 ```
 
-> **Nota importante:** Los flags son `-url`, `-m`, `-t`, `-s`, `-b` y `-o`. No usan prefijo `--` (excepto `--mode`). El resultado se escribe en un **archivo JSON en disco**, no en stdout.
+> **Nota importante:** la implementación actual del backend reutiliza internamente los runtimes vendorizados de pandoras-box, pero la semántica de ejecución sigue siendo equivalente a la CLI original. En dicha CLI los flags son `-url`, `-m`, `-t`, `-s`, `-b` y `-o`. No usan prefijo `--` (excepto `--mode`).
 
 ### Formato JSON de salida de pandoras-box
 
@@ -90,14 +96,37 @@ pandoras-box \
 ```
 
 Lo que pandoras-box **sí entrega directamente**:
-- `averageTPS` — TPS calculado sobre todas las transacciones confirmadas
+- `averageTPS` — indicador agregado calculado sobre las transacciones propias confirmadas en la ventana observada
 - Por cada bloque: número, timestamp Unix, cantidad de tx, gas usado (hex), gas límite (hex), utilización (%)
 
-Lo que pandoras-box **no entrega** (el adaptador lo deriva):
-- Latencia de confirmación — no existe un campo explícito; se estima como `blocktime × 1.15`
-- Transacciones fallidas — se infieren como `totalTransacciones - txEnBloques`
-- Reverts y out-of-gas — no quedan registrados en el output; se estiman del total de fallos
-- TPS pico — se calcula como `max(tx_bloque / blocktime)` sobre todos los bloques
+Lo que pandoras-box **no entrega como fuente de verdad métrica**:
+- Latencia real de confirmación por transacción — no registra `sentAt` individual
+- Gas usado por transacción — el output nativo se concentra en agregados de bloque
+- Clasificación fiable de errores por transacción — envío fallido, `revert`, `out-of-gas`, timeout de receipt
+- Interoperabilidad validada — no verifica eventos esperados ni estado final on-chain
+
+### Capa externa de medición de métricas (tx-level)
+
+La experiencia de implementación mostró una limitación metodológica relevante: pandoras-box ejecuta correctamente la carga, pero su salida nativa no basta para medir con precisión variables que, en una evaluación académica formal, deben trazarse a nivel de transacción. En particular, no registra la latencia real `send → block inclusion`, no informa `gasUsed` por transacción y puede mezclar la lectura de bloques con transacciones ajenas a la prueba.
+
+Por esta razón se incorporó una **capa externa de medición basada en transacciones reales**, la cual **no reemplaza** a pandoras-box, sino que lo complementa. pandoras-box conserva el rol de generador de carga; la capa externa asume la responsabilidad de capturar y consolidar las métricas del experimento.
+
+El flujo de medición tx-level sigue los siguientes pasos:
+
+| Paso | Acción técnica |
+|---|---|
+| **1** | Captura el `txHash` de cada transacción efectivamente enviada |
+| **2** | Registra el instante de envío `sentAt` para cada transacción |
+| **3** | Consulta el `receipt` real mediante `eth_getTransactionReceipt` |
+| **4** | Consulta el `block.timestamp` del bloque donde quedó incluida |
+| **5** | Valida, cuando aplica, los eventos emitidos y el estado final del contrato |
+
+Esta capa permite medir correctamente:
+- **TPS real** sobre transacciones propias confirmadas on-chain
+- **Latencia real** entre el envío efectivo y la inclusión en bloque
+- **Gas usado real** mediante `receipt.gasUsed`
+- **Tasa de éxito real** con base en `receipt.status`, errores de envío y timeouts de receipt
+- **Interoperabilidad real** mediante validación de eventos y de estado on-chain
 
 ---
 
@@ -111,12 +140,14 @@ Esta es la distinción más importante para interpretar los resultados.
 |---|---|
 | Campo `fuente` | `"pandoras-box"` |
 | Indicador en UI | 🔴 Ejecución real con pandoras-box |
-| TPS | Real: se mide sobre transacciones confirmadas en la red |
-| Gas | Real: valores hex del bloque tal como los reporta el nodo |
+| Ejecución | Real: pandoras-box construye y envía la carga a la red |
+| Fuente de verdad de métricas | Capa externa tx-level basada en `txHash`, `receipt` y `block.timestamp` |
+| TPS | Real: se mide sobre transacciones propias confirmadas en la red |
+| Gas | Real: `receipt.gasUsed` por transacción; el agregado por bloque se conserva para series temporales |
 | Blocktime | Real: diferencia de timestamps entre bloques consecutivos observados |
-| Transacciones fallidas | Real: tx enviadas que no llegaron a bloque en el plazo |
-| Latencia | **Estimada** incluso en ejecución real (pandoras-box no mide el timestamp de envío individual) |
-| Reverts / out-of-gas | **Estimados** por proporción del total de fallos |
+| Transacciones fallidas | Real: errores de envío, `receipt_timeout` o ejecución fallida |
+| Latencia | Real: `block.timestamp - sentAt` por transacción |
+| Reverts / out-of-gas | Reales: clasificados desde `receipt.status` y análisis de error de ejecución |
 
 **Cuándo se activa:** cuando se proporciona un mnemonic con fondos suficientes en la red objetivo.
 
@@ -134,18 +165,19 @@ Esta es la distinción más importante para interpretar los resultados.
 
 **Cuándo se activa:**
 - No se proporcionó mnemonic
-- pandoras-box no está instalado (`ENOENT`)
-- pandoras-box falló durante la ejecución (fondos insuficientes, RPC caído, etc.)
+- No fue posible inicializar el motor Pandora o la capa externa de medición
+- La ejecución real falló durante la corrida (fondos insuficientes, RPC caído, etc.)
 
 ### 4.3 Comparación de precisión
 
 | Métrica | Real (pandoras-box) | Simulación |
 |---|---|---|
-| TPS promedio | ✅ Medido | ⚠️ Estimado |
+| TPS promedio | ✅ Medido a nivel tx | ⚠️ Estimado |
 | Blocktime | ✅ Medido | ✅ Del nodo real |
-| Gas por bloque | ✅ Del bloque real | ⚠️ Estimado por modo |
-| Latencia confirmación | ⚠️ Estimada (no hay timestamp individual) | ⚠️ Estimada |
-| Fallos/reverts | ⚠️ Parcial (no hay desglose en pandoras-box) | ⚠️ Estimado por porcentaje |
+| Gas por transacción | ✅ Medido con `receipt.gasUsed` | ⚠️ Estimado por modo |
+| Latencia confirmación | ✅ Medida con `sentAt` + `block.timestamp` | ⚠️ Estimada |
+| Fallos/reverts | ✅ Medidos y clasificados | ⚠️ Estimado por porcentaje |
+| Interoperabilidad | ✅ Validada por eventos y estado | ⚠️ No aplica como medición real |
 | chainId / rpcUrl | ✅ Red real probada | ✅ Red real consultada |
 
 ---
@@ -160,7 +192,7 @@ pandoras-box necesita que la **primera dirección** del mnemonic tenga ETH sufic
 1. Distribuir ETH a cada subcuenta
 2. Pagar gas de todas las transacciones
 
-Si la cuenta no tiene fondos, pandoras-box falla internamente y el adaptador cae a simulación.
+Si la cuenta no tiene fondos, pandoras-box no puede financiar subcuentas ni ejecutar la carga real, por lo que el módulo cae a simulación.
 
 **Cómo verificarlo:**
 1. Obtener la primera dirección del mnemonic:
@@ -178,29 +210,23 @@ Si la cuenta no tiene fondos, pandoras-box falla internamente y el adaptador cae
 
 ---
 
-### Causa 2 — El mensaje de error de pandoras-box no llega al adaptador
+### Causa 2 — La capa externa no pudo inicializar los componentes de Pandora
 
-Hasta la corrección de este sprint, el `catch` del adaptador solo re-lanzaba errores con palabras clave específicas (`insufficient`, `nonce`, `network`, `connection`). Cualquier otro mensaje de error de pandoras-box se ignoraba silenciosamente y se caía a simulación sin explicación.
+La implementación actual utiliza los runtimes vendorizados de pandoras-box desde el backend. Si dichos componentes no están disponibles o no pueden cargarse, la prueba real no se inicia y el módulo cae a simulación.
 
-**Solución aplicada:** ahora el adaptador captura el `stderr` completo del proceso hijo y lo devuelve como campo `advertencia` en la respuesta. El frontend lo muestra con un banner de aviso amarillo después de ejecutar la prueba, con el mensaje exacto de pandoras-box.
+**Solución aplicada:** el backend informa la falla como `advertencia` para que el usuario pueda distinguir entre simulación por ausencia de entorno ejecutable y simulación por decisión funcional.
 
 ---
 
-### Causa 3 — pandoras-box no está en el PATH del proceso Node.js del backend
+### Causa 3 — La ejecución real o la medición tx-level fallaron durante la corrida
 
-El binario está instalado en:
-```
-/home/aisaza/.nvm/versions/node/v18.20.8/bin/pandoras-box
-```
+Aunque pandoras-box haya construido la carga correctamente, la corrida puede fallar por errores de firma, rechazo del nodo RPC, timeouts de receipt o imposibilidad de recuperar la información necesaria para cerrar la medición.
 
-Cuando el backend corre con `npm run dev` desde la terminal interactiva, el PATH incluye la ruta de nvm y `pandoras-box` se encuentra. Pero si el backend se inicia de otra forma (pm2, systemd, script sin `.bashrc`), el PATH puede no incluir el directorio de nvm.
+**Solución aplicada:** la capa externa registra la advertencia exacta devuelta por el backend y el frontend la expone en un banner amarillo después de ejecutar la prueba.
 
-**Solución aplicada:** el adaptador busca el binario en múltiples rutas conocidas antes de llamar a `execFile`. También acepta la ruta absoluta como fallback automático.
-
-**Para confirmar que el backend lo ve:**
+**Para confirmar el estado del entorno:**
 ```bash
-# Ejecutar desde el mismo proceso/entorno donde corre el backend
-node -e "const { execSync } = require('child_process'); console.log(execSync('which pandoras-box').toString());"
+ls backend/vendor/pandoras-box/bin/runtime
 ```
 
 ---
@@ -221,11 +247,11 @@ Debe responder con `{"result":"0x..."}`.
 
 ### Cómo ver el error exacto de pandoras-box desde la UI
 
-A partir de la corrección de este sprint, cuando pandoras-box falla:
+A partir de la corrección de este sprint, cuando la ejecución real no puede completarse:
 1. La prueba **sí termina** (con fuente `simulacion`)
-2. Aparece un banner amarillo en la UI con el texto: **"⚠️ pandoras-box no pudo ejecutarse → se usó simulación. Detalle: [mensaje exacto]"**
+2. Aparece un banner amarillo en la UI con el detalle de la advertencia exacta devuelta por el backend
 
-Esto permite diagnoticar la causa sin tener que revisar los logs del backend.
+Esto permite diagnosticar la causa sin tener que revisar los logs del backend.
 
 ---
 
@@ -243,9 +269,13 @@ Esto permite diagnoticar la causa sin tener que revisar los logs del backend.
 
 **Fórmulas:**
 ```
-TPS promedio = totalTransacciones / duraciónPrueba (s)
-TPS pico     = máximo de (tx_bloque / blocktime_seg) sobre todos los bloques
+TPS real promedio = tx_propias_confirmadas / ventana_real_de_confirmacion (s)
+TPS pico real     = máximo de (tx_propias_confirmadas_en_bloque / blocktime_bloque)
 ```
+
+En la implementación vigente coexisten dos referencias complementarias:
+- **Medición agregada por bloque (Pandora):** se conserva como referencia comparativa en `rawOutput.pandora_reported_metrics.tps_average`.
+- **Medición tx-level (fuente de verdad del RF10):** `tpsPromedio` y `tpsPico` se calculan exclusivamente sobre **transacciones propias confirmadas** en la red.
 
 ---
 
@@ -260,7 +290,12 @@ Tiempo desde que la transacción es enviada hasta que queda incluida en un bloqu
 | **Latencia máxima** | Transacción confirmada más lento | `latenciaMaxMs` |
 | **P95** | El 95 % de las transacciones se confirman en ≤ este tiempo | `latenciaP95Ms` |
 
-> **Nota sobre precisión:** pandoras-box no registra el timestamp exacto de envío de cada transacción. La latencia se estima como `blocktime × 1.15`, lo que representa la cota inferior realista (una tx enviada al comienzo de un bloque espera al menos un bloque completo). En redes con blocktimes largos como Sepolia (~12 s), la latencia real es de 12–36 s dependiendo del momento del envío.
+**Definición formal vigente:**
+```
+latencia_tx = block.timestamp_confirmacion - sentAt
+```
+
+La medición agregada por bloque de pandoras-box solo permite inferencias generales sobre el ritmo de la red. La latencia oficial del RF10 se obtiene en la capa externa **tx-level**, registrando `sentAt` al momento del envío y consultando el `block.timestamp` del bloque de confirmación.
 
 ---
 
@@ -271,7 +306,7 @@ Tiempo desde que la transacción es enviada hasta que queda incluida en un bloqu
 | **Blocktime promedio** | Media de la diferencia de timestamps entre bloques consecutivos | `blockTimePromedioSeg` |
 | **Bloques observados** | Cantidad de bloques en la ventana de la prueba | `bloquesObservados` |
 
-El blocktime condiciona la latencia mínima:
+El blocktime sigue siendo una métrica **agregada por bloque** y condiciona la latencia mínima físicamente posible de la red, pero no sustituye la latencia tx-level medida por transacción:
 
 | Red | Blocktime típico | Latencia mínima aprox. |
 |---|---|---|
@@ -290,6 +325,13 @@ El blocktime condiciona la latencia mínima:
 | **Gas usado máximo** | Máximo observado en una sola transacción | `gasUsadoMax` |
 | **Gas limit** | Límite de gas por bloque en la red | `gasLimit` |
 | **Utilización de gas (%)** | `(tx exitosas × gasUsadoPromedio) / (gasLimit × bloques)` | `gasUtilizacionPct` |
+
+**Definición formal vigente:**
+```
+gas_tx = receipt.gasUsed
+```
+
+La vista agregada de pandoras-box permite observar utilización de gas a nivel de bloque. Sin embargo, la medición oficial del RF10 para consumo por transacción se obtiene en la capa externa a partir de `receipt.gasUsed`. De este modo se evita atribuir a la prueba gas consumido por transacciones ajenas incluidas en el mismo bloque.
 
 **Referencia por modo:**
 
@@ -310,6 +352,10 @@ El blocktime condiciona la latencia mínima:
 | **Transacciones out-of-gas** | Fallaron porque agotaron el gas asignado | `transaccionesOutOfGas` |
 | **Tiempo de respuesta del nodo** | Latencia promedio de llamadas JSON-RPC bajo carga (ms) | `tiempoRespuestaNodoMs` |
 
+En esta dimensión se distinguen dos niveles:
+- **Agregado por bloque (Pandora):** útil para identificar volumen confirmado, pero insuficiente para clasificar errores.
+- **Medición tx-level:** fuente de verdad para `tasaExito`, `revert`, `out-of-gas`, `failed_send` y `receipt_timeout`, con base en `receipt.status` y en errores reales de ejecución o transporte.
+
 Una **tasa de éxito ≥ 95 %** es el umbral verde por defecto. Por debajo del 80 % se considera crítico, indicando saturación del nodo o errores de configuración.
 
 ---
@@ -326,6 +372,13 @@ Aplica solo a los modos **ERC20** y **ERC721** (en EOA no hay contrato).
 | **Red evaluada (chainId)** | Identificador numérico de la red | `chainId` |
 | **URL RPC usada** | Endpoint del nodo evaluado | `rpcUrl` |
 
+La interoperabilidad ya no se infiere desde agregados de bloque. La validación formal se ejecuta sobre transacciones confirmadas y considera:
+- `receipt.status = 1`
+- presencia del **evento esperado**
+- verificación del **estado final on-chain** cuando aplica
+
+En consecuencia, la interoperabilidad real se fundamenta en la consistencia entre ejecución, eventos emitidos y estado observable del contrato.
+
 ---
 
 ### 6.7 Series temporales por bloque
@@ -336,11 +389,11 @@ Para cada bloque observado durante la prueba se registra:
 |---|---|
 | `block_number` | Número del bloque |
 | `timestamp` | Fecha/hora ISO del bloque |
-| `tx_count` | Transacciones en ese bloque |
-| `gas_used` | Gas consumido en ese bloque |
+| `tx_count` | Transacciones propias confirmadas de la prueba en ese bloque |
+| `gas_used` | Gas consumido por las transacciones propias de la prueba en ese bloque |
 | `gas_limit` | Límite de gas del bloque |
 | `block_time_seconds` | Tiempo transcurrido desde el bloque anterior |
-| `tps` | `tx_count / block_time_seconds` |
+| `tps` | `tx_count / block_time_seconds` para las transacciones propias observadas |
 
 Estos datos alimentan las **mini-gráficas SVG** del panel de detalle.
 
@@ -353,20 +406,27 @@ pandoras-box soporta tres modos seleccionables desde el formulario:
 ### Modo EOA
 Genera transferencias ETH directas entre externally-owned accounts. No requiere contrato previo.
 - **Gas/tx:** ≈ 21 000 (fijo para transferencias ETH).
-- **Cuándo usarlo:** prueba base de capacidad del nodo sin lógica de contrato.
+- **Cuándo usarlo:** prueba base de capacidad del nodo sin lógica de contrato; constituye la **línea base de red**.
+- **Carga computacional:** la menor de los tres modos; útil para aislar costo de consenso y propagación.
 - **Interoperabilidad:** N/A (sin contrato).
 
 ### Modo ERC20
 Despliega automáticamente un contrato ERC20 (`ZexCoin`) y ejecuta llamadas `transfer()`.
 - **Gas/tx:** ≈ 50 000.
 - **Cuándo usarlo:** mide la sobrecarga de contratos fungibles sobre el nodo.
+- **Carga computacional:** intermedia; introduce lectura/escritura de storage y emisión de eventos `Transfer`.
+- **Alcance funcional actual:** el workload base mide `transfer()`. La operación `approve()` puede ser reconocida por la capa de validación si existiera, pero **no forma parte de la carga estándar emitida por Pandora en el RF10**.
 - **Interoperabilidad:** semáforo verde si deploy OK y tasa de llamadas ≥ 95 %.
 
 ### Modo ERC721
 Despliega un contrato ERC721 (`ZexNFTs`) y ejecuta mint de NFTs.
 - **Gas/tx:** ≈ 120 000 o más.
 - **Cuándo usarlo:** el modo más costoso; representa contratos complejos.
+- **Carga computacional:** la mayor de los tres modos; incrementa uso de storage, emisión de eventos y validación de estado.
+- **Alcance funcional actual:** el workload base mide `mint` (`createNFT`). Las operaciones `transferFrom` / `safeTransferFrom` pueden ser validadas si se observan, pero **no forman parte de la carga estándar emitida en esta configuración**.
 - **Interoperabilidad:** el más exigente de los tres.
+
+Cada modo, por tanto, no solo modifica el tipo de operación evaluada, sino también la **carga computacional efectiva** impuesta al nodo y a la EVM.
 
 ---
 
@@ -441,23 +501,22 @@ Cada registro también guarda el objeto `interoperabilityDetails`:
 POST /audit/run recibe config
          │
          ▼
-  ¿Hay mnemonic?
+  ¿Hay mnemonic y RPC ejecutable?
   ─────────────────────────────────────────────
   NO → Simulación directa (consulta nodo RPC)
   ─────────────────────────────────────────────
-  SÍ → execFile("pandoras-box", [...flags], {env: process.env})
+  SÍ → tryRunPandorasMeasured(...)
          │
-         ├── ENOENT (no instalado)
-         │     └→ Simulación (sin advertencia, no es error del usuario)
+         ├── Carga runtimes vendorizados de Pandora
+         ├── Prepara runtime y workload real
+         ├── Pandora distribuye fondos y construye/envía transacciones
+         ├── Capa externa registra txHash + sentAt por transacción
+         ├── Consulta receipts + blocks + timestamps reales
+         ├── Valida eventos y estado on-chain (si aplica)
+         ├── Construye métricas tx-level → fuente: "pandoras-box" ✅
          │
-         ├── Exit code ≠ 0 (pandoras-box falló)
-         │     └→ Simulación + campo advertencia con stderr completo
-         │
-         ├── Terminó pero no escribió archivo JSON
-         │     └→ Simulación + advertencia "sin archivo de salida"
-         │
-         └── Terminó y escribió archivo JSON
-               └→ Parseo JSON → fuente: "pandoras-box" ✅
+         └── Si falla cualquier etapa crítica
+               └→ Simulación + campo advertencia
 ```
 
 ---
@@ -568,7 +627,7 @@ Detalle completo incluyendo `blockSamples`, `rawOutput` e `interoperabilityDetai
 ```json
 {
   "code": "OK",
-  "message": "Evaluación completada · Ejecución directa con pandoras-box en Sepolia. ID: 3f8a...",
+  "message": "Evaluación completada (fuente: pandoras-box). ID: 3f8a...",
   "fuente": "pandoras-box",
   "advertencia": null,
   "data": { }
@@ -578,16 +637,16 @@ Detalle completo incluyendo `blockSamples`, `rawOutput` e `interoperabilityDetai
 Cuando pandoras-box falla pero se usa simulación (con error):
 ```json
 {
-  "message": "Evaluación completada · Simulación con datos del nodo RPC (pandoras-box no pudo ejecutarse). ID: 3f8a...",
+  "message": "Evaluación completada (fuente: simulacion). pandoras-box no pudo ejecutarse, se usó simulación. ID: 3f8a...",
   "fuente": "simulacion",
-  "advertencia": "[Ejecución directa con pandoras-box] Rate limit de Alchemy: las transacciones SÍ se enviaron a Sepolia pero pandoras-box no pudo recopilar todos los recibos antes del timeout interno de 30 s..."
+  "advertencia": "Runner externo de métricas reales falló: [detalle exacto]"
 }
 ```
 
 Cuando no se proporciona mnemonic (simulación directa):
 ```json
 {
-  "message": "Evaluación completada · Simulación con datos del nodo RPC (sin mnemonic configurado). ID: 3f8a...",
+  "message": "Evaluación completada (fuente: simulacion). ID: 3f8a...",
   "fuente": "simulacion",
   "advertencia": null
 }
@@ -636,11 +695,11 @@ Lista todas las sesiones en orden cronológico.
 
 ## 13. Cómo ejecutar una prueba real con pandoras-box paso a paso
 
-### Paso 1 — Verificar instalación
+### Paso 1 — Verificar disponibilidad del motor Pandora en el backend
 
 ```bash
-pandoras-box --help
-# Debe mostrar: Usage: pandoras-box [options] ...
+ls backend/vendor/pandoras-box/bin/runtime
+# Debe mostrar archivos como: eoa.js, erc20.js, erc721.js
 ```
 
 ### Paso 2 — Obtener la dirección principal del mnemonic
@@ -670,7 +729,7 @@ console.log('Dirección principal:', w.address);
 6. Ingresar el mnemonic en el campo correspondiente.
 7. Pulsar **Ejecutar prueba**.
 8. Si aparece un banner amarillo con advertencia, leerlo para identificar qué falló.
-9. Si la prueba termina con `fuente: pandoras-box`, los datos son reales.
+9. Si la prueba termina con `fuente: pandoras-box`, la carga fue ejecutada por Pandora y las métricas principales fueron medidas con la capa externa tx-level.
 
 ---
 
@@ -680,8 +739,9 @@ console.log('Dirección principal:', w.address);
 
 | Archivo | Responsabilidad |
 |---|---|
-| `backend/src/audit/auditMetricModel.ts` | Tipos TypeScript: `PandorasBoxOutput`, `AuditMetricRecord` (incl. `sesionId`, `interoperabilityDetails`), `AuditRunConfig`, `UMBRALES_DEFAULT` |
-| `backend/src/audit/pandorasBoxAdapter.ts` | Ejecución real de pandoras-box + fallback simulación; búsqueda de archivo de salida en rutas alternativas (bug EOA); captura de stdout/stderr en errores |
+| `backend/src/audit/auditMetricModel.ts` | Tipos TypeScript: `PandorasBoxOutput`, `AuditMetricRecord`, `AuditTxMetric`, `MeasurementComparison`, `InteroperabilityChecks`, `AuditRunConfig`, `UMBRALES_DEFAULT` |
+| `backend/src/audit/pandorasBoxAdapter.ts` | Coordinación de la prueba: decide entre ejecución real medida (`pandoras-box`) o simulación; resuelve configuración y encapsula la salida final |
+| `backend/src/audit/pandorasRealMetricsRunner.ts` | Motor de medición externa tx-level: prepara workload con Pandora, captura `txHash`/`sentAt`, consulta receipts, bloques, eventos y estado, y construye métricas reales por transacción |
 | `backend/src/audit/auditMetricsService.ts` | Capa de servicio: `listarMetricas(opciones?)`, `obtenerMetricaPorId(id)`, `ejecutarEvaluacion(config)`, `buildInteroperabilityDetails()`, cálculo de semáforo de interoperabilidad con 5 parámetros |
 | `backend/src/audit/evaluacionSesionService.ts` | Gestión de sesiones de evaluación: `iniciarNuevaSesion()`, `obtenerSesionActual()`, `listarSesiones()`, `obtenerSesionPorId()` |
 | `backend/src/routes/audit.ts` | Router Express: 3 endpoints de métricas + 3 de sesión (reset/current/list) |
@@ -1036,36 +1096,37 @@ La respuesta varía según la sección del dashboard y el modo de ejecución.
 
 #### Modo ejecución real (`fuente: "pandoras-box"`)
 
-Este modo se activa cuando se proporciona un mnemonic con fondos en la red objetivo. pandoras-box envía transacciones reales a la blockchain y reporta los datos de los bloques donde quedaron incluidas.
+Este modo se activa cuando se proporciona un mnemonic con fondos en la red objetivo. pandoras-box construye y envía transacciones reales a la blockchain, mientras la capa externa del backend registra `txHash`, `sentAt`, receipts, bloques, eventos y estado para consolidar la medición formal.
 
 | Métrica | ¿Es real? | Origen |
 |---|---|---|
-| **TPS promedio** | ✅ Real | pandoras-box mide las transacciones confirmadas sobre la duración total observada |
-| **TPS pico** | ✅ Derivado de datos reales | El adaptador calcula `max(numTxs_bloque / blocktime)` usando los datos reales de cada bloque |
-| **Blocktime promedio/mín/máx** | ✅ Real | Diferencia de timestamps entre bloques consecutivos reportados por pandoras-box |
-| **Gas usado (promedio y máx)** | ✅ Real | Valores hex `gasUsed` / `gasLimit` del bloque, tal como los reporta el nodo Ethereum |
-| **Utilización de gas (%)** | ✅ Derivado de datos reales | `(gas usado) / (gasLimit × bloques)`, calculado sobre valores reales |
-| **Transacciones exitosas** | ✅ Real | Número de transacciones que aparecen en bloques según pandoras-box |
-| **Transacciones fallidas** | ⚠️ Aproximado | Se infieren como `totalEnviadas − txEnBloques`; pandoras-box no distingue entre revert, out-of-gas y timeout |
-| **Latencia de confirmación** | ⚠️ Estimada | pandoras-box **no registra el timestamp de envío individual** de cada transacción. La latencia se estima como `blocktime × 1.15`, que representa la cota inferior realista (esperar al menos 1 bloque completo). No es la latencia exacta de ninguna transacción específica |
-| **P95 / P99 de latencia** | ⚠️ Estimados | Se derivan de la latencia promedio con factores fijos (`avg × 1.6` y `avg × 2.1`); pandoras-box no provee percentiles individuales |
-| **Transacciones revertidas** | ⚠️ Estimado | Se toma como el 70 % de las fallidas (heurística; pandoras-box no expone desglose) |
-| **Transacciones out-of-gas** | ⚠️ Estimado | El 30 % restante de las fallidas |
-| **Tiempo de respuesta del nodo** | ⚠️ Estimado | Heurística: `blocktime × 0.08` (≈ 8 % del blocktime); pandoras-box no mide latencia JSON-RPC individual |
+| **TPS promedio** | ✅ Real | Se calcula sobre transacciones propias confirmadas on-chain en la ventana real de confirmación |
+| **TPS pico** | ✅ Real | Se calcula como el máximo `tx_propias_confirmadas_en_bloque / blocktime_bloque` |
+| **Blocktime promedio/mín/máx** | ✅ Real | Diferencia de timestamps entre bloques reales observados |
+| **Gas usado (promedio y máx)** | ✅ Real | Derivado de `receipt.gasUsed` por transacción |
+| **Utilización de gas (%)** | ✅ Derivado de datos reales | Se calcula con el gas propio observado frente al `gasLimit` de los bloques confirmados |
+| **Transacciones exitosas** | ✅ Real | Receipts confirmados con `status = 1` |
+| **Transacciones fallidas** | ✅ Real | Universo real de envíos no exitosos: error de envío, `receipt_timeout` o ejecución fallida |
+| **Latencia de confirmación** | ✅ Real | `block.timestamp - sentAt` por transacción confirmada |
+| **P95 / P99 de latencia** | ✅ Reales | Percentiles calculados sobre latencias medidas por transacción |
+| **Transacciones revertidas** | ✅ Real | Clasificación de errores reales de ejecución a partir de receipt y análisis adicional |
+| **Transacciones out-of-gas** | ✅ Real | Clasificación real cuando la causa es agotamiento de gas |
+| **Tiempo de respuesta del nodo** | ✅ Real | Latencia observada en las llamadas RPC de envío bajo carga |
 | **Transacciones enviadas** | ✅ Real | La cuenta del mnemonic gasta ETH real en Sepolia; las transacciones existen en la blockchain |
+| **Interoperabilidad** | ✅ Real | Validación de eventos emitidos y estado final on-chain |
 
-> **Resumen modo real:** TPS, gas y blocktime son completamente reales. La latencia y el desglose de fallos son aproximaciones con base en los datos reales de bloques. Las transacciones sí se ejecutan y consumen ETH de Sepolia.
+> **Resumen modo real:** pandoras-box sigue siendo el motor de carga, pero la medición oficial del RF10 ya no depende de agregados de bloque. TPS, latencia, gas, fallos e interoperabilidad se calculan con datos de transacciones reales obtenidas desde la red.
 
 #### Modo simulación (`fuente: "simulacion"`)
 
-Se activa cuando no hay mnemonic, pandoras-box no está instalado (`ENOENT`), o pandoras-box falló (fondos insuficientes, rate limit de Alchemy, etc.).
+Se activa cuando no hay mnemonic, no fue posible inicializar el motor Pandora/capa externa, o la ejecución real falló (fondos insuficientes, rate limit, RPC caído, etc.).
 
 | Métrica | ¿Es real? | Origen |
 |---|---|---|
 | **Blocktime promedio** | ✅ Real (si el nodo responde) | El adaptador consulta los últimos 10 bloques del nodo via `eth_getBlockByNumber` y mide timestamps reales |
 | **chainId** | ✅ Real | Consultado directamente al nodo via `eth_chainId` |
 | **TPS promedio** | ⚠️ Sintético | Generado con distribución normal calibrada por `chainId` (ej. Sepolia → media 12 TPS) |
-| **Gas por bloque** | ⚠️ Sintético | Estimado según el modo (EOA: 21 000, ERC20: 50 000, ERC721: 120 000) con varianza aleatoria |
+| **Gas por transacción** | ⚠️ Sintético | Estimado según el modo (EOA: 21 000, ERC20: 50 000, ERC721: 120 000) con varianza aleatoria |
 | **Latencia** | ⚠️ Sintética | Calculada a partir del blocktime real + ruido gaussiano |
 | **Transacciones exitosas/fallidas** | ⚠️ Sintético | Porcentaje de fallo fijo por modo (EOA: 1.5 %, ERC20: 2.5 %, ERC721: 3 %) + varianza aleatoria |
 | **Transacciones enviadas** | ❌ No se envía nada | En modo simulación **no se envía ninguna transacción a la red**; el ETH del mnemonic no se toca |
@@ -1134,13 +1195,14 @@ El script de seed genera datos ficticios pero clínicamente estructurados (sigui
 
 ### 20.4 Tabla resumen: real vs. estimado vs. sintético
 
-| Sección | Métrica | Con pandoras-box real | Con simulación | Con blockchain real |
+| Sección | Métrica | Con ejecución real (Pandora + capa tx-level) | Con simulación | Con blockchain real |
 |---|---|---|---|---|
 | A | TPS promedio | ✅ Real | ⚠️ Sintético | — |
 | A | Blocktime | ✅ Real | ✅ Del nodo | — |
 | A | Gas | ✅ Real | ⚠️ Estimado | — |
-| A | Latencia | ⚠️ Estimada | ⚠️ Sintética | — |
-| A | Fallos/reverts | ⚠️ Aproximado | ⚠️ Sintético | — |
+| A | Latencia | ✅ Real | ⚠️ Sintética | — |
+| A | Fallos/reverts | ✅ Real | ⚠️ Sintético | — |
+| A | Interoperabilidad | ✅ Real | ⚠️ No medida | — |
 | A | ETH gastado | ✅ Real (Sepolia) | ❌ Nada | — |
 | B | Tiempos de acceso | — | — | ✅ Reales |
 | B | Consistencia (stdDev) | — | — | ✅ Real |
@@ -1154,11 +1216,11 @@ El script de seed genera datos ficticios pero clínicamente estructurados (sigui
 
 | Indicador | Ubicación | Qué dice |
 |---|---|---|
-| 🔴 "Ejecución real con pandoras-box" | Banner después de ejecutar prueba en Sección A | Las transacciones se enviaron a Sepolia; TPS, gas y blocktime son reales |
+| 🔴 "Ejecución real con pandoras-box" | Banner después de ejecutar prueba en Sección A | Las transacciones se enviaron a Sepolia; Pandora ejecutó la carga y la capa externa midió las métricas reales |
 | 🔵 "Simulación (datos del nodo RPC)" | Banner después de ejecutar prueba en Sección A | No se envió nada; solo blocktime y chainId son reales |
-| ⚠️ Banner amarillo con detalle | Aparece cuando pandoras-box falló y se usó simulación | Indica el motivo exacto del fallo (fondos, rate limit, etc.) |
+| ⚠️ Banner amarillo con detalle | Aparece cuando la ejecución real falló y se usó simulación | Indica el motivo exacto del fallo (fondos, rate limit, RPC, inicialización del runner, etc.) |
 | Tarjeta "Estado del entorno" | Sección B del dashboard | Muestra si FHIR está activo (tiempos reales vs. memoria) y si la blockchain es real o mock |
-| `fuente` en el JSON del registro | Campo persistido en `audit-metrics.json` | `"pandoras-box"` = datos reales de la red; `"simulacion"` = datos sintéticos |
+| `fuente` en el JSON del registro | Campo persistido en `audit-metrics.json` | `"pandoras-box"` = Pandora ejecutó la carga y las métricas se midieron con datos reales tx-level; `"simulacion"` = datos sintéticos |
 | `metricsMode` por operación en Sección B | `blockchainPerformance.operations[].metricsMode` | `"medido"` = dato real; `"estimado"` = aproximación; `"no_disponible"` = sin evidencia |
 
 ---
@@ -1383,7 +1445,7 @@ SEED_BLOCKCHAIN_REAL=1 npm run seed:eval-demo      # 117 txs reales
 | Confirmación (episodio) | ~1,280 ms | ~12,554 ms | Sepolia blocktime real (~12s) |
 | Gas (episodio) | 205,000 (hardcoded) | 141,269 (medido) | El gas real es menor al estimado conservador |
 | Gas (permiso) | 128,000 (hardcoded) | 29,833 (medido) | El permiso emite solo un evento, gas muy bajo |
-| Costo total seed | 0 ETH | 0.000764 ETH | Costo real negligible en testnet |
+| Costo total seed | 0 ETH | 0.000764 ETH | Costo real despreciable en testnet |
 | blockNumber | 0 | 10,522,xxx | Bloques reales de Sepolia |
 | explorerUrl | Hash SHA-256 sintético | `https://sepolia.etherscan.io/tx/0x...` | Verificable en Etherscan |
 
@@ -1413,6 +1475,8 @@ SEED_BLOCKCHAIN_REAL=1 npm run seed:eval-demo      # 117 txs reales
 ## 24. Recolector de recibos del backend — fallback para timeout de pandoras-box
 
 ### 24.1 Contexto del problema
+
+> **Nota de vigencia:** esta sección documenta un mecanismo **transitorio** utilizado antes de consolidar la capa externa actual de medición tx-level (`pandorasRealMetricsRunner.ts`). Se conserva por valor histórico y porque explica una etapa real de evolución del módulo, pero **no describe la ruta principal vigente** de medición del RF10.
 
 pandoras-box envía las transacciones exitosamente (stdout: `"✅ N batches sent"`) pero falla al recolectar los recibos porque tiene un **timeout interno de 30 s** por transacción en la fase de recolección individual (`waitForTransaction(hash, 1, 30000)` en `collector.js`). Este valor está **hardcoded en el binario** — no existe flag de CLI para configurarlo.
 
@@ -1481,10 +1545,10 @@ const w = Wallet.fromMnemonic(mnemonic, `m/44'/60'/0'/0/${i}`);
 | Archivo | Cambio |
 |---|---|
 | `backend/package.json` | Añadido `"ethers": "^5.x"` a dependencias |
-| `backend/src/audit/pandorasBoxAdapter.ts` | Import `Wallet` de ethers; interfaces `RpcTxInBlock`, `RpcBlockWithTxs`, `RpcReceipt`; funciones `getBlockWithFullTxs`, `getTransactionReceipt`, `recolectarRecibosDesdeNodo`; `tryRunPandorasBox` registra `inicioMs` y `startBlock` antes de `execFileAsync`, detecta `"batches sent"` en el catch y activa recovery; `ejecutarPrueba` devuelve `fuente: "pandoras-box-recovery"` cuando `isRecovery === true` |
-| `backend/src/audit/auditMetricModel.ts` | Tipo `fuente` extendido a `"pandoras-box" \| "pandoras-box-recovery" \| "simulacion"` |
+| `backend/src/audit/pandorasBoxAdapter.ts` | En la etapa de recovery histórico integró `recolectarRecibosDesdeNodo`; en la arquitectura actual la ruta principal fue sustituida por `pandorasRealMetricsRunner.ts` |
+| `backend/src/audit/auditMetricModel.ts` | El tipo `fuente` se amplió durante la etapa intermedia; en la operación vigente se usan `"pandoras-box"` o `"simulacion"` |
 | `backend/src/audit/auditMetricsService.ts` | Firmas de `convertirASalida` y `ejecutarEvaluacion` actualizadas con el nuevo fuente |
-| `backend/src/routes/audit.ts` | Nuevo caso en el mensaje de respuesta para `"pandoras-box-recovery"` |
+| `backend/src/routes/audit.ts` | El caso específico para `"pandoras-box-recovery"` correspondió a la etapa intermedia de recovery |
 
 ### 24.5 Limitaciones conocidas del recolector
 
@@ -1496,10 +1560,10 @@ const w = Wallet.fromMnemonic(mnemonic, `m/44'/60'/0'/0/${i}`);
 | **out_of_gas vs revert** | Los recibos no distinguen ambos tipos de fallo; `out_of_gas_transactions` se reporta como 0 |
 | **Modo ERC20/ERC721** | El recolector funciona igual que en EOA; si el contrato tiene logs de revert, no se parsean |
 
-### 24.6 Nuevo valor del campo `fuente` en la respuesta API
+### 24.6 Valor histórico del campo `fuente` durante la etapa de recovery
 
 ```json
-// POST /audit/run — respuesta con recolector activado
+// POST /audit/run — respuesta de la etapa intermedia con recolector activado
 {
   "code": "OK",
   "message": "Evaluación completada · Ejecución directa con pandoras-box (recibos recolectados por backend). ID: <uuid>",
@@ -1509,11 +1573,33 @@ const w = Wallet.fromMnemonic(mnemonic, `m/44'/60'/0'/0/${i}`);
 }
 ```
 
-Los tres valores posibles de `fuente`:
+Interpretación histórica de los valores de `fuente`:
 
 | Valor | Significado |
 |---|---|
-| `"pandoras-box"` | pandoras-box ejecutó y recopiló los recibos sin errores |
-| `"pandoras-box-recovery"` | pandoras-box envió las txs pero falló al recolectar; el backend completó la recolección |
-| `"simulacion"` | No hay mnemonic, pandoras-box no está instalado, o falló sin llegar a enviar txs |
+| `"pandoras-box"` | Ruta vigente: Pandora ejecuta la carga y la capa externa tx-level mide las métricas reales |
+| `"pandoras-box-recovery"` | Valor usado en la etapa intermedia de recovery; se conserva como antecedente de diseño |
+| `"simulacion"` | Ruta vigente de fallback cuando no se ejecuta o no puede completarse la corrida real |
 
+---
+
+## 25. Relación entre ejecución y medición
+
+La arquitectura vigente del RF10 separa de forma deliberada dos responsabilidades que en versiones previas aparecían acopladas:
+
+| Componente | Responsabilidad principal |
+|---|---|
+| **pandoras-box** | Construir el workload, distribuir fondos, desplegar contratos de prueba cuando aplica y enviar transacciones reales a la red |
+| **Capa externa tx-level** | Capturar `txHash` y `sentAt`, consultar receipts y bloques, calcular TPS/latencia/gas, clasificar errores y validar interoperabilidad mediante eventos y estado |
+
+Esta separación evita asumir que una herramienta de stress-testing, por el solo hecho de ejecutar carga real, debe producir también métricas analíticas con precisión suficiente para una evaluación académica.
+
+> **Principio de interpretación del RF10:** La evaluación de desempeño se basa en datos de transacciones reales obtenidas desde la red, no en estimaciones derivadas de bloques.
+
+En términos operativos, esto significa que pandoras-box responde a la pregunta **"¿cómo se genera la carga?"**, mientras la capa externa responde a la pregunta **"¿cómo se mide con precisión lo que realmente ocurrió?"**. Ambas piezas son complementarias y ninguna reemplaza conceptualmente a la otra.
+
+## 26. Conclusión del módulo
+
+La evolución del RF10 consolida una arquitectura de evaluación en dos planos: pandoras-box permanece como motor de ejecución de carga y la capa externa tx-level asume la medición formal del desempeño. Esta separación mejora la precisión metodológica del módulo, evita métricas engañosas derivadas exclusivamente de agregados de bloque y permite interpretar con mayor rigor el comportamiento real de la DApp sobre una red EVM.
+
+En consecuencia, las métricas principales del módulo son ahora **reproducibles**, **trazables** y **basadas en datos reales** obtenidos desde receipts, bloques, eventos y validaciones de estado on-chain. Esto fortalece la validez del RF10 para monografía, sustentación y documentación técnica formal, al separar con claridad la ejecución del experimento de la medición objetiva de sus resultados.
