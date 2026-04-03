@@ -87,7 +87,9 @@ const RunConfigSchema = zod_1.z.object({
     totalTransacciones: zod_1.z.number().int().min(1).max(10000),
     numSubcuentas: zod_1.z.number().int().min(1).max(100),
     contractAddress: zod_1.z.string().optional(),
-    batchSize: zod_1.z.number().int().min(1).max(5000).optional()
+    batchSize: zod_1.z.number().int().min(1).max(5000).optional(),
+    batchDelayMs: zod_1.z.number().int().min(0).max(10000).optional(),
+    receiptTimeoutMs: zod_1.z.number().int().min(10000).max(600000).optional()
 });
 exports.auditRouter.post("/run", async (req, res) => {
     if (!requireAuditor(req, res))

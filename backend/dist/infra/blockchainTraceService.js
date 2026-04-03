@@ -101,6 +101,33 @@ async function loadEthersModule() {
         return requireFromBackend(localEthers);
     }
 }
+function createJsonRpcProvider(ethersModule, rpcUrl) {
+    if (typeof ethersModule.JsonRpcProvider === "function") {
+        return new ethersModule.JsonRpcProvider(rpcUrl);
+    }
+    if (ethersModule.providers?.JsonRpcProvider) {
+        return new ethersModule.providers.JsonRpcProvider(rpcUrl);
+    }
+    throw new Error("La versión de ethers cargada no expone JsonRpcProvider.");
+}
+function keccak256Utf8(ethersModule, value) {
+    if (typeof ethersModule.keccak256 === "function" && typeof ethersModule.toUtf8Bytes === "function") {
+        return ethersModule.keccak256(ethersModule.toUtf8Bytes(value));
+    }
+    if (ethersModule.utils?.keccak256 && ethersModule.utils?.toUtf8Bytes) {
+        return ethersModule.utils.keccak256(ethersModule.utils.toUtf8Bytes(value));
+    }
+    throw new Error("La versión de ethers cargada no expone keccak256/toUtf8Bytes compatibles.");
+}
+function utf8Bytes(ethersModule, value) {
+    if (typeof ethersModule.toUtf8Bytes === "function") {
+        return ethersModule.toUtf8Bytes(value);
+    }
+    if (ethersModule.utils?.toUtf8Bytes) {
+        return ethersModule.utils.toUtf8Bytes(value);
+    }
+    throw new Error("La versión de ethers cargada no expone toUtf8Bytes.");
+}
 function normalizeSha256ToBytes32(hash) {
     const normalized = String(hash ?? "").replace(/^0x/i, "").trim().toLowerCase();
     if (!/^[0-9a-f]{64}$/.test(normalized)) {
@@ -189,7 +216,7 @@ async function verificarConexionBlockchainReal() {
     }
     try {
         const ethers = await loadEthersModule();
-        const provider = new ethers.JsonRpcProvider(rpcUrl);
+        const provider = createJsonRpcProvider(ethers, rpcUrl);
         const blockNumber = await provider.getBlockNumber();
         return {
             checkedAt,
@@ -224,28 +251,28 @@ async function registrarEventoBlockchainReal(input) {
     const privateKey = String(process.env.DEPLOYER_PRIVATE_KEY ?? "").trim();
     const abi = readContractAbi();
     const ethers = await loadEthersModule();
-    const provider = new ethers.JsonRpcProvider(rpcUrl);
+    const provider = createJsonRpcProvider(ethers, rpcUrl);
     const wallet = new ethers.Wallet(privateKey, provider);
     const contract = new ethers.Contract(config.contractAddress, abi, wallet);
-    const episodeIdHash = ethers.keccak256(ethers.toUtf8Bytes(input.episodeId));
+    const episodeIdHash = keccak256Utf8(ethers, input.episodeId);
     const sourceIpsId = String(input.metadata.sourceIpsId ?? input.actor.ipsId ?? "").trim();
-    const sourceIpsHash = ethers.keccak256(ethers.toUtf8Bytes(sourceIpsId || "SIN_IPS"));
+    const sourceIpsHash = keccak256Utf8(ethers, sourceIpsId || "SIN_IPS");
     const submittedAt = new Date().toISOString();
     let txResponse;
     switch (input.eventType) {
         case "EPISODE_CREATED":
-            txResponse = await contract.registrarEpisodio(episodeIdHash, ethers.keccak256(ethers.toUtf8Bytes(String(input.metadata.eventId ?? input.episodeId))), normalizeSha256ToBytes32(String(input.metadata.documentHash ?? "")), sourceIpsHash);
+            txResponse = await contract.registrarEpisodio(episodeIdHash, keccak256Utf8(ethers, String(input.metadata.eventId ?? input.episodeId)), normalizeSha256ToBytes32(String(input.metadata.documentHash ?? "")), sourceIpsHash);
             break;
         case "EPISODE_UPDATED":
-            txResponse = await contract.actualizarEpisodio(episodeIdHash, ethers.keccak256(ethers.toUtf8Bytes(String(input.metadata.eventId ?? input.episodeId))), normalizeSha256ToBytes32(String(input.metadata.documentHash ?? "")), sourceIpsHash);
+            txResponse = await contract.actualizarEpisodio(episodeIdHash, keccak256Utf8(ethers, String(input.metadata.eventId ?? input.episodeId)), normalizeSha256ToBytes32(String(input.metadata.documentHash ?? "")), sourceIpsHash);
             break;
         case "PERMISSION_GRANTED":
         case "PERMISSION_REVOKED":
-            txResponse = await contract.registrarPermisoDocumento(episodeIdHash, sourceIpsHash, ethers.keccak256(ethers.toUtf8Bytes(String(input.metadata.targetIpsId ?? "SIN_DESTINO"))), input.eventType === "PERMISSION_GRANTED");
+            txResponse = await contract.registrarPermisoDocumento(episodeIdHash, sourceIpsHash, keccak256Utf8(ethers, String(input.metadata.targetIpsId ?? "SIN_DESTINO")), input.eventType === "PERMISSION_GRANTED");
             break;
         case "AUDITABLE_ACCESS":
         case "INTEGRITY_CHECK":
-            txResponse = await contract.registrarTraza(episodeIdHash, input.eventType, sourceIpsHash, ethers.toUtf8Bytes(JSON.stringify({
+            txResponse = await contract.registrarTraza(episodeIdHash, input.eventType, sourceIpsHash, utf8Bytes(ethers, JSON.stringify({
                 actor: input.actor,
                 metadata: input.metadata,
                 recordedAt: new Date().toISOString()
