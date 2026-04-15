@@ -16,6 +16,8 @@ import { EvaluacionPrototipoPage } from "../pages/EvaluacionPrototipoPage";
 import { AuditoriaDashboardPage } from "../pages/AuditoriaDashboardPage";
 import { GestionIpsPage } from "../pages/GestionIpsPage";
 import { GestionUsuariosPage } from "../pages/GestionUsuariosPage";
+// DEMO — solo se usa cuando VITE_DEMO_MODE=true; eliminar import + ruta para quitar el panel
+import { DemoPage } from "@/demo/DemoPage";
 
 function RequireSession({ children }: { children: JSX.Element }) {
   const { sesion } = useSesion();
@@ -142,6 +144,9 @@ export function AppRouter() {
           }
         />
         <Route path="/infraestructura" element={<RequireSession><InfraestructuraPage /></RequireSession>} />
+        {import.meta.env.VITE_DEMO_MODE === "true" && (
+          <Route path="/demo" element={<DemoPage />} />
+        )}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Layout>
